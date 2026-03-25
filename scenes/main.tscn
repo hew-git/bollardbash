@@ -142,7 +142,7 @@ offset_right = 712.0
 offset_bottom = 80.0
 theme_override_font_sizes/font_size = 14
 text = "P1: WASD = Lean/Raise/Lower, E = Grab
-P2: AI-controlled (orange bollard)
+P2: Arrows + / = Grab (or AI-controlled orange bollard)
 ESC = Quit, R = Restart (when game over)"
 horizontal_alignment = 1
 vertical_alignment = 0

@@ -172,13 +172,13 @@ func _setup_input() -> void:
 	_add_key("p1_lower",      KEY_S)
 	_add_key("p1_grab",       KEY_E)
 
-	# Player 2: Arrow keys + Right Shift to grab
+	# Player 2: Arrow keys + / (slash) to grab
 	# (Used for local multiplayer — AI ignores these)
 	_add_key("p2_lean_left",  KEY_LEFT)
 	_add_key("p2_lean_right", KEY_RIGHT)
 	_add_key("p2_raise",      KEY_UP)
 	_add_key("p2_lower",      KEY_DOWN)
-	_add_key("p2_grab",       KEY_RSHIFT)
+	_add_key("p2_grab",       KEY_SLASH)
 
 
 func _add_key(action_name: String, key: Key) -> void:
