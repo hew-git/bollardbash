@@ -20,10 +20,10 @@ const MIN_HEIGHT := 6.0
 const MAX_HEIGHT := 90.0
 
 # ── Physics Tuning ──────────────────────────────────────────────────────────
-const LEAN_TORQUE := 20000.0       ## Rotational force when leaning left/right
+const LEAN_TORQUE := 35000.0       ## Rotational force when leaning left/right
 const EXTEND_SPEED := 6.0          ## How fast the bollard raises/lowers (per second)
-const SELF_RIGHT_TORQUE := 8000.0  ## Restoring torque that pulls bollard upright (weighted base)
-const ANGULAR_DAMP_AMOUNT := 3.5   ## How quickly spinning slows down (prevents runaway tumbling)
+const SELF_RIGHT_TORQUE := 10000.0 ## Restoring torque that pulls bollard upright (weighted base)
+const ANGULAR_DAMP_AMOUNT := 2.5   ## How quickly spinning slows down
 const LAUNCH_BOOST := 1400.0       ## Upward impulse when doing the launch trick
 const KNOCKBACK_BASE := 300.0      ## Base knockback force on hit
 const HIT_SPEED_THRESHOLD := 80.0  ## Minimum collision speed to deal damage
@@ -159,12 +159,14 @@ func _update_collision_shape() -> void:
 	capsule.radius = BASE_RADIUS
 	capsule.height = total_h
 
-	# Position the capsule so its very bottom sits at local y = 0.
-	# This means the bollard's origin is always the ground contact point.
-	body_shape.position = Vector2(0, -total_h / 2.0)
+	# Position so the BASE CIRCLE CENTER is at local (0, 0).
+	# The bottom cap center aligns with the origin — this makes the bollard
+	# rotate around its base, not some point below it.
+	# Ground contact is at local y = +BASE_RADIUS (below origin).
+	body_shape.position = Vector2(0, BASE_RADIUS - total_h / 2.0)
 
 	# Move the grab detection area to the tip of the bollard
-	grab_area.position = Vector2(0, -total_h + BASE_RADIUS)
+	grab_area.position = Vector2(0, BASE_RADIUS - total_h)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -312,11 +314,13 @@ func _draw() -> void:
 	if is_invincible and fmod(invincible_timer * 10.0, 2.0) > 1.0:
 		draw_color = bollard_color.lightened(0.5)
 
-	# ── Base circle (the rounded bottom that contacts the ground) ──
-	draw_circle(Vector2(0, -BASE_RADIUS), BASE_RADIUS, draw_color.darkened(0.25))
+	# ── Base circle at origin (this IS the rotation pivot) ──
+	draw_circle(Vector2.ZERO, BASE_RADIUS, draw_color.darkened(0.25))
 
-	# ── Post body (rectangle from top of base to bottom of dome) ──
-	var rect_top := -(post_h + BASE_RADIUS)  # y of the rectangle's top edge
+	# ── Post body extends upward from origin ──
+	# The base circle covers the lower portion, so the post visually
+	# emerges from the top of the base.
+	var rect_top := -post_h
 	if post_h > 2.0:
 		draw_rect(Rect2(-hw, rect_top, hw * 2.0, post_h), draw_color)
 
@@ -330,7 +334,7 @@ func _draw() -> void:
 
 	# ── Reflective safety band ──
 	if post_h > 25.0:
-		var band_y := lerpf(-BASE_RADIUS, rect_top, 0.6)
+		var band_y := lerpf(0.0, rect_top, 0.6)
 		draw_rect(
 			Rect2(-hw - 1, band_y - 3, hw * 2.0 + 2, 6),
 			accent_color
@@ -338,7 +342,7 @@ func _draw() -> void:
 
 	# ── Second band (lower) for taller bollards ──
 	if post_h > 60.0:
-		var band_y2 := lerpf(-BASE_RADIUS, rect_top, 0.3)
+		var band_y2 := lerpf(0.0, rect_top, 0.3)
 		draw_rect(
 			Rect2(-hw - 1, band_y2 - 3, hw * 2.0 + 2, 6),
 			accent_color.darkened(0.1)

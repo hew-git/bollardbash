@@ -7,9 +7,10 @@ extends Node2D
 ## It's intentionally much larger than the visible area so players "fly off screen."
 const BLAST_ZONE := Rect2(-400, -700, 1824, 1500)
 
-## Spawn positions (just above the main ground platform)
-const SPAWN_P1 := Vector2(400, 392)
-const SPAWN_P2 := Vector2(624, 392)
+## Spawn positions — ground surface is at y=400, bollard origin is at the
+## base circle center (22px above ground contact), so spawn y = 400 - 22 = 378
+const SPAWN_P1 := Vector2(400, 378)
+const SPAWN_P2 := Vector2(624, 378)
 
 ## Delay before a KO'd player respawns
 const RESPAWN_DELAY := 2.0

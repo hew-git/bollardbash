@@ -73,10 +73,10 @@ offset_bottom = 8.0
 color = Color(0.376, 0.263, 0.208, 1)
 
 [node name="Player1" parent="." instance=ExtResource("2_bollard")]
-position = Vector2(400, 395)
+position = Vector2(400, 378)
 
 [node name="Player2" parent="." instance=ExtResource("2_bollard")]
-position = Vector2(624, 395)
+position = Vector2(624, 378)
 player_id = 2
 is_ai = true
 bollard_color = Color(0.804, 0.498, 0.196, 1)
