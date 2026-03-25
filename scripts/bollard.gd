@@ -20,10 +20,10 @@ const MIN_HEIGHT := 6.0
 const MAX_HEIGHT := 90.0
 
 # ── Physics Tuning ──────────────────────────────────────────────────────────
-const LEAN_TORQUE := 12000.0       ## Rotational force when leaning left/right
+const LEAN_TORQUE := 20000.0       ## Rotational force when leaning left/right
 const EXTEND_SPEED := 6.0          ## How fast the bollard raises/lowers (per second)
-const SELF_RIGHT_TORQUE := 3000.0  ## Restoring torque that pulls bollard upright (weighted base)
-const ANGULAR_DAMP_AMOUNT := 3.0   ## How quickly spinning slows down (prevents runaway tumbling)
+const SELF_RIGHT_TORQUE := 8000.0  ## Restoring torque that pulls bollard upright (weighted base)
+const ANGULAR_DAMP_AMOUNT := 3.5   ## How quickly spinning slows down (prevents runaway tumbling)
 const LAUNCH_BOOST := 1400.0       ## Upward impulse when doing the launch trick
 const KNOCKBACK_BASE := 300.0      ## Base knockback force on hit
 const HIT_SPEED_THRESHOLD := 80.0  ## Minimum collision speed to deal damage
@@ -84,8 +84,16 @@ func _ready() -> void:
 	physics_material_override.friction = 0.6
 	physics_material_override.bounce = 0.15
 
+	# CRITICAL: Move center of mass to the base contact point.
+	# By default Godot puts it at the center of the capsule, which makes the
+	# bollard impossibly top-heavy — gravity torque (~160,000) dwarfs any lean
+	# torque we can apply. With center of mass at the base, gravity creates ZERO
+	# toppling torque, and we control stability entirely via self-righting torque.
+	center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
+	center_of_mass = Vector2(0, 0)  # At the base contact point
+	mass = 2.0  # Lighter = more responsive to torques
+
 	# Angular damping prevents the bollard from spinning out of control.
-	# This makes it feel heavy and controllable rather than ice-on-ice.
 	angular_damp = ANGULAR_DAMP_AMOUNT
 
 
@@ -101,10 +109,11 @@ func _physics_process(delta: float) -> void:
 		_process_input(delta)
 
 	# Self-righting torque: simulates a weighted base pulling the bollard upright.
-	# The further it tilts, the stronger the pull back toward vertical.
-	# This is what lets you swing back from a lean instead of just falling over.
-	var tilt := sin(rotation)  # -1 to 1, how far the bollard is leaning
-	apply_torque(-tilt * SELF_RIGHT_TORQUE * (0.5 + extend_amount * 0.5))
+	# Scales with extend_amount so:
+	#   - Lowered (extend=0): NO self-righting → spins freely for launch trick
+	#   - Raised (extend=1): FULL self-righting → stable and controllable
+	var tilt := sin(rotation)
+	apply_torque(-tilt * SELF_RIGHT_TORQUE * extend_amount)
 
 	_update_collision_shape()
 	_update_grab(delta)
