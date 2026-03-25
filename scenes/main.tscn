@@ -92,19 +92,20 @@ offset_top = 500.0
 offset_right = 280.0
 offset_bottom = 590.0
 
-[node name="P1Damage" type="Label" parent="HUD/P1Panel"]
+[node name="P1VBox" type="VBoxContainer" parent="HUD/P1Panel"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
+
+[node name="P1Damage" type="Label" parent="HUD/P1Panel/P1VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
 text = "0%"
 horizontal_alignment = 1
-vertical_alignment = 1
 
-[node name="P1Stocks" type="Label" parent="HUD/P1Panel"]
+[node name="P1Stocks" type="Label" parent="HUD/P1Panel/P1VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "O O O"
 horizontal_alignment = 1
-vertical_alignment = 2
 
 [node name="P2Panel" type="PanelContainer" parent="HUD"]
 offset_left = 744.0
@@ -112,19 +113,20 @@ offset_top = 500.0
 offset_right = 964.0
 offset_bottom = 590.0
 
-[node name="P2Damage" type="Label" parent="HUD/P2Panel"]
+[node name="P2VBox" type="VBoxContainer" parent="HUD/P2Panel"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
+
+[node name="P2Damage" type="Label" parent="HUD/P2Panel/P2VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
 text = "0%"
 horizontal_alignment = 1
-vertical_alignment = 1
 
-[node name="P2Stocks" type="Label" parent="HUD/P2Panel"]
+[node name="P2Stocks" type="Label" parent="HUD/P2Panel/P2VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "O O O"
 horizontal_alignment = 1
-vertical_alignment = 2
 
 [node name="GameOver" type="Label" parent="HUD"]
 visible = false

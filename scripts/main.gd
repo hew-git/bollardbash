@@ -18,10 +18,10 @@ const RESPAWN_DELAY := 2.0
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var player1: Bollard = $Player1
 @onready var player2: Bollard = $Player2
-@onready var p1_damage_label: Label = $HUD/P1Panel/P1Damage
-@onready var p2_damage_label: Label = $HUD/P2Panel/P2Damage
-@onready var p1_stock_label: Label = $HUD/P1Panel/P1Stocks
-@onready var p2_stock_label: Label = $HUD/P2Panel/P2Stocks
+@onready var p1_damage_label: Label = $HUD/P1Panel/P1VBox/P1Damage
+@onready var p2_damage_label: Label = $HUD/P2Panel/P2VBox/P2Damage
+@onready var p1_stock_label: Label = $HUD/P1Panel/P1VBox/P1Stocks
+@onready var p2_stock_label: Label = $HUD/P2Panel/P2VBox/P2Stocks
 @onready var game_over_label: Label = $HUD/GameOver
 @onready var controls_label: Label = $HUD/Controls
 
