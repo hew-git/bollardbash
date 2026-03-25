@@ -51,6 +51,7 @@ position = Vector2(240, 270)
 
 [node name="PlatLeftShape" type="CollisionShape2D" parent="PlatformLeft"]
 shape = SubResource("RectShape_plat_l")
+one_way_collision = true
 
 [node name="PlatLeftVisual" type="ColorRect" parent="PlatformLeft"]
 offset_left = -80.0
@@ -64,6 +65,7 @@ position = Vector2(784, 270)
 
 [node name="PlatRightShape" type="CollisionShape2D" parent="PlatformRight"]
 shape = SubResource("RectShape_plat_r")
+one_way_collision = true
 
 [node name="PlatRightVisual" type="ColorRect" parent="PlatformRight"]
 offset_left = -80.0

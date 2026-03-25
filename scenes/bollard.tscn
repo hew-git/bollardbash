@@ -1,29 +1,35 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/bollard.gd" id="1_script"]
 
-[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_body"]
+[sub_resource type="CircleShape2D" id="CircleShape2D_base"]
 radius = 22.0
-height = 70.0
+
+[sub_resource type="RectangleShape2D" id="RectShape_post"]
+size = Vector2(32, 50)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_grab"]
 radius = 18.0
 
 [node name="Bollard" type="RigidBody2D"]
-mass = 5.0
-physics_material_override = null
+mass = 2.0
 contact_monitor = true
 max_contacts_reported = 8
 script = ExtResource("1_script")
 
-[node name="BodyShape" type="CollisionShape2D" parent="."]
-position = Vector2(0, -35)
-shape = SubResource("CapsuleShape2D_body")
+[node name="BaseShape" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_base")
+
+[node name="PostShape" type="CollisionShape2D" parent="."]
+position = Vector2(0, -25)
+shape = SubResource("RectShape_post")
 
 [node name="GrabArea" type="Area2D" parent="."]
-position = Vector2(0, -60)
+position = Vector2(0, -50)
 collision_layer = 2
 collision_mask = 3
+monitorable = true
+monitoring = true
 
 [node name="GrabShape" type="CollisionShape2D" parent="GrabArea"]
 shape = SubResource("CircleShape2D_grab")
