@@ -235,13 +235,15 @@ func take_damage(amount: float, knockback_dir: Vector2) -> void:
 func _on_body_entered(body: Node) -> void:
 	if is_invincible:
 		return
-	if body is RigidBody2D and body != self and body.has_method("take_damage"):
-		var rel_vel := linear_velocity - body.linear_velocity
-		var impact := rel_vel.length()
-		if impact > HIT_SPEED_THRESHOLD:
-			var dmg := impact * DAMAGE_MULTIPLIER
-			var dir := (body.global_position - global_position).normalized()
-			body.take_damage(dmg, dir)
+	if not (body is RigidBody2D) or body == self or not body.has_method("take_damage"):
+		return
+	var other: RigidBody2D = body as RigidBody2D
+	var rel_vel: Vector2 = linear_velocity - other.linear_velocity
+	var impact: float = rel_vel.length()
+	if impact > HIT_SPEED_THRESHOLD:
+		var dmg: float = impact * DAMAGE_MULTIPLIER
+		var dir: Vector2 = (other.global_position - global_position).normalized()
+		other.take_damage(dmg, dir)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
