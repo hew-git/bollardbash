@@ -20,10 +20,10 @@ const MIN_HEIGHT := 6.0
 const MAX_HEIGHT := 90.0
 
 # ── Physics Tuning ──────────────────────────────────────────────────────────
-const LEAN_TORQUE := 35000.0       ## Rotational force when leaning left/right
+const LEAN_TORQUE := 70000.0       ## Rotational force when leaning — GOOFY FAST
 const EXTEND_SPEED := 6.0          ## How fast the bollard raises/lowers (per second)
-const SELF_RIGHT_TORQUE := 10000.0 ## Restoring torque that pulls bollard upright (weighted base)
-const ANGULAR_DAMP_AMOUNT := 2.5   ## How quickly spinning slows down
+const SELF_RIGHT_TORQUE := 0.0     ## No self-righting — full 360 spins always allowed
+const ANGULAR_DAMP_AMOUNT := 1.5   ## Low damping so spins carry momentum
 const LAUNCH_BOOST := 1400.0       ## Upward impulse when doing the launch trick
 const KNOCKBACK_BASE := 300.0      ## Base knockback force on hit
 const HIT_SPEED_THRESHOLD := 80.0  ## Minimum collision speed to deal damage
