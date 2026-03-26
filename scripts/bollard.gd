@@ -4,8 +4,8 @@ class_name Bollard
 # ── Exported Configuration ──────────────────────────────────────────────────
 @export var player_id: int = 1
 @export var is_ai: bool = false
-@export var bollard_color: Color = Color("5a5a6e")
-@export var accent_color: Color = Color("d4d4e0")
+@export var bollard_color: Color = Color("B0A8C8")  ## Snail body color (light purple-gray)
+@export var accent_color: Color = Color("A06830")    ## Shell color (warm brown)
 
 # ── Dimensions ──────────────────────────────────────────────────────────────
 const BASE_RADIUS := 22.0
@@ -17,14 +17,19 @@ const MAX_HEIGHT := 90.0
 const LEAN_TORQUE := 100000.0
 const EXTEND_SPEED := 6.0
 const ANGULAR_DAMP_AMOUNT := 1.5
-const LAUNCH_BOOST := 300.0        ## 25% less than previous 400
+const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
 
 # ── Grab Settings ───────────────────────────────────────────────────────────
 const MAX_GRAB_TIME := 2.0
-const GRAB_STRENGTH := 4000.0      ## Force pulling tip toward grab point
+
+# ── Visual Constants ────────────────────────────────────────────────────────
+const EYE_COLOR := Color("E8C830")
+const EYE_RADIUS := 5.5
+const STALK_LENGTH := 14.0
+const STALK_SPREAD := 7.0
 
 # ── Runtime State ───────────────────────────────────────────────────────────
 var extend_amount: float = 0.5
@@ -39,8 +44,13 @@ const INVINCIBLE_TIME := 1.5
 # ── Grab State ──────────────────────────────────────────────────────────────
 var is_grabbing: bool = false
 var grab_timer: float = 0.0
-var grab_target: Node2D = null               ## The body we grabbed
-var grab_target_local_point: Vector2 = Vector2.ZERO  ## Point on target in its local space
+var grab_target: Node2D = null
+var grab_joint: PinJoint2D = null
+
+# ── Blink State ─────────────────────────────────────────────────────────────
+var is_blinking: bool = false
+var blink_timer: float = 0.0
+var next_blink_time: float = 3.0
 
 # ── AI State ────────────────────────────────────────────────────────────────
 var ai_target: Bollard = null
@@ -83,9 +93,11 @@ func _ready() -> void:
 	mass = 2.0
 	angular_damp = ANGULAR_DAMP_AMOUNT
 
-	# Make shapes unique so instanced bollards don't share
 	base_shape.shape = base_shape.shape.duplicate()
 	post_shape.shape = post_shape.shape.duplicate()
+
+	# Randomize first blink so both snails don't blink in sync
+	next_blink_time = randf_range(1.5, 5.0)
 
 
 func _physics_process(delta: float) -> void:
@@ -103,6 +115,7 @@ func _physics_process(delta: float) -> void:
 	_update_grab(delta)
 	_check_launch()
 	_update_invincibility(delta)
+	_update_blink(delta)
 	queue_redraw()
 
 
@@ -131,12 +144,10 @@ func _process_input(delta: float) -> void:
 
 func _update_collision_shape() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
-
 	var rect: RectangleShape2D = post_shape.shape
 	rect.size = Vector2(POST_HALF_WIDTH * 2.0, post_h)
 	post_shape.position = Vector2(0, -post_h / 2.0)
 	post_shape.disabled = extend_amount < 0.03
-
 	grab_area.position = Vector2(0, -post_h)
 
 
@@ -147,17 +158,15 @@ func _update_collision_shape() -> void:
 func _check_launch() -> void:
 	var extend_speed_now := extend_amount - prev_extend
 	var upside_down: bool = cos(rotation) < -0.3
-
 	if extend_speed_now > 0.08 and upside_down:
 		var boost := LAUNCH_BOOST * extend_speed_now * 6.0
 		apply_central_impulse(Vector2(0, -boost))
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB MECHANIC — force-based, works at any extension                      ║
-# ║ Instead of a rigid joint, we pull the TIP toward the grab point each     ║
-# ║ frame. This means the base stays free, the bollard can still spin,       ║
-# ║ and retracting pulls you toward what you grabbed.                        ║
+# ║ GRAB — rigid PinJoint at the tip                                         ║
+# ║ Surfaces: tip locks to the surface, snail hangs/swings from it          ║
+# ║ Players: other player is stuck to the grabber's tip                     ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _try_grab() -> void:
@@ -176,8 +185,16 @@ func _start_grab(target: PhysicsBody2D) -> void:
 	is_grabbing = true
 	grab_timer = 0.0
 	grab_target = target
-	# Store the grab point in the target's local space so it follows the target
-	grab_target_local_point = target.to_local(grab_area.global_position)
+
+	# Create a rigid pin joint at the tip position.
+	# This locks the tip to the target surface/body.
+	grab_joint = PinJoint2D.new()
+	grab_joint.node_a = get_path()
+	grab_joint.node_b = target.get_path()
+	grab_joint.softness = 0.0  # Completely rigid — tip is LOCKED
+	grab_joint.disable_collision = false
+	add_child(grab_joint)
+	grab_joint.global_position = grab_area.global_position
 
 
 func _release_grab() -> void:
@@ -185,49 +202,20 @@ func _release_grab() -> void:
 		return
 	is_grabbing = false
 	grab_target = null
+	if is_instance_valid(grab_joint):
+		grab_joint.queue_free()
+	grab_joint = null
 
 
 func _update_grab(delta: float) -> void:
 	if not is_grabbing:
 		return
-
 	if not is_instance_valid(grab_target):
 		_release_grab()
 		return
-
 	grab_timer += delta
 	if grab_timer >= MAX_GRAB_TIME:
 		_release_grab()
-		return
-
-	# Current tip position in local space
-	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
-	var tip_local := Vector2(0, -post_h)
-
-	# Convert tip to global offset (apply_force needs global offset from origin)
-	var tip_global_offset: Vector2 = to_global(tip_local) - global_position
-
-	# Get the grab point on the target in world space
-	var target_world: Vector2 = grab_target.to_global(grab_target_local_point)
-
-	# Pull direction: from our tip toward the grab point
-	var tip_world: Vector2 = to_global(tip_local)
-	var pull: Vector2 = target_world - tip_world
-	var dist: float = pull.length()
-
-	if dist > 1.0:
-		var dir: Vector2 = pull.normalized()
-		# Spring-like force: gets stronger with distance, caps at 4x
-		var strength: float = GRAB_STRENGTH * minf(dist / 40.0, 4.0)
-
-		# Apply force at the TIP, not the center — this creates natural rotation
-		apply_force(dir * strength, tip_global_offset)
-
-		# If grabbing another bollard, yank them toward us too
-		if grab_target is RigidBody2D:
-			var other: RigidBody2D = grab_target as RigidBody2D
-			var other_offset: Vector2 = grab_target.to_global(grab_target_local_point) - grab_target.global_position
-			other.apply_force(-dir * strength * 0.6, other_offset)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -240,7 +228,6 @@ func take_damage(amount: float, knockback_dir: Vector2) -> void:
 	damage_percent += amount
 	var knockback_mult := 1.0 + damage_percent / 50.0
 	apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult)
-
 
 func _on_body_entered(body: Node) -> void:
 	if is_invincible:
@@ -285,47 +272,106 @@ func _update_invincibility(delta: float) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ DRAWING                                                                  ║
+# ║ BLINK                                                                    ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _update_blink(delta: float) -> void:
+	blink_timer += delta
+	if is_blinking:
+		# Blink lasts 0.15 seconds
+		if blink_timer > 0.15:
+			is_blinking = false
+			blink_timer = 0.0
+			next_blink_time = randf_range(2.0, 6.0)
+	else:
+		if blink_timer > next_blink_time:
+			is_blinking = true
+			blink_timer = 0.0
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ DRAWING — snail with shell, body, eye stalks                             ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _draw() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
 	var hw := POST_HALF_WIDTH
 
-	var draw_color := bollard_color
+	# Invincibility flash
+	var shell_c := accent_color
+	var body_c := bollard_color
 	if is_invincible and fmod(invincible_timer * 10.0, 2.0) > 1.0:
-		draw_color = bollard_color.lightened(0.5)
+		shell_c = accent_color.lightened(0.5)
+		body_c = bollard_color.lightened(0.5)
 
-	# Base circle at origin
-	draw_circle(Vector2.ZERO, BASE_RADIUS, draw_color.darkened(0.25))
+	# ── SHELL (base circle) ──────────────────────────────────────────────
+	# Main shell body
+	draw_circle(Vector2.ZERO, BASE_RADIUS, shell_c)
 
-	# Post body
-	var rect_top := -post_h
+	# Shell spiral lines — concentric arcs at staggered angles
+	var spiral_off := Vector2(-2, 2)
+	for i in 5:
+		var r: float = BASE_RADIUS * (0.78 - i * 0.14)
+		if r > 3.0:
+			var sa: float = 0.4 + i * 1.1
+			var ea: float = sa + 2.8 - i * 0.3
+			draw_arc(spiral_off, r, sa, ea, 16, shell_c.darkened(0.18), 1.5, true)
+
+	# Shell highlight (shiny spot)
+	draw_circle(Vector2(-6, -6), BASE_RADIUS * 0.22, shell_c.lightened(0.25))
+
+	# Shell opening (dark hole where body emerges)
+	if post_h > 5.0:
+		draw_circle(Vector2(0, -BASE_RADIUS * 0.35), hw * 0.75, shell_c.darkened(0.4))
+
+	# ── SNAIL BODY ───────────────────────────────────────────────────────
 	if post_h > 3.0:
-		draw_rect(Rect2(-hw, rect_top, hw * 2.0, post_h), draw_color)
+		# Main body rectangle
+		draw_rect(Rect2(-hw, -post_h, hw * 2.0, post_h), body_c)
 
-	# Dome on top
+		# Body sheen (lighter stripe down the center)
+		var sheen_w: float = hw * 0.35
+		draw_rect(Rect2(-sheen_w, -post_h + 3, sheen_w * 2.0, post_h - 6),
+				  body_c.lightened(0.12))
+
+	# Rounded tip of body (dome)
 	var dome_pts := PackedVector2Array()
+	var tip_y := -post_h
 	for i in 17:
 		var angle := float(i) / 16.0 * PI
-		dome_pts.append(Vector2(cos(angle) * hw, rect_top - sin(angle) * hw))
+		dome_pts.append(Vector2(cos(angle) * hw, tip_y - sin(angle) * hw))
 	if dome_pts.size() >= 3:
-		draw_colored_polygon(dome_pts, draw_color.lightened(0.12))
+		draw_colored_polygon(dome_pts, body_c.lightened(0.06))
 
-	# Reflective safety band
-	if post_h > 25.0:
-		var band_y := lerpf(0.0, rect_top, 0.6)
-		draw_rect(Rect2(-hw - 1, band_y - 3, hw * 2.0 + 2, 6), accent_color)
+	# ── EYE STALKS (purely visual — no collision) ────────────────────────
+	var dome_top_y: float = tip_y - hw  # Very top of dome
 
-	# Second band for taller bollards
-	if post_h > 60.0:
-		var band_y2 := lerpf(0.0, rect_top, 0.3)
-		draw_rect(Rect2(-hw - 1, band_y2 - 3, hw * 2.0 + 2, 6), accent_color.darkened(0.1))
+	var left_eye := Vector2(-STALK_SPREAD, dome_top_y - STALK_LENGTH)
+	var right_eye := Vector2(STALK_SPREAD, dome_top_y - STALK_LENGTH)
 
-	# Grab indicator — line from tip toward grab target
+	# Stalks (thin lines from dome top)
+	var stalk_c: Color = body_c.darkened(0.05)
+	draw_line(Vector2(-3, dome_top_y + 2), left_eye, stalk_c, 2.5)
+	draw_line(Vector2(3, dome_top_y + 2), right_eye, stalk_c, 2.5)
+
+	if is_blinking:
+		# Closed eyes — horizontal lines
+		draw_line(left_eye + Vector2(-4, 0), left_eye + Vector2(4, 0), Color.BLACK, 2.5)
+		draw_line(right_eye + Vector2(-4, 0), right_eye + Vector2(4, 0), Color.BLACK, 2.5)
+	else:
+		# Eyeballs (yellow)
+		draw_circle(left_eye, EYE_RADIUS, EYE_COLOR)
+		draw_circle(right_eye, EYE_RADIUS, EYE_COLOR)
+		# Pupils (black)
+		draw_circle(left_eye, EYE_RADIUS * 0.45, Color.BLACK)
+		draw_circle(right_eye, EYE_RADIUS * 0.45, Color.BLACK)
+		# Highlights (white sparkle)
+		draw_circle(left_eye + Vector2(-1.5, -1.5), 1.8, Color.WHITE)
+		draw_circle(right_eye + Vector2(-1.5, -1.5), 1.8, Color.WHITE)
+
+	# ── GRAB INDICATOR ───────────────────────────────────────────────────
 	if is_grabbing and is_instance_valid(grab_target):
-		var tip := Vector2(0, rect_top - hw)
-		draw_circle(tip, 4.0, Color.RED)
+		draw_circle(Vector2(0, tip_y), 4.0, Color.RED)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -336,9 +382,7 @@ func _process_ai(delta: float) -> void:
 	if ai_target == null or not is_instance_valid(ai_target) or ai_target.is_dead:
 		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.5 * delta)
 		return
-
 	ai_timer += delta
-
 	match ai_state:
 		"idle":
 			if ai_timer > ai_action_duration:
@@ -377,7 +421,6 @@ func _ai_pick_action() -> void:
 	ai_timer = 0.0
 	var abs_dist := absf(ai_target.global_position.x - global_position.x)
 	var roll := randf()
-
 	if damage_percent > 100.0 and roll < 0.25:
 		ai_state = "retreat"
 		ai_action_duration = randf_range(0.5, 1.5)
