@@ -1,33 +1,40 @@
 extends Node2D
-## Main game controller. Manages input setup, blast zone KOs, respawning,
-## game flow, and HUD updates.
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
-## Blast zone: if a bollard leaves this rectangle, they lose a stock.
-## It's intentionally much larger than the visible area so players "fly off screen."
-const BLAST_ZONE := Rect2(-400, -700, 1824, 1500)
+const BLAST_ZONE := Rect2(-500, -800, 2280, 1900)
 
-## Spawn positions — ground surface is at y=400, bollard origin is at the
-## base circle center (22px above ground contact), so spawn y = 400 - 22 = 378
-const SPAWN_P1 := Vector2(400, 378)
-const SPAWN_P2 := Vector2(624, 378)
-
-## Delay before a KO'd player respawns
+## Ground top is at y=500, bollard base center at y=478
+const SPAWN_P1 := Vector2(480, 478)
+const SPAWN_P2 := Vector2(800, 478)
 const RESPAWN_DELAY := 2.0
+
+# ── HUD Bar Constants ──────────────────────────────────────────────────────
+const P1_BAR_RIGHT := 270.0   ## P1 bar fills rightward from this edge (right to left)
+const P1_BAR_LEFT := 70.0
+const P2_BAR_LEFT := 1010.0   ## P2 bar fills leftward from this edge (left to right)
+const P2_BAR_RIGHT := 1210.0
+const BAR_MAX_WIDTH := 200.0  ## Bar width at 100% damage
+const EFFECT_DURATION := 1.0  ## How long "OOF" / "CRITICAL" shows
 
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var player1: Bollard = $Player1
 @onready var player2: Bollard = $Player2
-@onready var p1_damage_label: Label = $HUD/P1Panel/P1VBox/P1Damage
-@onready var p2_damage_label: Label = $HUD/P2Panel/P2VBox/P2Damage
-@onready var p1_stock_label: Label = $HUD/P1Panel/P1VBox/P1Stocks
-@onready var p2_stock_label: Label = $HUD/P2Panel/P2VBox/P2Stocks
+@onready var p1_bar_fill: ColorRect = $HUD/P1BarFill
+@onready var p2_bar_fill: ColorRect = $HUD/P2BarFill
+@onready var p1_effect: Label = $HUD/P1Effect
+@onready var p2_effect: Label = $HUD/P2Effect
+@onready var p1_stock_label: Label = $HUD/P1Stocks
+@onready var p2_stock_label: Label = $HUD/P2Stocks
 @onready var game_over_label: Label = $HUD/GameOver
 @onready var controls_label: Label = $HUD/Controls
 
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = true
 var controls_visible_timer: float = 0.0
+var prev_p1_dmg: float = 0.0
+var prev_p2_dmg: float = 0.0
+var p1_effect_timer: float = 0.0
+var p2_effect_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -37,6 +44,8 @@ func _ready() -> void:
 	player2.ai_target = player1
 	game_over_label.visible = false
 	controls_label.visible = true
+	p1_effect.visible = false
+	p2_effect.visible = false
 
 
 func _physics_process(delta: float) -> void:
@@ -47,16 +56,16 @@ func _physics_process(delta: float) -> void:
 	_check_blast_zone(player2)
 	_handle_respawn(player1, SPAWN_P1, delta)
 	_handle_respawn(player2, SPAWN_P2, delta)
+	_check_damage_effects(delta)
 	_update_hud()
 
-	# Auto-hide controls hint after 8 seconds
 	controls_visible_timer += delta
 	if controls_visible_timer > 8.0 and controls_label.visible:
 		controls_label.visible = false
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ BLAST ZONE — KO when a player flies off the stage                       ║
+# ║ BLAST ZONE                                                               ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _check_blast_zone(player: Bollard) -> void:
@@ -75,18 +84,13 @@ func _check_blast_zone(player: Bollard) -> void:
 func _handle_respawn(player: Bollard, spawn_pos: Vector2, delta: float) -> void:
 	if not player.is_dead or player.stocks <= 0:
 		return
-
-	# Track respawn timer via metadata on the node
 	if not player.has_meta("respawn_timer"):
 		player.set_meta("respawn_timer", 0.0)
 		player.visible = false
-		# Stop all motion while dead
 		player.linear_velocity = Vector2.ZERO
 		player.angular_velocity = 0.0
-
 	var t: float = player.get_meta("respawn_timer") + delta
 	player.set_meta("respawn_timer", t)
-
 	if t >= RESPAWN_DELAY:
 		player.remove_meta("respawn_timer")
 		player.visible = true
@@ -103,12 +107,15 @@ func _end_game(loser: Bollard) -> void:
 	game_over_label.text = winner_name + " WINS!\n\nPress R to restart"
 	game_over_label.visible = true
 
-
 func _restart_game() -> void:
 	game_active = true
 	game_over_label.visible = false
 	controls_label.visible = true
 	controls_visible_timer = 0.0
+	prev_p1_dmg = 0.0
+	prev_p2_dmg = 0.0
+	p1_effect.visible = false
+	p2_effect.visible = false
 	for p: Bollard in [player1, player2]:
 		p.stocks = 3
 		p.visible = true
@@ -116,7 +123,6 @@ func _restart_game() -> void:
 			p.remove_meta("respawn_timer")
 	player1.respawn(SPAWN_P1)
 	player2.respawn(SPAWN_P2)
-
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
@@ -127,20 +133,65 @@ func _input(event: InputEvent) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ HUD                                                                      ║
+# ║ DAMAGE EFFECTS — "OOF" at 50%, "CRITICAL" at 100%                       ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _check_damage_effects(delta: float) -> void:
+	# Player 1
+	var d1 := player1.damage_percent
+	if d1 >= 100.0 and prev_p1_dmg < 100.0:
+		p1_effect.text = "CRITICAL!"
+		p1_effect.visible = true
+		p1_effect_timer = EFFECT_DURATION
+	elif d1 >= 50.0 and prev_p1_dmg < 50.0:
+		p1_effect.text = "OOF!"
+		p1_effect.visible = true
+		p1_effect_timer = EFFECT_DURATION
+	prev_p1_dmg = d1
+
+	# Player 2
+	var d2 := player2.damage_percent
+	if d2 >= 100.0 and prev_p2_dmg < 100.0:
+		p2_effect.text = "CRITICAL!"
+		p2_effect.visible = true
+		p2_effect_timer = EFFECT_DURATION
+	elif d2 >= 50.0 and prev_p2_dmg < 50.0:
+		p2_effect.text = "OOF!"
+		p2_effect.visible = true
+		p2_effect_timer = EFFECT_DURATION
+	prev_p2_dmg = d2
+
+	# Tick down effect timers
+	if p1_effect_timer > 0.0:
+		p1_effect_timer -= delta
+		if p1_effect_timer <= 0.0:
+			p1_effect.visible = false
+	if p2_effect_timer > 0.0:
+		p2_effect_timer -= delta
+		if p2_effect_timer <= 0.0:
+			p2_effect.visible = false
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ HUD — damage bars + stocks                                              ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_hud() -> void:
-	p1_damage_label.text = "%d%%" % int(player1.damage_percent)
-	p2_damage_label.text = "%d%%" % int(player2.damage_percent)
+	# P1 bar fills RIGHT to LEFT (anchored at right edge)
+	var p1_fill_w: float = (player1.damage_percent / 100.0) * BAR_MAX_WIDTH
+	p1_bar_fill.offset_right = P1_BAR_RIGHT
+	p1_bar_fill.offset_left = P1_BAR_RIGHT - p1_fill_w
+	p1_bar_fill.color = _damage_color(player1.damage_percent)
 
-	# Show stocks as filled/empty circles
+	# P2 bar fills LEFT to RIGHT (anchored at left edge)
+	var p2_fill_w: float = (player2.damage_percent / 100.0) * BAR_MAX_WIDTH
+	p2_bar_fill.offset_left = P2_BAR_LEFT
+	p2_bar_fill.offset_right = P2_BAR_LEFT + p2_fill_w
+	p2_bar_fill.color = _damage_color(player2.damage_percent)
+
+	# Stocks
 	p1_stock_label.text = _stock_display(player1.stocks)
 	p2_stock_label.text = _stock_display(player2.stocks)
-
-	# Color the damage text: white → yellow → red as damage increases
-	p1_damage_label.modulate = _damage_color(player1.damage_percent)
-	p2_damage_label.modulate = _damage_color(player2.damage_percent)
 
 
 func _stock_display(count: int) -> String:
@@ -151,35 +202,56 @@ func _stock_display(count: int) -> String:
 
 
 func _damage_color(pct: float) -> Color:
-	if pct < 50.0:
-		return Color.WHITE
-	elif pct < 100.0:
-		return Color.YELLOW
-	elif pct < 150.0:
-		return Color.ORANGE
+	if pct < 40.0:
+		return Color(0.3, 0.8, 0.3)  # green
+	elif pct < 80.0:
+		return Color(0.9, 0.8, 0.2)  # yellow
+	elif pct < 120.0:
+		return Color(0.9, 0.5, 0.1)  # orange
 	else:
-		return Color.RED
+		return Color(0.9, 0.15, 0.15) # red
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ INPUT SETUP — register all actions programmatically                      ║
+# ║ INPUT SETUP — keyboard + controller                                      ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_input() -> void:
-	# Player 1: WASD to move, E to grab
+	# ── Player 1: keyboard WASD + E ──
 	_add_key("p1_lean_left",  KEY_A)
 	_add_key("p1_lean_right", KEY_D)
 	_add_key("p1_raise",      KEY_W)
 	_add_key("p1_lower",      KEY_S)
 	_add_key("p1_grab",       KEY_E)
 
-	# Player 2: Arrow keys + / (slash) to grab
-	# (Used for local multiplayer — AI ignores these)
+	# ── Player 1: controller (device 0) ──
+	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
+	_add_joy_axis("p1_lean_right", JOY_AXIS_LEFT_X,  1.0, 0)
+	_add_joy_axis("p1_raise",      JOY_AXIS_LEFT_Y, -1.0, 0)
+	_add_joy_axis("p1_lower",      JOY_AXIS_LEFT_Y,  1.0, 0)
+	_add_joy_button("p1_grab",     JOY_BUTTON_RIGHT_SHOULDER, 0)
+	# Also allow triggers and face buttons for grab
+	_add_joy_button("p1_grab",     JOY_BUTTON_A, 0)
+
+	# ── Player 2: keyboard arrows + slash ──
 	_add_key("p2_lean_left",  KEY_LEFT)
 	_add_key("p2_lean_right", KEY_RIGHT)
 	_add_key("p2_raise",      KEY_UP)
 	_add_key("p2_lower",      KEY_DOWN)
 	_add_key("p2_grab",       KEY_SLASH)
+
+	# ── Player 2: controller (device 1) ──
+	_add_joy_axis("p2_lean_left",  JOY_AXIS_LEFT_X, -1.0, 1)
+	_add_joy_axis("p2_lean_right", JOY_AXIS_LEFT_X,  1.0, 1)
+	_add_joy_axis("p2_raise",      JOY_AXIS_LEFT_Y, -1.0, 1)
+	_add_joy_axis("p2_lower",      JOY_AXIS_LEFT_Y,  1.0, 1)
+	_add_joy_button("p2_grab",     JOY_BUTTON_RIGHT_SHOULDER, 1)
+	_add_joy_button("p2_grab",     JOY_BUTTON_A, 1)
+
+	# Set deadzones for all actions (important for analog sticks)
+	for action in ["p1_lean_left", "p1_lean_right", "p1_raise", "p1_lower",
+					"p2_lean_left", "p2_lean_right", "p2_raise", "p2_lower"]:
+		InputMap.action_set_deadzone(action, 0.3)
 
 
 func _add_key(action_name: String, key: Key) -> void:
@@ -187,4 +259,23 @@ func _add_key(action_name: String, key: Key) -> void:
 		InputMap.add_action(action_name)
 	var ev := InputEventKey.new()
 	ev.physical_keycode = key
+	InputMap.action_add_event(action_name, ev)
+
+
+func _add_joy_axis(action_name: String, axis: int, direction: float, device: int) -> void:
+	if not InputMap.has_action(action_name):
+		InputMap.add_action(action_name)
+	var ev := InputEventJoypadMotion.new()
+	ev.axis = axis
+	ev.axis_value = direction
+	ev.device = device
+	InputMap.action_add_event(action_name, ev)
+
+
+func _add_joy_button(action_name: String, button: int, device: int) -> void:
+	if not InputMap.has_action(action_name):
+		InputMap.add_action(action_name)
+	var ev := InputEventJoypadButton.new()
+	ev.button_index = button
+	ev.device = device
 	InputMap.action_add_event(action_name, ev)

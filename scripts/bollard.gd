@@ -1,46 +1,46 @@
 extends RigidBody2D
 class_name Bollard
-## A physics-driven bollard fighter. Rocks on its rounded base, extends/retracts,
-## and uses momentum for attacks. Think of it as a metal post that fights by
-## leaning, spinning, and launching itself.
 
 # ── Exported Configuration ──────────────────────────────────────────────────
-@export var player_id: int = 1          ## 1 = left player, 2 = right player
-@export var is_ai: bool = false         ## When true, AI controls this bollard
-@export var bollard_color: Color = Color("5a5a6e")  ## Base color (steel gray)
-@export var accent_color: Color = Color("d4d4e0")   ## Reflective band color
+@export var player_id: int = 1
+@export var is_ai: bool = false
+@export var bollard_color: Color = Color("5a5a6e")
+@export var accent_color: Color = Color("d4d4e0")
 
 # ── Dimensions ──────────────────────────────────────────────────────────────
 const BASE_RADIUS := 22.0
 const POST_HALF_WIDTH := 16.0
-const MIN_HEIGHT := 2.0          ## Nearly invisible when fully retracted
+const MIN_HEIGHT := 2.0
 const MAX_HEIGHT := 90.0
 
 # ── Physics Tuning ──────────────────────────────────────────────────────────
-const LEAN_TORQUE := 100000.0      ## GOOFY spin force
+const LEAN_TORQUE := 100000.0
 const EXTEND_SPEED := 6.0
-const SELF_RIGHT_TORQUE := 0.0     ## No self-righting — full 360 spins always
-const ANGULAR_DAMP_AMOUNT := 1.5   ## Low damping so spins carry momentum
-const LAUNCH_BOOST := 400.0        ## Moderate upward boost — a usable jump, not a blast-off
+const ANGULAR_DAMP_AMOUNT := 1.5
+const LAUNCH_BOOST := 300.0        ## 25% less than previous 400
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
 
 # ── Grab Settings ───────────────────────────────────────────────────────────
 const MAX_GRAB_TIME := 2.0
+const GRAB_STRENGTH := 4000.0      ## Force pulling tip toward grab point
 
 # ── Runtime State ───────────────────────────────────────────────────────────
 var extend_amount: float = 0.5
 var damage_percent: float = 0.0
 var stocks: int = 3
-var is_grabbing: bool = false
-var grab_timer: float = 0.0
-var grab_joint: PinJoint2D = null
 var is_dead: bool = false
 var prev_extend: float = 0.5
 var is_invincible: bool = false
 var invincible_timer: float = 0.0
 const INVINCIBLE_TIME := 1.5
+
+# ── Grab State ──────────────────────────────────────────────────────────────
+var is_grabbing: bool = false
+var grab_timer: float = 0.0
+var grab_target: Node2D = null               ## The body we grabbed
+var grab_target_local_point: Vector2 = Vector2.ZERO  ## Point on target in its local space
 
 # ── AI State ────────────────────────────────────────────────────────────────
 var ai_target: Bollard = null
@@ -78,14 +78,12 @@ func _ready() -> void:
 	physics_material_override.friction = 0.6
 	physics_material_override.bounce = 0.15
 
-	# Center of mass at the base circle center (origin) — zero gravity torque
 	center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector2(0, 0)
 	mass = 2.0
-
 	angular_damp = ANGULAR_DAMP_AMOUNT
 
-	# Make shapes unique so two instanced bollards don't share the same shape
+	# Make shapes unique so instanced bollards don't share
 	base_shape.shape = base_shape.shape.duplicate()
 	post_shape.shape = post_shape.shape.duplicate()
 
@@ -100,10 +98,6 @@ func _physics_process(delta: float) -> void:
 		_process_ai(delta)
 	else:
 		_process_input(delta)
-
-	# Self-righting (currently 0 — full spin allowed)
-	var tilt := sin(rotation)
-	apply_torque(-tilt * SELF_RIGHT_TORQUE * extend_amount)
 
 	_update_collision_shape()
 	_update_grab(delta)
@@ -121,12 +115,10 @@ func _process_input(delta: float) -> void:
 		apply_torque(-LEAN_TORQUE)
 	if Input.is_action_pressed(act_lean_right):
 		apply_torque(LEAN_TORQUE)
-
 	if Input.is_action_pressed(act_raise):
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 	if Input.is_action_pressed(act_lower):
 		extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
-
 	if Input.is_action_just_pressed(act_grab):
 		_try_grab()
 	if Input.is_action_just_released(act_grab):
@@ -134,32 +126,22 @@ func _process_input(delta: float) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ COLLISION SHAPE — two shapes: circle base + rectangle post               ║
-# ║ Only the visible portion of the bollard collides with the world.         ║
+# ║ COLLISION SHAPE                                                          ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_collision_shape() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
 
-	# Base circle stays at origin — always active, always the same size
-	# (BaseShape position is already Vector2.ZERO)
-
-	# Post rectangle: only as tall as the current extension
 	var rect: RectangleShape2D = post_shape.shape
 	rect.size = Vector2(POST_HALF_WIDTH * 2.0, post_h)
-	# Center the rectangle on the visible post area (extends upward from origin)
 	post_shape.position = Vector2(0, -post_h / 2.0)
-
-	# Disable post collision when nearly fully retracted (just the base ball)
 	post_shape.disabled = extend_amount < 0.03
 
-	# Grab area follows the tip of the bollard at any extension
 	grab_area.position = Vector2(0, -post_h)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ LAUNCH MECHANIC                                                          ║
-# ║ Lower → spin upside-down → extend = jump into the air                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _check_launch() -> void:
@@ -167,23 +149,20 @@ func _check_launch() -> void:
 	var upside_down: bool = cos(rotation) < -0.3
 
 	if extend_speed_now > 0.08 and upside_down:
-		# Moderate boost — enough for a useful jump, not a KO blast
 		var boost := LAUNCH_BOOST * extend_speed_now * 6.0
 		apply_central_impulse(Vector2(0, -boost))
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB MECHANIC                                                           ║
-# ║ Works at ANY extension. Grabs players AND surfaces (platforms/ground).   ║
-# ║ The grab point is at the tip. If you retract while grabbing, the joint   ║
-# ║ pulls your body toward the grabbed thing.                                ║
+# ║ GRAB MECHANIC — force-based, works at any extension                      ║
+# ║ Instead of a rigid joint, we pull the TIP toward the grab point each     ║
+# ║ frame. This means the base stays free, the bollard can still spin,       ║
+# ║ and retracting pulls you toward what you grabbed.                        ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _try_grab() -> void:
 	if is_grabbing:
 		return
-
-	# Check for any overlapping physics body (other bollards, platforms, ground)
 	var bodies := grab_area.get_overlapping_bodies()
 	for body in bodies:
 		if body == self:
@@ -196,35 +175,63 @@ func _try_grab() -> void:
 func _start_grab(target: PhysicsBody2D) -> void:
 	is_grabbing = true
 	grab_timer = 0.0
-
-	grab_joint = PinJoint2D.new()
-	grab_joint.disable_collision = false
-	grab_joint.node_a = get_path()
-	grab_joint.node_b = target.get_path()
-	grab_joint.softness = 0.5
-	add_child(grab_joint)
-	grab_joint.global_position = grab_area.global_position
+	grab_target = target
+	# Store the grab point in the target's local space so it follows the target
+	grab_target_local_point = target.to_local(grab_area.global_position)
 
 
 func _release_grab() -> void:
 	if not is_grabbing:
 		return
 	is_grabbing = false
-	if is_instance_valid(grab_joint):
-		grab_joint.queue_free()
-	grab_joint = null
+	grab_target = null
 
 
 func _update_grab(delta: float) -> void:
 	if not is_grabbing:
 		return
+
+	if not is_instance_valid(grab_target):
+		_release_grab()
+		return
+
 	grab_timer += delta
 	if grab_timer >= MAX_GRAB_TIME:
 		_release_grab()
+		return
+
+	# Current tip position in local space
+	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
+	var tip_local := Vector2(0, -post_h)
+
+	# Convert tip to global offset (apply_force needs global offset from origin)
+	var tip_global_offset: Vector2 = to_global(tip_local) - global_position
+
+	# Get the grab point on the target in world space
+	var target_world: Vector2 = grab_target.to_global(grab_target_local_point)
+
+	# Pull direction: from our tip toward the grab point
+	var tip_world: Vector2 = to_global(tip_local)
+	var pull: Vector2 = target_world - tip_world
+	var dist: float = pull.length()
+
+	if dist > 1.0:
+		var dir: Vector2 = pull.normalized()
+		# Spring-like force: gets stronger with distance, caps at 4x
+		var strength: float = GRAB_STRENGTH * minf(dist / 40.0, 4.0)
+
+		# Apply force at the TIP, not the center — this creates natural rotation
+		apply_force(dir * strength, tip_global_offset)
+
+		# If grabbing another bollard, yank them toward us too
+		if grab_target is RigidBody2D:
+			var other: RigidBody2D = grab_target as RigidBody2D
+			var other_offset: Vector2 = grab_target.to_global(grab_target_local_point) - grab_target.global_position
+			other.apply_force(-dir * strength * 0.6, other_offset)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ COMBAT — Smash-style damage percentage and knockback                     ║
+# ║ COMBAT                                                                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func take_damage(amount: float, knockback_dir: Vector2) -> void:
@@ -257,7 +264,6 @@ func die() -> void:
 	stocks -= 1
 	is_dead = true
 
-
 func respawn(pos: Vector2) -> void:
 	is_dead = false
 	damage_percent = 0.0
@@ -270,7 +276,6 @@ func respawn(pos: Vector2) -> void:
 	is_invincible = true
 	invincible_timer = 0.0
 
-
 func _update_invincibility(delta: float) -> void:
 	if not is_invincible:
 		return
@@ -280,7 +285,7 @@ func _update_invincibility(delta: float) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ DRAWING — procedural bollard visual                                      ║
+# ║ DRAWING                                                                  ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _draw() -> void:
@@ -291,15 +296,15 @@ func _draw() -> void:
 	if is_invincible and fmod(invincible_timer * 10.0, 2.0) > 1.0:
 		draw_color = bollard_color.lightened(0.5)
 
-	# ── Base circle at origin (the rotation pivot, sits on the ground) ──
+	# Base circle at origin
 	draw_circle(Vector2.ZERO, BASE_RADIUS, draw_color.darkened(0.25))
 
-	# ── Post body extends upward from origin ──
+	# Post body
 	var rect_top := -post_h
 	if post_h > 3.0:
 		draw_rect(Rect2(-hw, rect_top, hw * 2.0, post_h), draw_color)
 
-	# ── Dome on top ──
+	# Dome on top
 	var dome_pts := PackedVector2Array()
 	for i in 17:
 		var angle := float(i) / 16.0 * PI
@@ -307,23 +312,24 @@ func _draw() -> void:
 	if dome_pts.size() >= 3:
 		draw_colored_polygon(dome_pts, draw_color.lightened(0.12))
 
-	# ── Reflective safety band ──
+	# Reflective safety band
 	if post_h > 25.0:
 		var band_y := lerpf(0.0, rect_top, 0.6)
 		draw_rect(Rect2(-hw - 1, band_y - 3, hw * 2.0 + 2, 6), accent_color)
 
-	# ── Second band for taller bollards ──
+	# Second band for taller bollards
 	if post_h > 60.0:
 		var band_y2 := lerpf(0.0, rect_top, 0.3)
 		draw_rect(Rect2(-hw - 1, band_y2 - 3, hw * 2.0 + 2, 6), accent_color.darkened(0.1))
 
-	# ── Grab indicator ──
-	if is_grabbing:
-		draw_circle(Vector2(0, rect_top - hw), 5.0, Color.RED)
+	# Grab indicator — line from tip toward grab target
+	if is_grabbing and is_instance_valid(grab_target):
+		var tip := Vector2(0, rect_top - hw)
+		draw_circle(tip, 4.0, Color.RED)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ AI — Simple state-machine opponent                                       ║
+# ║ AI                                                                       ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_ai(delta: float) -> void:
@@ -367,17 +373,15 @@ func _process_ai(delta: float) -> void:
 				_release_grab()
 				_ai_pick_action()
 
-
 func _ai_pick_action() -> void:
 	ai_timer = 0.0
-	var dist_x := ai_target.global_position.x - global_position.x
-	var abs_dist := absf(dist_x)
+	var abs_dist := absf(ai_target.global_position.x - global_position.x)
 	var roll := randf()
 
 	if damage_percent > 100.0 and roll < 0.25:
 		ai_state = "retreat"
 		ai_action_duration = randf_range(0.5, 1.5)
-	elif abs_dist > 200.0:
+	elif abs_dist > 250.0:
 		ai_state = "approach"
 		ai_action_duration = randf_range(0.5, 2.0)
 	elif roll < 0.12:
@@ -393,29 +397,24 @@ func _ai_pick_action() -> void:
 		ai_state = "approach"
 		ai_action_duration = randf_range(0.3, 0.8)
 
-
 func _ai_approach(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	apply_torque(LEAN_TORQUE * dir)
 	extend_amount = move_toward(extend_amount, 0.6, EXTEND_SPEED * 0.5 * delta)
-
 
 func _ai_attack(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	apply_torque(LEAN_TORQUE * 1.5 * dir)
 	extend_amount = minf(extend_amount + EXTEND_SPEED * 1.5 * delta, 1.0)
 
-
 func _ai_lower_spin(delta: float) -> void:
 	extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.0 * delta, 0.0)
 	apply_torque(LEAN_TORQUE * 2.0)
-
 
 func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
 	apply_torque(LEAN_TORQUE * dir * 0.8)
 	extend_amount = move_toward(extend_amount, 0.3, EXTEND_SPEED * delta)
-
 
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)

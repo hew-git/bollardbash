@@ -9,7 +9,7 @@ radius = 22.0
 size = Vector2(32, 50)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_grab"]
-radius = 18.0
+radius = 28.0
 
 [node name="Bollard" type="RigidBody2D"]
 mass = 2.0
@@ -28,8 +28,8 @@ shape = SubResource("RectShape_post")
 position = Vector2(0, -50)
 collision_layer = 2
 collision_mask = 3
-monitorable = true
 monitoring = true
+monitorable = true
 
 [node name="GrabShape" type="CollisionShape2D" parent="GrabArea"]
 shape = SubResource("CircleShape2D_grab")
