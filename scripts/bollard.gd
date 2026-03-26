@@ -21,6 +21,7 @@ const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
+const SWING_FORCE := 1200.0
 
 # ── Grab Settings ───────────────────────────────────────────────────────────
 const MAX_GRAB_TIME := 2.0
@@ -124,10 +125,20 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_input(delta: float) -> void:
-	if Input.is_action_pressed(act_lean_left):
-		apply_torque(-LEAN_TORQUE)
-	if Input.is_action_pressed(act_lean_right):
-		apply_torque(LEAN_TORQUE)
+	var grabbing_structure := is_grabbing and is_instance_valid(grab_target) and grab_target is StaticBody2D
+
+	if grabbing_structure:
+		# Swing around grab point — force at base creates pendulum motion
+		if Input.is_action_pressed(act_lean_left):
+			apply_central_force(Vector2(-SWING_FORCE, 0))
+		if Input.is_action_pressed(act_lean_right):
+			apply_central_force(Vector2(SWING_FORCE, 0))
+	else:
+		if Input.is_action_pressed(act_lean_left):
+			apply_torque(-LEAN_TORQUE)
+		if Input.is_action_pressed(act_lean_right):
+			apply_torque(LEAN_TORQUE)
+
 	if Input.is_action_pressed(act_raise):
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 	if Input.is_action_pressed(act_lower):
@@ -238,7 +249,14 @@ func _on_body_entered(body: Node) -> void:
 	var rel_vel: Vector2 = linear_velocity - other.linear_velocity
 	var impact: float = rel_vel.length()
 	if impact > HIT_SPEED_THRESHOLD:
-		var dmg: float = impact * DAMAGE_MULTIPLIER
+		# Faster snail deals more damage — weight by speed contribution
+		var my_speed: float = linear_velocity.length()
+		var other_speed: float = other.linear_velocity.length()
+		var total: float = my_speed + other_speed
+		if total < 1.0:
+			return
+		var my_ratio: float = my_speed / total
+		var dmg: float = impact * DAMAGE_MULTIPLIER * my_ratio * 2.0
 		var dir: Vector2 = (other.global_position - global_position).normalized()
 		other.take_damage(dmg, dir)
 
@@ -461,7 +479,10 @@ func _ai_retreat(delta: float) -> void:
 
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	apply_torque(LEAN_TORQUE * dir * 0.5)
+	if is_grabbing and is_instance_valid(grab_target) and grab_target is StaticBody2D:
+		apply_central_force(Vector2(SWING_FORCE * dir, 0))
+	else:
+		apply_torque(LEAN_TORQUE * dir * 0.5)
 	extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 	if not is_grabbing:
 		_try_grab()

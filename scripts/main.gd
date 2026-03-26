@@ -7,11 +7,14 @@ const SPAWN_P2 := Vector2(800, 478)
 const RESPAWN_DELAY := 2.0
 
 # ── HUD Constants ───────────────────────────────────────────────────────────
-const P1_BAR_RIGHT := 270.0
-const P1_BAR_LEFT := 70.0
-const P2_BAR_LEFT := 1010.0
-const P2_BAR_RIGHT := 1210.0
-const BAR_MAX_WIDTH := 200.0
+const P1_BAR_LEFT := 240.0
+const P1_BAR_RIGHT := 540.0
+const P2_BAR_LEFT := 740.0
+const P2_BAR_RIGHT := 1040.0
+const BAR_MAX_WIDTH := 300.0
+const BAR_INNER_TOP := 638.0    # Top edge at inner (center) side
+const BAR_OUTER_TOP := 622.0    # Top edge at outer (screen edge) side
+const BAR_BOTTOM := 660.0
 const EFFECT_DURATION := 1.0
 const SHAKE_DURATION := 0.35
 const SHAKE_INTENSITY := 4.0
@@ -21,14 +24,18 @@ const SHAKE_INTENSITY := 4.0
 @onready var player2: Bollard = $Player2
 @onready var p1_group: Control = $HUD/P1Group
 @onready var p2_group: Control = $HUD/P2Group
-@onready var p1_bar_fill: ColorRect = $HUD/P1Group/P1BarFill
-@onready var p2_bar_fill: ColorRect = $HUD/P2Group/P2BarFill
 @onready var p1_effect: Label = $HUD/P1Group/P1Effect
 @onready var p2_effect: Label = $HUD/P2Group/P2Effect
 @onready var p1_stock_label: Label = $HUD/P1Group/P1Stocks
 @onready var p2_stock_label: Label = $HUD/P2Group/P2Stocks
 @onready var game_over_label: Label = $HUD/GameOver
 @onready var controls_label: Label = $HUD/Controls
+
+# ── Bar Polygon2D (created at runtime) ──────────────────────────────────────
+var p1_bar_bg: Polygon2D
+var p1_bar_fill: Polygon2D
+var p2_bar_bg: Polygon2D
+var p2_bar_fill: Polygon2D
 
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = true
@@ -43,6 +50,7 @@ var p2_shake_timer: float = 0.0
 
 func _ready() -> void:
 	_setup_input()
+	_create_bar_polygons()
 	player1.global_position = SPAWN_P1
 	player2.global_position = SPAWN_P2
 	player2.ai_target = player1
@@ -50,6 +58,38 @@ func _ready() -> void:
 	controls_label.visible = true
 	p1_effect.visible = false
 	p2_effect.visible = false
+
+
+func _create_bar_polygons() -> void:
+	# P1 background — trapezoid: taller on the left (screen edge), shorter on right (center)
+	p1_bar_bg = Polygon2D.new()
+	p1_bar_bg.color = Color(0.15, 0.15, 0.15, 0.8)
+	p1_bar_bg.polygon = PackedVector2Array([
+		Vector2(P1_BAR_LEFT, BAR_OUTER_TOP),
+		Vector2(P1_BAR_RIGHT, BAR_INNER_TOP),
+		Vector2(P1_BAR_RIGHT, BAR_BOTTOM),
+		Vector2(P1_BAR_LEFT, BAR_BOTTOM)])
+	p1_group.add_child(p1_bar_bg)
+
+	# P1 fill (updated each frame)
+	p1_bar_fill = Polygon2D.new()
+	p1_bar_fill.color = Color(0.3, 0.8, 0.3)
+	p1_group.add_child(p1_bar_fill)
+
+	# P2 background — trapezoid: shorter on left (center), taller on right (screen edge)
+	p2_bar_bg = Polygon2D.new()
+	p2_bar_bg.color = Color(0.15, 0.15, 0.15, 0.8)
+	p2_bar_bg.polygon = PackedVector2Array([
+		Vector2(P2_BAR_LEFT, BAR_INNER_TOP),
+		Vector2(P2_BAR_RIGHT, BAR_OUTER_TOP),
+		Vector2(P2_BAR_RIGHT, BAR_BOTTOM),
+		Vector2(P2_BAR_LEFT, BAR_BOTTOM)])
+	p2_group.add_child(p2_bar_bg)
+
+	# P2 fill (updated each frame)
+	p2_bar_fill = Polygon2D.new()
+	p2_bar_fill.color = Color(0.3, 0.8, 0.3)
+	p2_group.add_child(p2_bar_fill)
 
 
 func _physics_process(delta: float) -> void:
@@ -179,21 +219,40 @@ func _check_damage_effects(delta: float) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ HUD — damage bars + stocks + shake                                      ║
+# ║ HUD — trapezoid damage bars + stocks + shake                            ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_hud() -> void:
-	# P1 bar fills RIGHT to LEFT
-	var p1_fill_w: float = (player1.damage_percent / 100.0) * BAR_MAX_WIDTH
-	p1_bar_fill.offset_right = P1_BAR_RIGHT
-	p1_bar_fill.offset_left = P1_BAR_RIGHT - p1_fill_w
-	p1_bar_fill.color = _damage_color(player1.damage_percent)
+	# P1 bar fills RIGHT to LEFT (toward screen edge = taller side)
+	var p1_pct := clampf(player1.damage_percent / 150.0, 0.0, 1.0)
+	if p1_pct > 0.005:
+		var fill_left: float = P1_BAR_RIGHT - p1_pct * BAR_MAX_WIDTH
+		# Top Y follows the slanted edge: outer(left)=622, inner(right)=638
+		var t_left: float = (fill_left - P1_BAR_LEFT) / BAR_MAX_WIDTH
+		var top_at_left: float = lerpf(BAR_OUTER_TOP, BAR_INNER_TOP, t_left)
+		p1_bar_fill.polygon = PackedVector2Array([
+			Vector2(fill_left, top_at_left),
+			Vector2(P1_BAR_RIGHT, BAR_INNER_TOP),
+			Vector2(P1_BAR_RIGHT, BAR_BOTTOM),
+			Vector2(fill_left, BAR_BOTTOM)])
+		p1_bar_fill.color = _damage_color(player1.damage_percent)
+	else:
+		p1_bar_fill.polygon = PackedVector2Array()
 
-	# P2 bar fills LEFT to RIGHT
-	var p2_fill_w: float = (player2.damage_percent / 100.0) * BAR_MAX_WIDTH
-	p2_bar_fill.offset_left = P2_BAR_LEFT
-	p2_bar_fill.offset_right = P2_BAR_LEFT + p2_fill_w
-	p2_bar_fill.color = _damage_color(player2.damage_percent)
+	# P2 bar fills LEFT to RIGHT (toward screen edge = taller side)
+	var p2_pct := clampf(player2.damage_percent / 150.0, 0.0, 1.0)
+	if p2_pct > 0.005:
+		var fill_right: float = P2_BAR_LEFT + p2_pct * BAR_MAX_WIDTH
+		var t_right: float = (fill_right - P2_BAR_LEFT) / BAR_MAX_WIDTH
+		var top_at_right: float = lerpf(BAR_INNER_TOP, BAR_OUTER_TOP, t_right)
+		p2_bar_fill.polygon = PackedVector2Array([
+			Vector2(P2_BAR_LEFT, BAR_INNER_TOP),
+			Vector2(fill_right, top_at_right),
+			Vector2(fill_right, BAR_BOTTOM),
+			Vector2(P2_BAR_LEFT, BAR_BOTTOM)])
+		p2_bar_fill.color = _damage_color(player2.damage_percent)
+	else:
+		p2_bar_fill.polygon = PackedVector2Array()
 
 	# Stocks
 	p1_stock_label.text = _stock_display(player1.stocks)
@@ -244,10 +303,11 @@ func _setup_input() -> void:
 	_add_key("p1_lower",      KEY_S)
 	_add_key("p1_grab",       KEY_E)
 
+	# Controller P1: left stick = spin, right stick = extend/lower
 	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
 	_add_joy_axis("p1_lean_right", JOY_AXIS_LEFT_X,  1.0, 0)
-	_add_joy_axis("p1_raise",      JOY_AXIS_LEFT_Y, -1.0, 0)
-	_add_joy_axis("p1_lower",      JOY_AXIS_LEFT_Y,  1.0, 0)
+	_add_joy_axis("p1_raise",      JOY_AXIS_RIGHT_Y, -1.0, 0)
+	_add_joy_axis("p1_lower",      JOY_AXIS_RIGHT_Y,  1.0, 0)
 	_add_joy_button("p1_grab",     JOY_BUTTON_RIGHT_SHOULDER, 0)
 	_add_joy_button("p1_grab",     JOY_BUTTON_A, 0)
 
@@ -257,10 +317,11 @@ func _setup_input() -> void:
 	_add_key("p2_lower",      KEY_DOWN)
 	_add_key("p2_grab",       KEY_SLASH)
 
+	# Controller P2: left stick = spin, right stick = extend/lower
 	_add_joy_axis("p2_lean_left",  JOY_AXIS_LEFT_X, -1.0, 1)
 	_add_joy_axis("p2_lean_right", JOY_AXIS_LEFT_X,  1.0, 1)
-	_add_joy_axis("p2_raise",      JOY_AXIS_LEFT_Y, -1.0, 1)
-	_add_joy_axis("p2_lower",      JOY_AXIS_LEFT_Y,  1.0, 1)
+	_add_joy_axis("p2_raise",      JOY_AXIS_RIGHT_Y, -1.0, 1)
+	_add_joy_axis("p2_lower",      JOY_AXIS_RIGHT_Y,  1.0, 1)
 	_add_joy_button("p2_grab",     JOY_BUTTON_RIGHT_SHOULDER, 1)
 	_add_joy_button("p2_grab",     JOY_BUTTON_A, 1)
 
