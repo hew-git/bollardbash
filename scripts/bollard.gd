@@ -22,6 +22,7 @@ const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
 const SWING_FORCE := 1200.0
+const GRAB_ANGULAR_DAMP := 12.0
 
 # ── Grab Settings ───────────────────────────────────────────────────────────
 const MAX_GRAB_TIME := 2.0
@@ -37,6 +38,7 @@ var extend_amount: float = 0.5
 var damage_percent: float = 0.0
 var stocks: int = 3
 var is_dead: bool = false
+var is_frozen: bool = false
 var prev_extend: float = 0.5
 var is_invincible: bool = false
 var invincible_timer: float = 0.0
@@ -52,6 +54,9 @@ var grab_joint: PinJoint2D = null
 var is_blinking: bool = false
 var blink_timer: float = 0.0
 var next_blink_time: float = 3.0
+
+# ── Nervous Eye State ──────────────────────────────────────────────────────
+var nervous_timer: float = 0.0
 
 # ── AI State ────────────────────────────────────────────────────────────────
 var ai_target: Bollard = null
@@ -105,7 +110,15 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
+	if is_frozen:
+		_update_collision_shape()
+		_update_blink(delta)
+		nervous_timer += delta
+		queue_redraw()
+		return
+
 	prev_extend = extend_amount
+	nervous_timer += delta
 
 	if is_ai:
 		_process_ai(delta)
@@ -128,7 +141,7 @@ func _process_input(delta: float) -> void:
 	var grabbing_structure := is_grabbing and is_instance_valid(grab_target) and grab_target is StaticBody2D
 
 	if grabbing_structure:
-		# Swing around grab point — force at base creates pendulum motion
+		# Push the base sideways — pin joint at tip converts this to controlled swing
 		if Input.is_action_pressed(act_lean_left):
 			apply_central_force(Vector2(-SWING_FORCE, 0))
 		if Input.is_action_pressed(act_lean_right):
@@ -159,6 +172,7 @@ func _update_collision_shape() -> void:
 	rect.size = Vector2(POST_HALF_WIDTH * 2.0, post_h)
 	post_shape.position = Vector2(0, -post_h / 2.0)
 	post_shape.disabled = extend_amount < 0.03
+	# Grab area follows the tip — when retracted, it sits at the shell opening
 	grab_area.position = Vector2(0, -post_h)
 
 
@@ -176,8 +190,8 @@ func _check_launch() -> void:
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ GRAB — rigid PinJoint at the tip                                         ║
-# ║ Surfaces: tip locks to the surface, snail hangs/swings from it          ║
-# ║ Players: other player is stuck to the grabber's tip                     ║
+# ║ Surfaces: tip locks firmly, high angular damp prevents free swing        ║
+# ║ Players: tip grabs the other player, normal rotation for flinging        ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _try_grab() -> void:
@@ -197,15 +211,19 @@ func _start_grab(target: PhysicsBody2D) -> void:
 	grab_timer = 0.0
 	grab_target = target
 
-	# Create a rigid pin joint at the tip position.
-	# This locks the tip to the target surface/body.
+	# Create a rigid pin joint at the tip position
 	grab_joint = PinJoint2D.new()
 	grab_joint.node_a = get_path()
 	grab_joint.node_b = target.get_path()
-	grab_joint.softness = 0.0  # Completely rigid — tip is LOCKED
+	grab_joint.softness = 0.0  # Completely rigid
 	grab_joint.disable_collision = false
 	add_child(grab_joint)
 	grab_joint.global_position = grab_area.global_position
+
+	# Structure grabs: high angular damp so the body doesn't freely swing
+	# The grab point is locked — movement only when the player pushes
+	if target is StaticBody2D:
+		angular_damp = GRAB_ANGULAR_DAMP
 
 
 func _release_grab() -> void:
@@ -213,6 +231,7 @@ func _release_grab() -> void:
 		return
 	is_grabbing = false
 	grab_target = null
+	angular_damp = ANGULAR_DAMP_AMOUNT
 	if is_instance_valid(grab_joint):
 		grab_joint.queue_free()
 	grab_joint = null
@@ -296,7 +315,6 @@ func _update_invincibility(delta: float) -> void:
 func _update_blink(delta: float) -> void:
 	blink_timer += delta
 	if is_blinking:
-		# Blink lasts 0.15 seconds
 		if blink_timer > 0.15:
 			is_blinking = false
 			blink_timer = 0.0
@@ -323,10 +341,9 @@ func _draw() -> void:
 		body_c = bollard_color.lightened(0.5)
 
 	# ── SHELL (base circle) ──────────────────────────────────────────────
-	# Main shell body
 	draw_circle(Vector2.ZERO, BASE_RADIUS, shell_c)
 
-	# Shell spiral lines — concentric arcs at staggered angles
+	# Shell spiral lines
 	var spiral_off := Vector2(-2, 2)
 	for i in 5:
 		var r: float = BASE_RADIUS * (0.78 - i * 0.14)
@@ -335,19 +352,16 @@ func _draw() -> void:
 			var ea: float = sa + 2.8 - i * 0.3
 			draw_arc(spiral_off, r, sa, ea, 16, shell_c.darkened(0.18), 1.5, true)
 
-	# Shell highlight (shiny spot)
+	# Shell highlight
 	draw_circle(Vector2(-6, -6), BASE_RADIUS * 0.22, shell_c.lightened(0.25))
 
-	# Shell opening (dark hole where body emerges)
+	# Shell opening
 	if post_h > 5.0:
 		draw_circle(Vector2(0, -BASE_RADIUS * 0.35), hw * 0.75, shell_c.darkened(0.4))
 
 	# ── SNAIL BODY ───────────────────────────────────────────────────────
 	if post_h > 3.0:
-		# Main body rectangle
 		draw_rect(Rect2(-hw, -post_h, hw * 2.0, post_h), body_c)
-
-		# Body sheen (lighter stripe down the center)
 		var sheen_w: float = hw * 0.35
 		draw_rect(Rect2(-sheen_w, -post_h + 3, sheen_w * 2.0, post_h - 6),
 				  body_c.lightened(0.12))
@@ -361,16 +375,22 @@ func _draw() -> void:
 	if dome_pts.size() >= 3:
 		draw_colored_polygon(dome_pts, body_c.lightened(0.06))
 
-	# ── EYE STALKS (purely visual — no collision) ────────────────────────
-	var dome_top_y: float = tip_y - hw  # Very top of dome
+	# ── EYE STALKS + NERVOUS EYES ───────────────────────────────────────
+	var dome_top_y: float = tip_y - hw
 
 	var left_eye := Vector2(-STALK_SPREAD, dome_top_y - STALK_LENGTH)
 	var right_eye := Vector2(STALK_SPREAD, dome_top_y - STALK_LENGTH)
 
-	# Stalks (thin lines from dome top)
+	# Stalks
 	var stalk_c: Color = body_c.darkened(0.05)
 	draw_line(Vector2(-3, dome_top_y + 2), left_eye, stalk_c, 2.5)
 	draw_line(Vector2(3, dome_top_y + 2), right_eye, stalk_c, 2.5)
+
+	# Nervousness: pupils shift side-to-side as damage increases
+	var nervousness: float = clampf(damage_percent / 100.0, 0.0, 1.5)
+	var eye_shift_speed: float = 4.0 + nervousness * 10.0
+	var eye_shift_amount: float = nervousness * 2.8
+	var pupil_offset_x: float = sin(nervous_timer * eye_shift_speed) * eye_shift_amount
 
 	if is_blinking:
 		# Closed eyes — horizontal lines
@@ -380,12 +400,13 @@ func _draw() -> void:
 		# Eyeballs (yellow)
 		draw_circle(left_eye, EYE_RADIUS, EYE_COLOR)
 		draw_circle(right_eye, EYE_RADIUS, EYE_COLOR)
-		# Pupils (black)
-		draw_circle(left_eye, EYE_RADIUS * 0.45, Color.BLACK)
-		draw_circle(right_eye, EYE_RADIUS * 0.45, Color.BLACK)
-		# Highlights (white sparkle)
-		draw_circle(left_eye + Vector2(-1.5, -1.5), 1.8, Color.WHITE)
-		draw_circle(right_eye + Vector2(-1.5, -1.5), 1.8, Color.WHITE)
+		# Pupils (black) — shift with nervousness
+		var pupil_off := Vector2(pupil_offset_x, 0)
+		draw_circle(left_eye + pupil_off, EYE_RADIUS * 0.45, Color.BLACK)
+		draw_circle(right_eye + pupil_off, EYE_RADIUS * 0.45, Color.BLACK)
+		# Highlights (white sparkle) — shift with pupils
+		draw_circle(left_eye + Vector2(-1.5 + pupil_offset_x * 0.5, -1.5), 1.8, Color.WHITE)
+		draw_circle(right_eye + Vector2(-1.5 + pupil_offset_x * 0.5, -1.5), 1.8, Color.WHITE)
 
 	# ── GRAB INDICATOR ───────────────────────────────────────────────────
 	if is_grabbing and is_instance_valid(grab_target):

@@ -19,6 +19,10 @@ const EFFECT_DURATION := 1.0
 const SHAKE_DURATION := 0.35
 const SHAKE_INTENSITY := 4.0
 
+# ── Countdown Constants ────────────────────────────────────────────────────
+const COUNTDOWN_DURATION := 3.0
+const GO_LINGER := 0.8  # How long "GO!" stays visible after unfreeze
+
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var player1: Bollard = $Player1
 @onready var player2: Bollard = $Player2
@@ -37,8 +41,13 @@ var p1_bar_fill: Polygon2D
 var p2_bar_bg: Polygon2D
 var p2_bar_fill: Polygon2D
 
+# ── Countdown Label (created at runtime) ───────────────────────────────────
+var countdown_label: Label
+
 # ── Game State ──────────────────────────────────────────────────────────────
-var game_active: bool = true
+var game_active: bool = false
+var countdown_active: bool = true
+var countdown_timer: float = 0.0
 var controls_visible_timer: float = 0.0
 var prev_p1_dmg: float = 0.0
 var prev_p2_dmg: float = 0.0
@@ -51,6 +60,7 @@ var p2_shake_timer: float = 0.0
 func _ready() -> void:
 	_setup_input()
 	_create_bar_polygons()
+	_create_countdown_label()
 	player1.global_position = SPAWN_P1
 	player2.global_position = SPAWN_P2
 	player2.ai_target = player1
@@ -58,10 +68,10 @@ func _ready() -> void:
 	controls_label.visible = true
 	p1_effect.visible = false
 	p2_effect.visible = false
+	_start_countdown()
 
 
 func _create_bar_polygons() -> void:
-	# P1 background — trapezoid: taller on the left (screen edge), shorter on right (center)
 	p1_bar_bg = Polygon2D.new()
 	p1_bar_bg.color = Color(0.15, 0.15, 0.15, 0.8)
 	p1_bar_bg.polygon = PackedVector2Array([
@@ -71,12 +81,10 @@ func _create_bar_polygons() -> void:
 		Vector2(P1_BAR_LEFT, BAR_BOTTOM)])
 	p1_group.add_child(p1_bar_bg)
 
-	# P1 fill (updated each frame)
 	p1_bar_fill = Polygon2D.new()
 	p1_bar_fill.color = Color(0.3, 0.8, 0.3)
 	p1_group.add_child(p1_bar_fill)
 
-	# P2 background — trapezoid: shorter on left (center), taller on right (screen edge)
 	p2_bar_bg = Polygon2D.new()
 	p2_bar_bg.color = Color(0.15, 0.15, 0.15, 0.8)
 	p2_bar_bg.polygon = PackedVector2Array([
@@ -86,15 +94,78 @@ func _create_bar_polygons() -> void:
 		Vector2(P2_BAR_LEFT, BAR_BOTTOM)])
 	p2_group.add_child(p2_bar_bg)
 
-	# P2 fill (updated each frame)
 	p2_bar_fill = Polygon2D.new()
 	p2_bar_fill.color = Color(0.3, 0.8, 0.3)
 	p2_group.add_child(p2_bar_fill)
 
 
+func _create_countdown_label() -> void:
+	countdown_label = Label.new()
+	countdown_label.add_theme_font_size_override("font_size", 72)
+	countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	countdown_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	countdown_label.add_theme_constant_override("shadow_offset_x", 3)
+	countdown_label.add_theme_constant_override("shadow_offset_y", 3)
+	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	countdown_label.offset_left = 340.0
+	countdown_label.offset_top = 200.0
+	countdown_label.offset_right = 940.0
+	countdown_label.offset_bottom = 340.0
+	countdown_label.visible = false
+	$HUD.add_child(countdown_label)
+
+
+func _start_countdown() -> void:
+	countdown_active = true
+	countdown_timer = 0.0
+	game_active = false
+	countdown_label.visible = true
+	countdown_label.text = ""
+	# Freeze both players
+	player1.is_frozen = true
+	player2.is_frozen = true
+
+
+func _update_countdown(delta: float) -> void:
+	countdown_timer += delta
+
+	if countdown_timer < 1.0:
+		countdown_label.text = "es"
+		countdown_label.add_theme_font_size_override("font_size", 64)
+		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	elif countdown_timer < 2.0:
+		countdown_label.text = "car"
+		countdown_label.add_theme_font_size_override("font_size", 64)
+		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	elif countdown_timer < COUNTDOWN_DURATION:
+		countdown_label.text = "GO!"
+		countdown_label.add_theme_font_size_override("font_size", 96)
+		countdown_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.3))
+		# Unfreeze players the moment GO appears
+		if player1.is_frozen:
+			player1.is_frozen = false
+			player2.is_frozen = false
+			game_active = true
+	else:
+		# Countdown fully done — hide label
+		countdown_active = false
+		countdown_label.visible = false
+
+
 func _physics_process(delta: float) -> void:
+	if countdown_active:
+		_update_countdown(delta)
+		# Still update HUD during countdown
+		_update_hud()
+		controls_visible_timer += delta
+		if controls_visible_timer > 8.0 and controls_label.visible:
+			controls_label.visible = false
+		return
+
 	if not game_active:
 		return
+
 	_check_blast_zone(player1)
 	_check_blast_zone(player2)
 	_handle_respawn(player1, SPAWN_P1, delta)
@@ -139,7 +210,6 @@ func _end_game(loser: Bollard) -> void:
 	game_over_label.visible = true
 
 func _restart_game() -> void:
-	game_active = true
 	game_over_label.visible = false
 	controls_label.visible = true
 	controls_visible_timer = 0.0
@@ -156,10 +226,11 @@ func _restart_game() -> void:
 			p.remove_meta("respawn_timer")
 	player1.respawn(SPAWN_P1)
 	player2.respawn(SPAWN_P2)
+	_start_countdown()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_R and not game_active:
+		if event.keycode == KEY_R and not game_active and not countdown_active:
 			_restart_game()
 		if event.keycode == KEY_ESCAPE:
 			get_tree().quit()
@@ -173,13 +244,11 @@ func _check_damage_effects(delta: float) -> void:
 	var d1 := player1.damage_percent
 	var d2 := player2.damage_percent
 
-	# Detect ANY new damage → trigger shake
 	if d1 > prev_p1_dmg + 0.1:
 		p1_shake_timer = SHAKE_DURATION
 	if d2 > prev_p2_dmg + 0.1:
 		p2_shake_timer = SHAKE_DURATION
 
-	# Threshold popups
 	if d1 >= 100.0 and prev_p1_dmg < 100.0:
 		p1_effect.text = "CRITICAL!"
 		p1_effect.visible = true
@@ -201,7 +270,6 @@ func _check_damage_effects(delta: float) -> void:
 	prev_p1_dmg = d1
 	prev_p2_dmg = d2
 
-	# Tick effect timers
 	if p1_effect_timer > 0.0:
 		p1_effect_timer -= delta
 		if p1_effect_timer <= 0.0:
@@ -211,7 +279,6 @@ func _check_damage_effects(delta: float) -> void:
 		if p2_effect_timer <= 0.0:
 			p2_effect.visible = false
 
-	# Tick shake timers
 	if p1_shake_timer > 0.0:
 		p1_shake_timer -= delta
 	if p2_shake_timer > 0.0:
@@ -227,7 +294,6 @@ func _update_hud() -> void:
 	var p1_pct := clampf(player1.damage_percent / 150.0, 0.0, 1.0)
 	if p1_pct > 0.005:
 		var fill_left: float = P1_BAR_RIGHT - p1_pct * BAR_MAX_WIDTH
-		# Top Y follows the slanted edge: outer(left)=622, inner(right)=638
 		var t_left: float = (fill_left - P1_BAR_LEFT) / BAR_MAX_WIDTH
 		var top_at_left: float = lerpf(BAR_OUTER_TOP, BAR_INNER_TOP, t_left)
 		p1_bar_fill.polygon = PackedVector2Array([
@@ -258,7 +324,7 @@ func _update_hud() -> void:
 	p1_stock_label.text = _stock_display(player1.stocks)
 	p2_stock_label.text = _stock_display(player2.stocks)
 
-	# Shake — offset the entire HUD group
+	# Shake
 	if p1_shake_timer > 0.0:
 		p1_group.position = Vector2(
 			randf_range(-SHAKE_INTENSITY, SHAKE_INTENSITY),
