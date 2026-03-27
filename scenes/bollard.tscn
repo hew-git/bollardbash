@@ -9,7 +9,7 @@ radius = 22.0
 size = Vector2(32, 50)
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_grab"]
-radius = 28.0
+radius = 36.0
 
 [node name="Bollard" type="RigidBody2D"]
 mass = 2.0

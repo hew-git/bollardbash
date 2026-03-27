@@ -45,6 +45,7 @@ const INVINCIBLE_TIME := 1.5
 
 # ── Grab State ──────────────────────────────────────────────────────────────
 var is_grabbing: bool = false
+var want_to_grab: bool = false   # True while grab button is held — "ready to grab"
 var grab_timer: float = 0.0
 var grab_target: Node2D = null
 var grab_joint: PinJoint2D = null
@@ -137,21 +138,23 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_input(delta: float) -> void:
-	# Lean with torque — always the same whether grabbing or not.
-	# When the tip is pinned by a grab joint, torque swings the body like a pendulum.
+	# Lean with torque — when the tip is pinned by a grab joint this swings
+	# the body like a pendulum around the anchor point.
 	if Input.is_action_pressed(act_lean_left):
 		apply_torque(-LEAN_TORQUE)
 	if Input.is_action_pressed(act_lean_right):
 		apply_torque(LEAN_TORQUE)
 
-	if Input.is_action_pressed(act_raise):
-		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
-	if Input.is_action_pressed(act_lower):
-		extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
-	if Input.is_action_just_pressed(act_grab):
-		_try_grab()
-	if Input.is_action_just_released(act_grab):
-		_release_grab()
+	# Extend/retract — locked while grabbing so the anchor doesn't slide
+	if not is_grabbing:
+		if Input.is_action_pressed(act_raise):
+			extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
+		if Input.is_action_pressed(act_lower):
+			extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
+
+	# Grab — hold the button to enter "ready to grab" state.
+	# Any contact with the grab area while holding triggers a grab.
+	want_to_grab = Input.is_action_pressed(act_grab)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -181,15 +184,18 @@ func _check_launch() -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB — PinJoint at the tip (the snail's "hand")                          ║
-# ║ The tip locks onto the target but the body swings freely under gravity.  ║
-# ║ Structures: snail hangs and swings as a pendulum from the grab point.    ║
-# ║ Players: both snails are connected at the tip and move together.         ║
+# ║ GRAB                                                                      ║
+# ║ Hold the grab button → "ready to grab". Any overlap between the grab     ║
+# ║ area (upper body / tip) and a surface or player triggers a grab.         ║
+# ║ The tip anchors rigidly to the contact point. The snail then swings      ║
+# ║ from that anchor under gravity — rotation comes from the anchor, not     ║
+# ║ the base. Release the button (or timeout) to let go.                     ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _try_grab() -> void:
 	if is_grabbing:
 		return
+	# Check the grab area (covers upper portion of body near the tip)
 	var bodies := grab_area.get_overlapping_bodies()
 	for body in bodies:
 		if body == self:
@@ -204,12 +210,12 @@ func _start_grab(target: PhysicsBody2D) -> void:
 	grab_timer = 0.0
 	grab_target = target
 
-	# Pin joint at the tip — the "hand" locks onto the target,
-	# but the body still swings freely under gravity like a pendulum.
+	# Pin joint at the tip — the "hand" locks rigidly onto the target.
+	# The body hangs and swings freely under gravity like a pendulum.
 	grab_joint = PinJoint2D.new()
 	grab_joint.node_a = get_path()
 	grab_joint.node_b = target.get_path()
-	grab_joint.softness = 0.1  # Slight flex so it doesn't feel rigid/frozen
+	grab_joint.softness = 0.0   # Completely rigid — no sliding at all
 	grab_joint.disable_collision = false
 	add_child(grab_joint)
 	grab_joint.global_position = grab_area.global_position
@@ -231,14 +237,17 @@ func _release_grab() -> void:
 
 
 func _update_grab(delta: float) -> void:
-	if not is_grabbing:
-		return
-	if not is_instance_valid(grab_target):
-		_release_grab()
-		return
-	grab_timer += delta
-	if grab_timer >= MAX_GRAB_TIME:
-		_release_grab()
+	if is_grabbing:
+		# Release if target is gone, button released, or timeout
+		if not is_instance_valid(grab_target) or not want_to_grab:
+			_release_grab()
+			return
+		grab_timer += delta
+		if grab_timer >= MAX_GRAB_TIME:
+			_release_grab()
+	elif want_to_grab:
+		# Continuously try to grab every frame while button is held
+		_try_grab()
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -289,6 +298,7 @@ func respawn(pos: Vector2) -> void:
 	rotation = 0.0
 	linear_velocity = Vector2.ZERO
 	angular_velocity = 0.0
+	want_to_grab = false
 	_release_grab()
 	is_invincible = true
 	invincible_timer = 0.0
@@ -412,8 +422,11 @@ func _draw() -> void:
 
 func _process_ai(delta: float) -> void:
 	if ai_target == null or not is_instance_valid(ai_target) or ai_target.is_dead:
+		want_to_grab = false
 		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.5 * delta)
 		return
+	# Reset each frame; only grab_attempt sets it true
+	want_to_grab = (ai_state == "grab_attempt")
 	ai_timer += delta
 	match ai_state:
 		"idle":
@@ -446,6 +459,7 @@ func _process_ai(delta: float) -> void:
 		"grab_attempt":
 			_ai_grab_attempt(delta)
 			if ai_timer > ai_action_duration:
+				want_to_grab = false
 				_release_grab()
 				_ai_pick_action()
 
@@ -494,6 +508,5 @@ func _ai_retreat(delta: float) -> void:
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	apply_torque(LEAN_TORQUE * dir * 0.5)
-	extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 	if not is_grabbing:
-		_try_grab()
+		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
