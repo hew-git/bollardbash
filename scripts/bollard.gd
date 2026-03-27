@@ -392,8 +392,100 @@ func _update_blink(delta: float) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ DRAWING — snail with shell, body, eye stalks                             ║
+# ║ DRAWING — 3D claymation style                                            ║
+# ║                                                                           ║
+# ║ SPRITE TRANSITION GUIDE:                                                  ║
+# ║ Each visual part is drawn in its own section, clearly labeled. To         ║
+# ║ replace any part with a sprite:                                           ║
+# ║   1. Create a PNG at the listed size for that part                        ║
+# ║   2. Add a Sprite2D child to the Bollard scene (bollard.tscn)            ║
+# ║   3. Assign your PNG as the texture                                       ║
+# ║   4. Set the Sprite2D position to match the "origin" noted below          ║
+# ║   5. Comment out the _draw_* call for that part                           ║
+# ║                                                                           ║
+# ║ PARTS:                                                                    ║
+# ║   Shell  — 64x64 circle, origin (0, 0)                                   ║
+# ║   Body   — 32 x post_h rect, origin (0, 0), extends upward (neg Y)       ║
+# ║   Dome   — 32x16 semicircle, sits on top of body                         ║
+# ║   Stalks — two 3px lines from dome top to eye positions                   ║
+# ║   Eyes   — 12x12 circles at stalk tips                                    ║
+# ║   Grab   — 8x8 red dot at tip (only when grabbing)                       ║
+# ║                                                                           ║
+# ║ Light direction: top-left (consistent across all elements)                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
+
+# ── Clay Drawing Helpers ──────────────────────────────────────────────────
+# These create the 3D claymation look with layered shading.
+# Each one can be replaced by a single Sprite2D with a painted texture.
+
+func _draw_clay_sphere(center: Vector2, radius: float, base_color: Color) -> void:
+	# Drop shadow (offset down-right from light source at top-left)
+	draw_circle(center + Vector2(2.5, 3.5), radius * 1.02, base_color.darkened(0.4))
+	# Base sphere
+	draw_circle(center, radius, base_color)
+	# Inner light layer (slight shift toward light)
+	draw_circle(center + Vector2(-1, -1), radius * 0.88, base_color.lightened(0.06))
+	# Highlight blob (top-left where light hits)
+	draw_circle(center + Vector2(-radius * 0.25, -radius * 0.28), radius * 0.45,
+				base_color.lightened(0.18))
+	# Specular spot (sharp bright point)
+	draw_circle(center + Vector2(-radius * 0.2, -radius * 0.3), radius * 0.12,
+				base_color.lightened(0.38))
+
+
+func _draw_clay_cylinder(rect: Rect2, base_color: Color) -> void:
+	# Drop shadow
+	draw_rect(Rect2(rect.position + Vector2(3, 3), rect.size), base_color.darkened(0.4))
+	# Base fill
+	draw_rect(rect, base_color)
+	# Left edge shadow (away from light)
+	var edge_w := maxf(rect.size.x * 0.12, 2.0)
+	draw_rect(Rect2(rect.position, Vector2(edge_w, rect.size.y)),
+			  base_color.darkened(0.15))
+	# Right edge shadow (wrap-around)
+	draw_rect(Rect2(Vector2(rect.end.x - edge_w, rect.position.y), Vector2(edge_w, rect.size.y)),
+			  base_color.darkened(0.08))
+	# Center-left highlight (where light hits the cylinder)
+	var hl_x := rect.position.x + rect.size.x * 0.28
+	var hl_w := rect.size.x * 0.28
+	draw_rect(Rect2(hl_x, rect.position.y + 1, hl_w, rect.size.y - 2),
+			  base_color.lightened(0.12))
+	# Bright specular strip
+	var sp_x := rect.position.x + rect.size.x * 0.32
+	var sp_w := rect.size.x * 0.08
+	draw_rect(Rect2(sp_x, rect.position.y + 3, sp_w, rect.size.y - 6),
+			  base_color.lightened(0.22))
+
+
+func _draw_clay_dome(center_x: float, top_y: float, radius: float, base_color: Color) -> void:
+	# Shadow dome
+	var shadow_pts := PackedVector2Array()
+	for i in 17:
+		var angle := float(i) / 16.0 * PI
+		shadow_pts.append(Vector2(center_x + cos(angle) * radius + 2.5,
+								  top_y - sin(angle) * radius + 3.5))
+	if shadow_pts.size() >= 3:
+		draw_colored_polygon(shadow_pts, base_color.darkened(0.4))
+	# Base dome
+	var pts := PackedVector2Array()
+	for i in 17:
+		var angle := float(i) / 16.0 * PI
+		pts.append(Vector2(center_x + cos(angle) * radius, top_y - sin(angle) * radius))
+	if pts.size() >= 3:
+		draw_colored_polygon(pts, base_color.lightened(0.04))
+	# Highlight on dome (top-left)
+	var hl_pts := PackedVector2Array()
+	for i in 9:
+		var angle := float(i) / 8.0 * PI
+		var r := radius * 0.55
+		hl_pts.append(Vector2(center_x - radius * 0.15 + cos(angle) * r,
+							  top_y - sin(angle) * r - radius * 0.1))
+	if hl_pts.size() >= 3:
+		draw_colored_polygon(hl_pts, base_color.lightened(0.16))
+	# Specular dot
+	draw_circle(Vector2(center_x - radius * 0.2, top_y - radius * 0.55),
+				radius * 0.15, base_color.lightened(0.32))
+
 
 func _draw() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
@@ -406,73 +498,96 @@ func _draw() -> void:
 		shell_c = accent_color.lightened(0.5)
 		body_c = bollard_color.lightened(0.5)
 
-	# ── SHELL (base circle) ──────────────────────────────────────────────
-	draw_circle(Vector2.ZERO, BASE_RADIUS, shell_c)
+	# ── PART: SHELL ─────────────────────────────────────────────────────
+	# 3D clay sphere with spiral grooves
+	# Sprite size: 64x64, origin: (0, 0)
+	_draw_clay_sphere(Vector2.ZERO, BASE_RADIUS, shell_c)
 
-	# Shell spiral lines
+	# Spiral grooves (sculpted lines in the clay)
 	var spiral_off := Vector2(-2, 2)
 	for i in 5:
 		var r: float = BASE_RADIUS * (0.78 - i * 0.14)
 		if r > 3.0:
 			var sa: float = 0.4 + i * 1.1
 			var ea: float = sa + 2.8 - i * 0.3
-			draw_arc(spiral_off, r, sa, ea, 16, shell_c.darkened(0.18), 1.5, true)
+			# Dark groove
+			draw_arc(spiral_off, r, sa, ea, 16, shell_c.darkened(0.25), 2.0, true)
+			# Light edge next to groove (raised clay catching light)
+			draw_arc(spiral_off + Vector2(-0.5, -0.5), r - 0.8, sa, ea, 16,
+					 shell_c.lightened(0.08), 0.8, true)
 
-	# Shell highlight
-	draw_circle(Vector2(-6, -6), BASE_RADIUS * 0.22, shell_c.lightened(0.25))
-
-	# Shell opening
+	# Shell opening (dark hole where body emerges)
 	if post_h > 5.0:
-		draw_circle(Vector2(0, -BASE_RADIUS * 0.35), hw * 0.75, shell_c.darkened(0.4))
+		var open_pos := Vector2(0, -BASE_RADIUS * 0.35)
+		draw_circle(open_pos, hw * 0.8, shell_c.darkened(0.5))
+		draw_circle(open_pos + Vector2(-1, -1), hw * 0.7, shell_c.darkened(0.35))
 
-	# ── SNAIL BODY ───────────────────────────────────────────────────────
+	# ── PART: BODY (cylinder) ───────────────────────────────────────────
+	# 3D clay cylinder that extends/retracts
+	# Sprite: 32 x [variable height], origin: (0, 0), extends upward
 	if post_h > 3.0:
-		draw_rect(Rect2(-hw, -post_h, hw * 2.0, post_h), body_c)
-		var sheen_w: float = hw * 0.35
-		draw_rect(Rect2(-sheen_w, -post_h + 3, sheen_w * 2.0, post_h - 6),
-				  body_c.lightened(0.12))
+		_draw_clay_cylinder(Rect2(-hw, -post_h, hw * 2.0, post_h), body_c)
 
-	# Rounded tip of body (dome)
-	var dome_pts := PackedVector2Array()
+	# ── PART: DOME (top cap) ────────────────────────────────────────────
+	# 3D clay hemisphere on top of body
+	# Sprite size: 32x16, sits at top of body
 	var tip_y := -post_h
-	for i in 17:
-		var angle := float(i) / 16.0 * PI
-		dome_pts.append(Vector2(cos(angle) * hw, tip_y - sin(angle) * hw))
-	if dome_pts.size() >= 3:
-		draw_colored_polygon(dome_pts, body_c.lightened(0.06))
+	_draw_clay_dome(0.0, tip_y, hw, body_c)
 
-	# ── EYE STALKS + NERVOUS EYES ───────────────────────────────────────
+	# ── PART: EYE STALKS ───────────────────────────────────────────────
+	# Clay rods extending from dome top
+	# Could be replaced with two small Sprite2Ds
 	var dome_top_y: float = tip_y - hw
-
 	var left_eye := Vector2(-STALK_SPREAD, dome_top_y - STALK_LENGTH)
 	var right_eye := Vector2(STALK_SPREAD, dome_top_y - STALK_LENGTH)
 
-	# Stalks
-	var stalk_c: Color = body_c.darkened(0.05)
-	draw_line(Vector2(-3, dome_top_y + 2), left_eye, stalk_c, 2.5)
-	draw_line(Vector2(3, dome_top_y + 2), right_eye, stalk_c, 2.5)
+	var stalk_dark: Color = body_c.darkened(0.12)
+	var stalk_light: Color = body_c.lightened(0.08)
+	# Dark side of stalk (right side, away from light)
+	draw_line(Vector2(-2, dome_top_y + 2), left_eye + Vector2(1, 0), stalk_dark, 3.5)
+	draw_line(Vector2(4, dome_top_y + 2), right_eye + Vector2(1, 0), stalk_dark, 3.5)
+	# Light side of stalk (left side, toward light)
+	draw_line(Vector2(-4, dome_top_y + 2), left_eye + Vector2(-1, 0), stalk_light, 1.5)
+	draw_line(Vector2(2, dome_top_y + 2), right_eye + Vector2(-1, 0), stalk_light, 1.5)
 
-	# Nervousness: pupils shift side-to-side as damage increases
+	# ── PART: EYES ──────────────────────────────────────────────────────
+	# 3D clay spheres with pupils
+	# Sprite size: 12x12 each, positioned at stalk tips
 	var nervousness: float = clampf(damage_percent / 100.0, 0.0, 1.5)
 	var eye_shift_speed: float = 4.0 + nervousness * 10.0
 	var eye_shift_amount: float = nervousness * 2.8
 	var pupil_offset_x: float = sin(nervous_timer * eye_shift_speed) * eye_shift_amount
 
 	if is_blinking:
-		draw_line(left_eye + Vector2(-4, 0), left_eye + Vector2(4, 0), Color.BLACK, 2.5)
-		draw_line(right_eye + Vector2(-4, 0), right_eye + Vector2(4, 0), Color.BLACK, 2.5)
+		# Closed eyes — thick clay lines
+		draw_line(left_eye + Vector2(-5, 1), left_eye + Vector2(5, 1), body_c.darkened(0.2), 3.0)
+		draw_line(left_eye + Vector2(-4, 0), left_eye + Vector2(4, 0), Color.BLACK, 2.0)
+		draw_line(right_eye + Vector2(-5, 1), right_eye + Vector2(5, 1), body_c.darkened(0.2), 3.0)
+		draw_line(right_eye + Vector2(-4, 0), right_eye + Vector2(4, 0), Color.BLACK, 2.0)
 	else:
-		draw_circle(left_eye, EYE_RADIUS, EYE_COLOR)
-		draw_circle(right_eye, EYE_RADIUS, EYE_COLOR)
-		var pupil_off := Vector2(pupil_offset_x, 0)
-		draw_circle(left_eye + pupil_off, EYE_RADIUS * 0.45, Color.BLACK)
-		draw_circle(right_eye + pupil_off, EYE_RADIUS * 0.45, Color.BLACK)
-		draw_circle(left_eye + Vector2(-1.5 + pupil_offset_x * 0.5, -1.5), 1.8, Color.WHITE)
-		draw_circle(right_eye + Vector2(-1.5 + pupil_offset_x * 0.5, -1.5), 1.8, Color.WHITE)
+		# Eyeball spheres (3D clay look)
+		for eye_pos in [left_eye, right_eye]:
+			# Shadow
+			draw_circle(eye_pos + Vector2(1.5, 2.0), EYE_RADIUS + 0.5, EYE_COLOR.darkened(0.45))
+			# Base eye
+			draw_circle(eye_pos, EYE_RADIUS, EYE_COLOR)
+			# Inner light
+			draw_circle(eye_pos + Vector2(-0.5, -0.5), EYE_RADIUS * 0.8, EYE_COLOR.lightened(0.1))
+			# Highlight
+			draw_circle(eye_pos + Vector2(-1.5, -2.0), EYE_RADIUS * 0.35, EYE_COLOR.lightened(0.3))
 
-	# ── GRAB INDICATOR ───────────────────────────────────────────────────
+		# Pupils (dark clay dots with white reflection)
+		var pupil_off := Vector2(pupil_offset_x, 0)
+		for eye_pos in [left_eye, right_eye]:
+			draw_circle(eye_pos + pupil_off, EYE_RADIUS * 0.5, Color(0.08, 0.06, 0.06))
+			# Pupil highlight (like a glass marble reflection)
+			draw_circle(eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2),
+						EYE_RADIUS * 0.18, Color(1, 1, 1, 0.9))
+
+	# ── PART: GRAB INDICATOR ────────────────────────────────────────────
 	if is_grabbing and is_instance_valid(grab_target):
-		draw_circle(Vector2(0, tip_y), 4.0, Color.RED)
+		draw_circle(Vector2(0, tip_y + 1), 5.0, Color(0.8, 0.1, 0.1, 0.4))
+		draw_circle(Vector2(0, tip_y), 4.0, Color(0.9, 0.2, 0.15))
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
