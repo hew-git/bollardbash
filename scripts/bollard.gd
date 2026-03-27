@@ -21,7 +21,8 @@ const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
-const GRAB_ANGULAR_DAMP := 2.5
+const SWING_FORCE := 5000.0        # Horizontal force when swinging while grabbed
+const GRAB_ANGULAR_DAMP := 2.0     # Slight damp so swing is controllable
 
 # ── Grab Settings ───────────────────────────────────────────────────────────
 const MAX_GRAB_TIME := 2.0
@@ -31,6 +32,9 @@ const EYE_COLOR := Color("E8C830")
 const EYE_RADIUS := 5.5
 const STALK_LENGTH := 14.0
 const STALK_SPREAD := 7.0
+
+# ── Emerge Constants ────────────────────────────────────────────────────────
+const EMERGE_DURATION := 0.6
 
 # ── Runtime State ───────────────────────────────────────────────────────────
 var extend_amount: float = 0.5
@@ -43,12 +47,19 @@ var is_invincible: bool = false
 var invincible_timer: float = 0.0
 const INVINCIBLE_TIME := 1.5
 
+# ── Emerge State ────────────────────────────────────────────────────────────
+var is_emerging: bool = false
+var emerge_progress: float = 0.0
+
 # ── Grab State ──────────────────────────────────────────────────────────────
 var is_grabbing: bool = false
-var want_to_grab: bool = false   # True while grab button is held — "ready to grab"
+var want_to_grab: bool = false
 var grab_timer: float = 0.0
 var grab_target: Node2D = null
 var grab_joint: PinJoint2D = null
+
+# ── Slime ───────────────────────────────────────────────────────────────────
+var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
 
 # ── Blink State ─────────────────────────────────────────────────────────────
 var is_blinking: bool = false
@@ -75,6 +86,7 @@ var act_grab: String
 @onready var base_shape: CollisionShape2D = $BaseShape
 @onready var post_shape: CollisionShape2D = $PostShape
 @onready var grab_area: Area2D = $GrabArea
+@onready var grab_shape: CollisionShape2D = $GrabArea/GrabShape
 
 
 func _ready() -> void:
@@ -102,12 +114,18 @@ func _ready() -> void:
 	base_shape.shape = base_shape.shape.duplicate()
 	post_shape.shape = post_shape.shape.duplicate()
 
-	# Randomize first blink so both snails don't blink in sync
+	# Replace the grab area's circle with a rectangle covering the full body (post)
+	grab_shape.shape = RectangleShape2D.new()
+
 	next_blink_time = randf_range(1.5, 5.0)
 
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
+		return
+
+	if is_emerging:
+		_update_emerge(delta)
 		return
 
 	if is_frozen:
@@ -138,12 +156,20 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_input(delta: float) -> void:
-	# Lean with torque — when the tip is pinned by a grab joint this swings
-	# the body like a pendulum around the anchor point.
-	if Input.is_action_pressed(act_lean_left):
-		apply_torque(-LEAN_TORQUE)
-	if Input.is_action_pressed(act_lean_right):
-		apply_torque(LEAN_TORQUE)
+	if is_grabbing and is_instance_valid(grab_joint):
+		# SWING FROM ANCHOR: apply horizontal force at the body center.
+		# The pin joint at the grab point converts this into a pendulum arc,
+		# like swinging a yo-yo. The lean comes from the anchor, not the base.
+		if Input.is_action_pressed(act_lean_left):
+			apply_central_force(Vector2(-SWING_FORCE, 0))
+		if Input.is_action_pressed(act_lean_right):
+			apply_central_force(Vector2(SWING_FORCE, 0))
+	else:
+		# Normal lean: torque rotates the body around the base
+		if Input.is_action_pressed(act_lean_left):
+			apply_torque(-LEAN_TORQUE)
+		if Input.is_action_pressed(act_lean_right):
+			apply_torque(LEAN_TORQUE)
 
 	# Extend/retract — locked while grabbing so the anchor doesn't slide
 	if not is_grabbing:
@@ -152,8 +178,7 @@ func _process_input(delta: float) -> void:
 		if Input.is_action_pressed(act_lower):
 			extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
 
-	# Grab — hold the button to enter "ready to grab" state.
-	# Any contact with the grab area while holding triggers a grab.
+	# Grab — hold the button to enter "ready to grab" state
 	want_to_grab = Input.is_action_pressed(act_grab)
 
 
@@ -167,8 +192,12 @@ func _update_collision_shape() -> void:
 	rect.size = Vector2(POST_HALF_WIDTH * 2.0, post_h)
 	post_shape.position = Vector2(0, -post_h / 2.0)
 	post_shape.disabled = extend_amount < 0.03
-	# Grab area follows the tip — when retracted, it sits at the shell opening
-	grab_area.position = Vector2(0, -post_h)
+
+	# Grab area covers the full body (post), not just the tip
+	var grab_rect := grab_shape.shape as RectangleShape2D
+	if grab_rect:
+		grab_rect.size = Vector2(POST_HALF_WIDTH * 2.0 + 12, maxf(post_h, 10.0))
+	grab_area.position = Vector2(0, -post_h * 0.5)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -185,17 +214,16 @@ func _check_launch() -> void:
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ GRAB                                                                      ║
-# ║ Hold the grab button → "ready to grab". Any overlap between the grab     ║
-# ║ area (upper body / tip) and a surface or player triggers a grab.         ║
-# ║ The tip anchors rigidly to the contact point. The snail then swings      ║
-# ║ from that anchor under gravity — rotation comes from the anchor, not     ║
-# ║ the base. Release the button (or timeout) to let go.                     ║
+# ║ Hold the grab button → "ready to grab". Any part of the body (post)     ║
+# ║ that overlaps a surface or player triggers a grab. The anchor is at the  ║
+# ║ contact point on the body. When grabbed, lean applies horizontal force   ║
+# ║ that the pin joint converts into a pendulum swing — like a yo-yo.       ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _try_grab() -> void:
 	if is_grabbing:
 		return
-	# Check the grab area (covers upper portion of body near the tip)
+	# Check the grab area (covers the body/post)
 	var bodies := grab_area.get_overlapping_bodies()
 	for body in bodies:
 		if body == self:
@@ -203,6 +231,27 @@ func _try_grab() -> void:
 		if body is PhysicsBody2D:
 			_start_grab(body)
 			return
+	# Also check direct body contacts (anything touching our collision shapes)
+	for body in get_colliding_bodies():
+		if body == self:
+			continue
+		if body is PhysicsBody2D:
+			_start_grab(body)
+			return
+
+
+func _get_grab_anchor(target: PhysicsBody2D) -> Vector2:
+	# Find the point on our body (post surface) closest to the target.
+	# This becomes the anchor — the pivot for pendulum swing.
+	var post_h := lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
+	var hw := POST_HALF_WIDTH
+	var local_target := to_local(target.global_position)
+	# Clamp to post rectangle: x in [-hw, hw], y in [-post_h, 0]
+	var clamped := Vector2(
+		clampf(local_target.x, -hw, hw),
+		clampf(local_target.y, -post_h, 0.0)
+	)
+	return to_global(clamped)
 
 
 func _start_grab(target: PhysicsBody2D) -> void:
@@ -210,19 +259,19 @@ func _start_grab(target: PhysicsBody2D) -> void:
 	grab_timer = 0.0
 	grab_target = target
 
-	# Pin joint at the tip — the "hand" locks rigidly onto the target.
-	# The body hangs and swings freely under gravity like a pendulum.
+	var anchor := _get_grab_anchor(target)
+
+	# Pin joint at the anchor point — the body's "hand" locks onto the target.
+	# The snail swings freely under gravity from this point.
 	grab_joint = PinJoint2D.new()
 	grab_joint.node_a = get_path()
 	grab_joint.node_b = target.get_path()
-	grab_joint.softness = 0.0   # Completely rigid — no sliding at all
+	grab_joint.softness = 0.0
 	grab_joint.disable_collision = false
 	add_child(grab_joint)
-	grab_joint.global_position = grab_area.global_position
+	grab_joint.global_position = anchor
 
-	# Slightly increase angular damp so swing is controllable, not wild
-	if target is StaticBody2D:
-		angular_damp = GRAB_ANGULAR_DAMP
+	angular_damp = GRAB_ANGULAR_DAMP
 
 
 func _release_grab() -> void:
@@ -238,7 +287,6 @@ func _release_grab() -> void:
 
 func _update_grab(delta: float) -> void:
 	if is_grabbing:
-		# Release if target is gone, button released, or timeout
 		if not is_instance_valid(grab_target) or not want_to_grab:
 			_release_grab()
 			return
@@ -246,7 +294,6 @@ func _update_grab(delta: float) -> void:
 		if grab_timer >= MAX_GRAB_TIME:
 			_release_grab()
 	elif want_to_grab:
-		# Continuously try to grab every frame while button is held
 		_try_grab()
 
 
@@ -270,7 +317,6 @@ func _on_body_entered(body: Node) -> void:
 	var rel_vel: Vector2 = linear_velocity - other.linear_velocity
 	var impact: float = rel_vel.length()
 	if impact > HIT_SPEED_THRESHOLD:
-		# Faster snail deals more damage — weight by speed contribution
 		var my_speed: float = linear_velocity.length()
 		var other_speed: float = other.linear_velocity.length()
 		var total: float = my_speed + other_speed
@@ -283,25 +329,42 @@ func _on_body_entered(body: Node) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ RESPAWN / DEATH                                                          ║
+# ║ RESPAWN / DEATH / EMERGE                                                 ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func die() -> void:
 	stocks -= 1
 	is_dead = true
 
-func respawn(pos: Vector2) -> void:
+func start_emerge(spawn_pos: Vector2) -> void:
 	is_dead = false
-	damage_percent = 0.0
-	extend_amount = 0.5
-	global_position = pos
+	is_emerging = true
+	emerge_progress = 0.0
+	is_frozen = false
+	visible = true
+	global_position = spawn_pos
 	rotation = 0.0
 	linear_velocity = Vector2.ZERO
 	angular_velocity = 0.0
+	extend_amount = 0.0
+	damage_percent = 0.0
 	want_to_grab = false
 	_release_grab()
 	is_invincible = true
 	invincible_timer = 0.0
+
+func _update_emerge(delta: float) -> void:
+	emerge_progress = minf(emerge_progress + delta / EMERGE_DURATION, 1.0)
+	extend_amount = lerpf(0.0, 0.5, emerge_progress)
+	_update_collision_shape()
+	_update_blink(delta)
+	nervous_timer += delta
+	queue_redraw()
+	if emerge_progress >= 1.0:
+		is_emerging = false
+
+func respawn(spawn_pos: Vector2) -> void:
+	start_emerge(spawn_pos)
 
 func _update_invincibility(delta: float) -> void:
 	if not is_invincible:
@@ -396,18 +459,14 @@ func _draw() -> void:
 	var pupil_offset_x: float = sin(nervous_timer * eye_shift_speed) * eye_shift_amount
 
 	if is_blinking:
-		# Closed eyes — horizontal lines
 		draw_line(left_eye + Vector2(-4, 0), left_eye + Vector2(4, 0), Color.BLACK, 2.5)
 		draw_line(right_eye + Vector2(-4, 0), right_eye + Vector2(4, 0), Color.BLACK, 2.5)
 	else:
-		# Eyeballs (yellow)
 		draw_circle(left_eye, EYE_RADIUS, EYE_COLOR)
 		draw_circle(right_eye, EYE_RADIUS, EYE_COLOR)
-		# Pupils (black) — shift with nervousness
 		var pupil_off := Vector2(pupil_offset_x, 0)
 		draw_circle(left_eye + pupil_off, EYE_RADIUS * 0.45, Color.BLACK)
 		draw_circle(right_eye + pupil_off, EYE_RADIUS * 0.45, Color.BLACK)
-		# Highlights (white sparkle) — shift with pupils
 		draw_circle(left_eye + Vector2(-1.5 + pupil_offset_x * 0.5, -1.5), 1.8, Color.WHITE)
 		draw_circle(right_eye + Vector2(-1.5 + pupil_offset_x * 0.5, -1.5), 1.8, Color.WHITE)
 
@@ -425,7 +484,6 @@ func _process_ai(delta: float) -> void:
 		want_to_grab = false
 		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.5 * delta)
 		return
-	# Reset each frame; only grab_attempt sets it true
 	want_to_grab = (ai_state == "grab_attempt")
 	ai_timer += delta
 	match ai_state:
@@ -507,6 +565,9 @@ func _ai_retreat(delta: float) -> void:
 
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	apply_torque(LEAN_TORQUE * dir * 0.5)
+	if is_grabbing and is_instance_valid(grab_joint):
+		apply_central_force(Vector2(SWING_FORCE * dir, 0))
+	else:
+		apply_torque(LEAN_TORQUE * dir * 0.5)
 	if not is_grabbing:
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)

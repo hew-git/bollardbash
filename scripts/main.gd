@@ -2,9 +2,22 @@ extends Node2D
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
 const BLAST_ZONE := Rect2(-500, -800, 2280, 1900)
-const SPAWN_P1 := Vector2(480, 478)
-const SPAWN_P2 := Vector2(800, 478)
+const SPAWN_P1 := Vector2(450, 478)
+const SPAWN_P2 := Vector2(830, 478)
 const RESPAWN_DELAY := 2.0
+
+# ── Arena Geometry ──────────────────────────────────────────────────────────
+const GROUND_HALF_WIDTH := 495.0   # 990 total (10% less than 1100)
+const GROUND_CURVE := 10.0         # Edges raised 10px above center
+const GROUND_SEGMENTS := 20
+const GROUND_Y := 520.0
+const CENTER_CIRCLE_POS := Vector2(640, 190)
+const CENTER_CIRCLE_RADIUS := 30.0
+const WALL_WIDTH := 20.0
+const WALL_HEIGHT := 200.0
+const WALL_LEFT_X := 30.0
+const WALL_RIGHT_X := 1250.0
+const WALL_Y := 300.0
 
 # ── HUD Constants ───────────────────────────────────────────────────────────
 const P1_BAR_LEFT := 240.0
@@ -12,16 +25,31 @@ const P1_BAR_RIGHT := 540.0
 const P2_BAR_LEFT := 740.0
 const P2_BAR_RIGHT := 1040.0
 const BAR_MAX_WIDTH := 300.0
-const BAR_INNER_TOP := 638.0    # Top edge at inner (center) side
-const BAR_OUTER_TOP := 622.0    # Top edge at outer (screen edge) side
+const BAR_INNER_TOP := 638.0
+const BAR_OUTER_TOP := 622.0
 const BAR_BOTTOM := 660.0
 const EFFECT_DURATION := 1.0
 const SHAKE_DURATION := 0.35
 const SHAKE_INTENSITY := 4.0
 
-# ── Countdown Constants ────────────────────────────────────────────────────
-const COUNTDOWN_DURATION := 3.0
-const GO_LINGER := 0.8  # How long "GO!" stays visible after unfreeze
+# ── Countdown ───────────────────────────────────────────────────────────────
+const GO_LINGER := 0.8
+
+# ── Death Phrases ───────────────────────────────────────────────────────────
+const DEATH_PHRASES := [
+	"you just got SLIMED, son",
+	"get shellacked",
+	"mollusk up, buddy",
+	"looks like slime time is over",
+	"more like escar-GONE",
+	"you ooze, you lose",
+]
+const DEATH_PHRASE_DURATION := 2.5
+
+# ── Slime Trail ─────────────────────────────────────────────────────────────
+const SLIME_LIFETIME := 4.0
+const SLIME_INTERVAL := 0.08
+const SLIME_MAX_DOTS := 400
 
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var player1: Bollard = $Player1
@@ -34,6 +62,8 @@ const GO_LINGER := 0.8  # How long "GO!" stays visible after unfreeze
 @onready var p2_stock_label: Label = $HUD/P2Group/P2Stocks
 @onready var game_over_label: Label = $HUD/GameOver
 @onready var controls_label: Label = $HUD/Controls
+@onready var ground: StaticBody2D = $Ground
+@onready var center_circle: StaticBody2D = $CenterCircle
 
 # ── Bar Polygon2D (created at runtime) ──────────────────────────────────────
 var p1_bar_bg: Polygon2D
@@ -43,6 +73,10 @@ var p2_bar_fill: Polygon2D
 
 # ── Countdown Label (created at runtime) ───────────────────────────────────
 var countdown_label: Label
+
+# ── Death Phrase Label ──────────────────────────────────────────────────────
+var death_phrase_label: Label
+var death_phrase_timer: float = 0.0
 
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = false
@@ -56,13 +90,26 @@ var p2_effect_timer: float = 0.0
 var p1_shake_timer: float = 0.0
 var p2_shake_timer: float = 0.0
 
+# ── Slime State ─────────────────────────────────────────────────────────────
+var slime_dots: Array = []   # [{pos: Vector2, color: Color, age: float}]
+var p1_slime_timer: float = 0.0
+var p2_slime_timer: float = 0.0
+
 
 func _ready() -> void:
 	_setup_input()
+	_setup_arena()
 	_create_bar_polygons()
 	_create_countdown_label()
-	player1.global_position = SPAWN_P1
-	player2.global_position = SPAWN_P2
+	_create_death_phrase_label()
+
+	# Camera — slight zoom out to see wall platforms
+	$Camera2D.zoom = Vector2(0.92, 0.92)
+
+	# Slime colors per player
+	player1.slime_color = Color(0.55, 0.75, 0.35, 0.6)
+	player2.slime_color = Color(0.35, 0.65, 0.75, 0.6)
+
 	player2.ai_target = player1
 	game_over_label.visible = false
 	controls_label.visible = true
@@ -70,6 +117,85 @@ func _ready() -> void:
 	p2_effect.visible = false
 	_start_countdown()
 
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ ARENA SETUP — curved ground, platforms, walls                            ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _setup_arena() -> void:
+	_setup_curved_ground()
+	_setup_center_circle()
+	_create_wall(WALL_LEFT_X, "WallLeft")
+	_create_wall(WALL_RIGHT_X, "WallRight")
+
+
+func _setup_curved_ground() -> void:
+	# Remove old ground children (rect shape + visuals)
+	for child in ground.get_children():
+		child.queue_free()
+
+	# Build curved top surface points
+	var top_points := PackedVector2Array()
+	for i in GROUND_SEGMENTS + 1:
+		var t := float(i) / float(GROUND_SEGMENTS) * 2.0 - 1.0  # -1 to 1
+		var x := t * GROUND_HALF_WIDTH
+		var y := -20.0 - GROUND_CURVE * t * t  # Edges higher than center
+		top_points.append(Vector2(x, y))
+
+	# Full polygon: top curve + bottom flat
+	var full_points := PackedVector2Array()
+	full_points.append_array(top_points)
+	full_points.append(Vector2(GROUND_HALF_WIDTH, 30.0))
+	full_points.append(Vector2(-GROUND_HALF_WIDTH, 30.0))
+
+	# Collision polygon
+	var col_poly := CollisionPolygon2D.new()
+	col_poly.polygon = full_points
+	ground.add_child(col_poly)
+
+	# Ground body visual (brown dirt)
+	var dirt := Polygon2D.new()
+	dirt.polygon = full_points
+	dirt.color = Color(0.376, 0.263, 0.208)
+	ground.add_child(dirt)
+
+	# Grass line on top
+	var grass := Line2D.new()
+	grass.points = top_points
+	grass.width = 6.0
+	grass.default_color = Color(0.416, 0.659, 0.31)
+	ground.add_child(grass)
+
+
+func _setup_center_circle() -> void:
+	center_circle.position = CENTER_CIRCLE_POS
+
+
+func _create_wall(x_pos: float, wall_name: String) -> void:
+	var wall := StaticBody2D.new()
+	wall.name = wall_name
+	wall.position = Vector2(x_pos, WALL_Y)
+	add_child(wall)
+
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(WALL_WIDTH, WALL_HEIGHT)
+	shape.shape = rect
+	wall.add_child(shape)
+
+	var hw := WALL_WIDTH / 2.0
+	var hh := WALL_HEIGHT / 2.0
+	var visual := Polygon2D.new()
+	visual.polygon = PackedVector2Array([
+		Vector2(-hw, -hh), Vector2(hw, -hh),
+		Vector2(hw, hh), Vector2(-hw, hh)])
+	visual.color = Color(0.45, 0.38, 0.33)
+	wall.add_child(visual)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ HUD SETUP                                                                ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _create_bar_polygons() -> void:
 	p1_bar_bg = Polygon2D.new()
@@ -101,20 +227,44 @@ func _create_bar_polygons() -> void:
 
 func _create_countdown_label() -> void:
 	countdown_label = Label.new()
-	countdown_label.add_theme_font_size_override("font_size", 72)
+	countdown_label.add_theme_font_size_override("font_size", 80)
 	countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	countdown_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	countdown_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
 	countdown_label.add_theme_constant_override("shadow_offset_x", 3)
 	countdown_label.add_theme_constant_override("shadow_offset_y", 3)
-	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	countdown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	countdown_label.add_theme_constant_override("outline_size", 4)
+	# Left-aligned so letters stay in place as text grows
+	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	countdown_label.offset_left = 340.0
+	countdown_label.offset_left = 440.0
 	countdown_label.offset_top = 200.0
-	countdown_label.offset_right = 940.0
-	countdown_label.offset_bottom = 340.0
+	countdown_label.offset_right = 900.0
+	countdown_label.offset_bottom = 320.0
 	countdown_label.visible = false
 	$HUD.add_child(countdown_label)
 
+
+func _create_death_phrase_label() -> void:
+	death_phrase_label = Label.new()
+	death_phrase_label.add_theme_font_size_override("font_size", 26)
+	death_phrase_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	death_phrase_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
+	death_phrase_label.add_theme_constant_override("shadow_offset_x", 2)
+	death_phrase_label.add_theme_constant_override("shadow_offset_y", 2)
+	death_phrase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	death_phrase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	death_phrase_label.offset_left = 240.0
+	death_phrase_label.offset_top = 130.0
+	death_phrase_label.offset_right = 1040.0
+	death_phrase_label.offset_bottom = 190.0
+	death_phrase_label.visible = false
+	$HUD.add_child(death_phrase_label)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ COUNTDOWN — "escarGO!" syllable reveal                                   ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _start_countdown() -> void:
 	countdown_active = true
@@ -122,7 +272,10 @@ func _start_countdown() -> void:
 	game_active = false
 	countdown_label.visible = true
 	countdown_label.text = ""
-	# Freeze both players
+	# Players emerge from ground during countdown
+	player1.start_emerge(SPAWN_P1)
+	player2.start_emerge(SPAWN_P2)
+	# Freeze after emerge completes — they can't move until "escarGO!"
 	player1.is_frozen = true
 	player2.is_frozen = true
 
@@ -131,32 +284,37 @@ func _update_countdown(delta: float) -> void:
 	countdown_timer += delta
 
 	if countdown_timer < 1.0:
-		countdown_label.text = "es"
-		countdown_label.add_theme_font_size_override("font_size", 64)
-		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
+		# Players emerging, no text yet
+		countdown_label.text = ""
 	elif countdown_timer < 2.0:
-		countdown_label.text = "car"
-		countdown_label.add_theme_font_size_override("font_size", 64)
+		countdown_label.text = "es.."
+		countdown_label.add_theme_font_size_override("font_size", 80)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	elif countdown_timer < COUNTDOWN_DURATION:
-		countdown_label.text = "GO!"
-		countdown_label.add_theme_font_size_override("font_size", 96)
+	elif countdown_timer < 3.0:
+		countdown_label.text = "escar.."
+		countdown_label.add_theme_font_size_override("font_size", 80)
+		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
+	elif countdown_timer < 3.0 + GO_LINGER:
+		countdown_label.text = "escarGO!"
+		countdown_label.add_theme_font_size_override("font_size", 80)
 		countdown_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.3))
-		# Unfreeze players the moment GO appears
+		# Unfreeze players the moment escarGO! appears
 		if player1.is_frozen:
 			player1.is_frozen = false
 			player2.is_frozen = false
 			game_active = true
 	else:
-		# Countdown fully done — hide label
 		countdown_active = false
 		countdown_label.visible = false
 
 
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ MAIN LOOP                                                                ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
 func _physics_process(delta: float) -> void:
 	if countdown_active:
 		_update_countdown(delta)
-		# Still update HUD during countdown
 		_update_hud()
 		controls_visible_timer += delta
 		if controls_visible_timer > 8.0 and controls_label.visible:
@@ -164,6 +322,7 @@ func _physics_process(delta: float) -> void:
 		return
 
 	if not game_active:
+		_update_death_phrase(delta)
 		return
 
 	_check_blast_zone(player1)
@@ -172,17 +331,24 @@ func _physics_process(delta: float) -> void:
 	_handle_respawn(player2, SPAWN_P2, delta)
 	_check_damage_effects(delta)
 	_update_hud()
+	_update_death_phrase(delta)
+	_update_slime(delta)
 
 	controls_visible_timer += delta
 	if controls_visible_timer > 8.0 and controls_label.visible:
 		controls_label.visible = false
 
 
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ BLAST ZONE / RESPAWN                                                     ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
 func _check_blast_zone(player: Bollard) -> void:
 	if player.is_dead:
 		return
 	if not BLAST_ZONE.has_point(player.global_position):
 		player.die()
+		_show_death_phrase()
 		if player.stocks <= 0:
 			_end_game(player)
 
@@ -199,9 +365,29 @@ func _handle_respawn(player: Bollard, spawn_pos: Vector2, delta: float) -> void:
 	player.set_meta("respawn_timer", t)
 	if t >= RESPAWN_DELAY:
 		player.remove_meta("respawn_timer")
-		player.visible = true
-		player.respawn(spawn_pos)
+		player.start_emerge(spawn_pos)
 
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ DEATH PHRASES                                                            ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _show_death_phrase() -> void:
+	death_phrase_label.text = DEATH_PHRASES[randi() % DEATH_PHRASES.size()]
+	death_phrase_label.visible = true
+	death_phrase_timer = DEATH_PHRASE_DURATION
+
+
+func _update_death_phrase(delta: float) -> void:
+	if death_phrase_timer > 0.0:
+		death_phrase_timer -= delta
+		if death_phrase_timer <= 0.0:
+			death_phrase_label.visible = false
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ GAME OVER / RESTART                                                      ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _end_game(loser: Bollard) -> void:
 	game_active = false
@@ -219,21 +405,76 @@ func _restart_game() -> void:
 	p2_effect.visible = false
 	p1_shake_timer = 0.0
 	p2_shake_timer = 0.0
+	death_phrase_label.visible = false
+	death_phrase_timer = 0.0
+	# Clear slime
+	slime_dots.clear()
+	queue_redraw()
+	# Reset stocks explicitly
 	for p: Bollard in [player1, player2]:
 		p.stocks = 3
 		p.visible = true
+		p.is_dead = false
 		if p.has_meta("respawn_timer"):
 			p.remove_meta("respawn_timer")
-	player1.respawn(SPAWN_P1)
-	player2.respawn(SPAWN_P2)
 	_start_countdown()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_R and not game_active and not countdown_active:
+		if event.keycode == KEY_R and not countdown_active:
 			_restart_game()
 		if event.keycode == KEY_ESCAPE:
 			get_tree().quit()
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ SLIME TRAIL                                                              ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _update_slime(delta: float) -> void:
+	_try_add_slime(player1, delta)
+	_try_add_slime(player2, delta)
+
+	# Age and remove old dots
+	var i := slime_dots.size() - 1
+	while i >= 0:
+		slime_dots[i].age += delta
+		if slime_dots[i].age >= SLIME_LIFETIME:
+			slime_dots.remove_at(i)
+		i -= 1
+
+	queue_redraw()
+
+var _slime_timers := {}
+
+func _try_add_slime(player: Bollard, delta: float) -> void:
+	if player.is_dead or player.is_frozen or player.is_emerging:
+		return
+
+	var pid := player.player_id
+	if not _slime_timers.has(pid):
+		_slime_timers[pid] = 0.0
+	_slime_timers[pid] += delta
+	if _slime_timers[pid] < SLIME_INTERVAL:
+		return
+	_slime_timers[pid] = 0.0
+
+	# Check if touching any static body (surface)
+	for body in player.get_colliding_bodies():
+		if body is StaticBody2D:
+			var pos := player.global_position
+			slime_dots.append({"pos": pos, "color": player.slime_color, "age": 0.0})
+			# Cap total dots
+			if slime_dots.size() > SLIME_MAX_DOTS:
+				slime_dots.pop_front()
+			break
+
+
+func _draw() -> void:
+	for dot in slime_dots:
+		var alpha := clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.5
+		var c := Color(dot.color.r, dot.color.g, dot.color.b, alpha)
+		draw_circle(dot.pos, 5.0, c)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -290,7 +531,7 @@ func _check_damage_effects(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_hud() -> void:
-	# P1 bar fills RIGHT to LEFT (toward screen edge = taller side)
+	# P1 bar fills RIGHT to LEFT
 	var p1_pct := clampf(player1.damage_percent / 150.0, 0.0, 1.0)
 	if p1_pct > 0.005:
 		var fill_left: float = P1_BAR_RIGHT - p1_pct * BAR_MAX_WIDTH
@@ -305,7 +546,7 @@ func _update_hud() -> void:
 	else:
 		p1_bar_fill.polygon = PackedVector2Array()
 
-	# P2 bar fills LEFT to RIGHT (toward screen edge = taller side)
+	# P2 bar fills LEFT to RIGHT
 	var p2_pct := clampf(player2.damage_percent / 150.0, 0.0, 1.0)
 	if p2_pct > 0.005:
 		var fill_right: float = P2_BAR_LEFT + p2_pct * BAR_MAX_WIDTH
@@ -369,7 +610,6 @@ func _setup_input() -> void:
 	_add_key("p1_lower",      KEY_S)
 	_add_key("p1_grab",       KEY_E)
 
-	# Controller P1: left stick = spin, right stick = extend/lower
 	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
 	_add_joy_axis("p1_lean_right", JOY_AXIS_LEFT_X,  1.0, 0)
 	_add_joy_axis("p1_raise",      JOY_AXIS_RIGHT_Y, -1.0, 0)
@@ -383,7 +623,6 @@ func _setup_input() -> void:
 	_add_key("p2_lower",      KEY_DOWN)
 	_add_key("p2_grab",       KEY_SLASH)
 
-	# Controller P2: left stick = spin, right stick = extend/lower
 	_add_joy_axis("p2_lean_left",  JOY_AXIS_LEFT_X, -1.0, 1)
 	_add_joy_axis("p2_lean_right", JOY_AXIS_LEFT_X,  1.0, 1)
 	_add_joy_axis("p2_raise",      JOY_AXIS_RIGHT_Y, -1.0, 1)
