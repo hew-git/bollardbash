@@ -299,22 +299,23 @@ func _closest_point_on_body(body: PhysicsBody2D) -> Vector2:
 	for child in body.get_children():
 		if not (child is CollisionShape2D) or child.disabled:
 			continue
-		var shape := child.shape
-		var shape_pos := body.global_position + child.position.rotated(body.rotation)
+		var shape = child.shape
+		var shape_pos = body.global_position + child.position.rotated(body.rotation)
 
-		var candidate := global_position
+		var candidate = global_position
 		if shape is CircleShape2D:
-			var dir := (global_position - shape_pos).normalized()
-			candidate = shape_pos + dir * shape.radius
+			var cs: CircleShape2D = shape
+			var dir = (global_position - shape_pos).normalized()
+			candidate = shape_pos + dir * cs.radius
 		elif shape is RectangleShape2D:
-			# Closest point on AABB (simplified — ignores body rotation for speed)
-			var half := shape.size * 0.5
-			var local := global_position - shape_pos
+			var rs: RectangleShape2D = shape
+			var half = rs.size * 0.5
+			var local = global_position - shape_pos
 			local.x = clampf(local.x, -half.x, half.x)
 			local.y = clampf(local.y, -half.y, half.y)
 			candidate = shape_pos + local
 
-		var d := global_position.distance_to(candidate)
+		var d = global_position.distance_to(candidate)
 		if d < best_dist:
 			best_dist = d
 			best = candidate
@@ -323,12 +324,12 @@ func _closest_point_on_body(body: PhysicsBody2D) -> Vector2:
 	for child in body.get_children():
 		if not (child is CollisionPolygon2D):
 			continue
-		var poly := child.polygon
+		var poly = child.polygon
 		for i in poly.size():
-			var a := body.global_position + poly[i]
-			var b := body.global_position + poly[(i + 1) % poly.size()]
-			var candidate := _closest_point_on_segment(global_position, a, b)
-			var d := global_position.distance_to(candidate)
+			var a = body.global_position + poly[i]
+			var b = body.global_position + poly[(i + 1) % poly.size()]
+			var candidate = _closest_point_on_segment(global_position, a, b)
+			var d = global_position.distance_to(candidate)
 			if d < best_dist:
 				best_dist = d
 				best = candidate
