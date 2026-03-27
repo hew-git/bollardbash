@@ -535,11 +535,14 @@ func _update_sprites() -> void:
 		spr_body.self_modulate = body_c
 
 	# ── DOME ─────────────────────────────────────────────────────────────
+	# Dome sits on top of body: flat bottom on body top, curve faces up
 	var tip_y := -post_h
 	var dome_sx: float = (hw * 2.0) / TEX_DOME.get_width()
 	var dome_sy: float = (hw) / TEX_DOME.get_height()
 	spr_dome.scale = Vector2(dome_sx, dome_sy)
-	spr_dome.position = Vector2(0, tip_y - hw * 0.5)
+	# Position: dome center is half its scaled height above the body top
+	var dome_h: float = TEX_DOME.get_height() * dome_sy
+	spr_dome.position = Vector2(0, tip_y - dome_h * 0.5)
 	spr_dome.self_modulate = body_c
 
 	# ── STALKS ───────────────────────────────────────────────────────────
