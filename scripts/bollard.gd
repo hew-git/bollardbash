@@ -21,8 +21,7 @@ const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
-const SWING_FORCE := 1200.0
-const GRAB_ANGULAR_DAMP := 12.0
+const GRAB_ANGULAR_DAMP := 2.5
 
 # ── Grab Settings ───────────────────────────────────────────────────────────
 const MAX_GRAB_TIME := 2.0
@@ -138,19 +137,12 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_input(delta: float) -> void:
-	var grabbing_structure := is_grabbing and is_instance_valid(grab_target) and grab_target is StaticBody2D
-
-	if grabbing_structure:
-		# Push the base sideways — pin joint at tip converts this to controlled swing
-		if Input.is_action_pressed(act_lean_left):
-			apply_central_force(Vector2(-SWING_FORCE, 0))
-		if Input.is_action_pressed(act_lean_right):
-			apply_central_force(Vector2(SWING_FORCE, 0))
-	else:
-		if Input.is_action_pressed(act_lean_left):
-			apply_torque(-LEAN_TORQUE)
-		if Input.is_action_pressed(act_lean_right):
-			apply_torque(LEAN_TORQUE)
+	# Lean with torque — always the same whether grabbing or not.
+	# When the tip is pinned by a grab joint, torque swings the body like a pendulum.
+	if Input.is_action_pressed(act_lean_left):
+		apply_torque(-LEAN_TORQUE)
+	if Input.is_action_pressed(act_lean_right):
+		apply_torque(LEAN_TORQUE)
 
 	if Input.is_action_pressed(act_raise):
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
@@ -189,9 +181,10 @@ func _check_launch() -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB — rigid PinJoint at the tip                                         ║
-# ║ Surfaces: tip locks firmly, high angular damp prevents free swing        ║
-# ║ Players: tip grabs the other player, normal rotation for flinging        ║
+# ║ GRAB — PinJoint at the tip (the snail's "hand")                          ║
+# ║ The tip locks onto the target but the body swings freely under gravity.  ║
+# ║ Structures: snail hangs and swings as a pendulum from the grab point.    ║
+# ║ Players: both snails are connected at the tip and move together.         ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _try_grab() -> void:
@@ -211,17 +204,17 @@ func _start_grab(target: PhysicsBody2D) -> void:
 	grab_timer = 0.0
 	grab_target = target
 
-	# Create a rigid pin joint at the tip position
+	# Pin joint at the tip — the "hand" locks onto the target,
+	# but the body still swings freely under gravity like a pendulum.
 	grab_joint = PinJoint2D.new()
 	grab_joint.node_a = get_path()
 	grab_joint.node_b = target.get_path()
-	grab_joint.softness = 0.0  # Completely rigid
+	grab_joint.softness = 0.1  # Slight flex so it doesn't feel rigid/frozen
 	grab_joint.disable_collision = false
 	add_child(grab_joint)
 	grab_joint.global_position = grab_area.global_position
 
-	# Structure grabs: high angular damp so the body doesn't freely swing
-	# The grab point is locked — movement only when the player pushes
+	# Slightly increase angular damp so swing is controllable, not wild
 	if target is StaticBody2D:
 		angular_damp = GRAB_ANGULAR_DAMP
 
@@ -500,10 +493,7 @@ func _ai_retreat(delta: float) -> void:
 
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if is_grabbing and is_instance_valid(grab_target) and grab_target is StaticBody2D:
-		apply_central_force(Vector2(SWING_FORCE * dir, 0))
-	else:
-		apply_torque(LEAN_TORQUE * dir * 0.5)
+	apply_torque(LEAN_TORQUE * dir * 0.5)
 	extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 	if not is_grabbing:
 		_try_grab()
