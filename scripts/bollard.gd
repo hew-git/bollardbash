@@ -21,11 +21,10 @@ const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
-const SWING_FORCE := 5000.0        # Horizontal force when swinging while grabbed
-const GRAB_ANGULAR_DAMP := 2.0     # Slight damp so swing is controllable
-
-# ── Grab Settings ───────────────────────────────────────────────────────────
-const MAX_GRAB_TIME := 2.0
+const GRAB_SWING_FORCE := 4000.0   # Tangential force when leaning while stuck
+const GRAB_SPRING := 8000.0        # How firmly the tip sticks to the anchor
+const GRAB_DAMP := 12.0            # Velocity damping toward/away from anchor
+const GRAB_MAX_TIME := 2.0         # Max seconds you can stay stuck
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
@@ -61,12 +60,13 @@ const INVINCIBLE_TIME := 1.5
 var is_emerging: bool = false
 var emerge_progress: float = 0.0
 
-# ── Grab State ──────────────────────────────────────────────────────────────
+# ── Grab State (Sticky Tip) ────────────────────────────────────────────────
 var is_grabbing: bool = false
 var want_to_grab: bool = false
 var grab_timer: float = 0.0
-var grab_target: Node2D = null
-var grab_joint: PinJoint2D = null
+var grab_target: Node2D = null       # What we stuck to
+var grab_anchor: Vector2 = Vector2.ZERO  # World-space stick point
+var grab_length: float = 0.0         # Distance from anchor to our center when grab started
 
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
@@ -185,23 +185,24 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_input(delta: float) -> void:
-	if is_grabbing and is_instance_valid(grab_joint):
-		# SWING FROM ANCHOR: apply horizontal force at the body center.
-		# The pin joint at the grab point converts this into a pendulum arc,
-		# like swinging a yo-yo. The lean comes from the anchor, not the base.
+	if is_grabbing:
+		# STUCK TO SURFACE: lean applies tangential swing force
 		if Input.is_action_pressed(act_lean_left):
-			apply_central_force(Vector2(-SWING_FORCE, 0))
+			_apply_swing_force(-1.0)
 		if Input.is_action_pressed(act_lean_right):
-			apply_central_force(Vector2(SWING_FORCE, 0))
+			_apply_swing_force(1.0)
+		# Extend/retract changes the tether length while stuck
+		if Input.is_action_pressed(act_raise):
+			grab_length = maxf(grab_length - EXTEND_SPEED * 15.0 * delta, 20.0)
+		if Input.is_action_pressed(act_lower):
+			grab_length = minf(grab_length + EXTEND_SPEED * 15.0 * delta, 200.0)
 	else:
 		# Normal lean: torque rotates the body around the base
 		if Input.is_action_pressed(act_lean_left):
 			apply_torque(-LEAN_TORQUE)
 		if Input.is_action_pressed(act_lean_right):
 			apply_torque(LEAN_TORQUE)
-
-	# Extend/retract — locked while grabbing so the anchor doesn't slide
-	if not is_grabbing:
+		# Extend/retract body
 		if Input.is_action_pressed(act_raise):
 			extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 		if Input.is_action_pressed(act_lower):
@@ -242,65 +243,50 @@ func _check_launch() -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB                                                                      ║
-# ║ Hold the grab button → "ready to grab". Any part of the body (post)     ║
-# ║ that overlaps a surface or player triggers a grab. The anchor is at the  ║
-# ║ contact point on the body. When grabbed, lean applies horizontal force   ║
-# ║ that the pin joint converts into a pendulum swing — like a yo-yo.       ║
+# ║ GRAB — Sticky Tip                                                        ║
+# ║                                                                           ║
+# ║ When the tip of the snail touches a surface while grab is held, it       ║
+# ║ sticks at that point. The snail swings from the anchor under gravity.    ║
+# ║ Lean left/right applies tangential force to swing. Extend/retract        ║
+# ║ changes the tether length. No physics joints — pure force-based.         ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _get_tip_position() -> Vector2:
+	# The tip of the snail body in world space
+	var post_h := lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
+	return to_global(Vector2(0, -post_h))
+
 
 func _try_grab() -> void:
 	if is_grabbing:
 		return
-	# Check the grab area (covers the body/post)
+
+	var tip := _get_tip_position()
+
+	# Check grab area overlaps (covers the body/post)
 	var bodies := grab_area.get_overlapping_bodies()
 	for body in bodies:
 		if body == self:
 			continue
 		if body is PhysicsBody2D:
-			_start_grab(body)
+			_start_grab(body, tip)
 			return
-	# Also check direct body contacts (anything touching our collision shapes)
+	# Also check direct body contacts
 	for body in get_colliding_bodies():
 		if body == self:
 			continue
 		if body is PhysicsBody2D:
-			_start_grab(body)
+			_start_grab(body, tip)
 			return
 
 
-func _get_grab_anchor(target: PhysicsBody2D) -> Vector2:
-	# Find the point on our body (post surface) closest to the target.
-	# This becomes the anchor — the pivot for pendulum swing.
-	var post_h := lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
-	var hw := POST_HALF_WIDTH
-	var local_target := to_local(target.global_position)
-	# Clamp to post rectangle: x in [-hw, hw], y in [-post_h, 0]
-	var clamped := Vector2(
-		clampf(local_target.x, -hw, hw),
-		clampf(local_target.y, -post_h, 0.0)
-	)
-	return to_global(clamped)
-
-
-func _start_grab(target: PhysicsBody2D) -> void:
+func _start_grab(target: PhysicsBody2D, tip_pos: Vector2) -> void:
 	is_grabbing = true
 	grab_timer = 0.0
 	grab_target = target
-
-	var anchor := _get_grab_anchor(target)
-
-	# Pin joint at the anchor point — the body's "hand" locks onto the target.
-	# The snail swings freely under gravity from this point.
-	grab_joint = PinJoint2D.new()
-	grab_joint.node_a = get_path()
-	grab_joint.node_b = target.get_path()
-	grab_joint.softness = 0.0
-	grab_joint.disable_collision = false
-	add_child(grab_joint)
-	grab_joint.global_position = anchor
-
-	angular_damp = GRAB_ANGULAR_DAMP
+	grab_anchor = tip_pos
+	grab_length = (global_position - tip_pos).length()
+	# Keep existing velocity for smooth transition into swing
 
 
 func _release_grab() -> void:
@@ -308,10 +294,18 @@ func _release_grab() -> void:
 		return
 	is_grabbing = false
 	grab_target = null
-	angular_damp = ANGULAR_DAMP_AMOUNT
-	if is_instance_valid(grab_joint):
-		grab_joint.queue_free()
-	grab_joint = null
+
+
+func _apply_swing_force(direction: float) -> void:
+	# Apply force tangent to the arc (perpendicular to the rope)
+	var to_anchor := grab_anchor - global_position
+	var dist := to_anchor.length()
+	if dist < 1.0:
+		return
+	# Tangent is perpendicular to the rope direction
+	var rope_dir := to_anchor / dist
+	var tangent := Vector2(-rope_dir.y, rope_dir.x)  # 90 degrees CCW
+	apply_central_force(tangent * direction * GRAB_SWING_FORCE)
 
 
 func _update_grab(delta: float) -> void:
@@ -320,8 +314,27 @@ func _update_grab(delta: float) -> void:
 			_release_grab()
 			return
 		grab_timer += delta
-		if grab_timer >= MAX_GRAB_TIME:
+		if grab_timer >= GRAB_MAX_TIME:
 			_release_grab()
+			return
+
+		# If the target is moving (another player), track its position
+		if grab_target is RigidBody2D:
+			grab_anchor += grab_target.linear_velocity * delta
+
+		# Enforce tether constraint: spring force pulling us toward the
+		# correct distance from anchor
+		var to_anchor := grab_anchor - global_position
+		var dist := to_anchor.length()
+		if dist > 1.0:
+			var rope_dir := to_anchor / dist
+			var stretch := dist - grab_length
+			# Spring: pull toward correct length
+			apply_central_force(rope_dir * stretch * GRAB_SPRING)
+			# Damp radial velocity (velocity along the rope) to prevent bouncing
+			var radial_vel := linear_velocity.dot(rope_dir)
+			apply_central_force(-rope_dir * radial_vel * GRAB_DAMP)
+
 	elif want_to_grab:
 		_try_grab()
 
@@ -535,11 +548,14 @@ func _update_sprites() -> void:
 		spr_body.self_modulate = body_c
 
 	# ── DOME ─────────────────────────────────────────────────────────────
+	# Dome sits on top of body: flat bottom on body top, curve faces up
 	var tip_y := -post_h
 	var dome_sx: float = (hw * 2.0) / TEX_DOME.get_width()
 	var dome_sy: float = (hw) / TEX_DOME.get_height()
 	spr_dome.scale = Vector2(dome_sx, dome_sy)
-	spr_dome.position = Vector2(0, tip_y - hw * 0.5)
+	# Position: dome center is half its scaled height above the body top
+	var dome_h: float = TEX_DOME.get_height() * dome_sy
+	spr_dome.position = Vector2(0, tip_y - dome_h * 0.5)
 	spr_dome.self_modulate = body_c
 
 	# ── STALKS ───────────────────────────────────────────────────────────
@@ -692,8 +708,8 @@ func _ai_retreat(delta: float) -> void:
 
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if is_grabbing and is_instance_valid(grab_joint):
-		apply_central_force(Vector2(SWING_FORCE * dir, 0))
+	if is_grabbing:
+		_apply_swing_force(dir)
 	else:
 		apply_torque(LEAN_TORQUE * dir * 0.5)
 	if not is_grabbing:

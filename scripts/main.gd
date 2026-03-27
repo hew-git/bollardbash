@@ -148,30 +148,8 @@ func _move_platforms_inward() -> void:
 
 
 func _setup_background() -> void:
-	# Warm diorama backdrop — like a tabletop clay set
-	# Replace: swap Background ColorRect color, or replace with a full-screen Sprite2D
 	var bg: ColorRect = $Background
-	bg.color = Color(0.62, 0.78, 0.88)  # Warm sky
-
-	# Table surface below ground
-	var floor_bg := ColorRect.new()
-	floor_bg.z_index = -9
-	floor_bg.offset_left = -600.0
-	floor_bg.offset_top = 480.0
-	floor_bg.offset_right = 1880.0
-	floor_bg.offset_bottom = 1300.0
-	floor_bg.color = Color(0.42, 0.33, 0.26)
-	add_child(floor_bg)
-
-	# Horizon accent
-	var horizon := ColorRect.new()
-	horizon.z_index = -8
-	horizon.offset_left = -600.0
-	horizon.offset_top = 470.0
-	horizon.offset_right = 1880.0
-	horizon.offset_bottom = 490.0
-	horizon.color = Color(0.52, 0.43, 0.36)
-	add_child(horizon)
+	bg.color = Color(0.53, 0.81, 0.92)  # Light sky blue
 
 
 func _setup_curved_ground() -> void:
@@ -314,9 +292,6 @@ func _create_countdown_label() -> void:
 	countdown_label = Label.new()
 	countdown_label.add_theme_font_size_override("font_size", 80)
 	countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
-	countdown_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	countdown_label.add_theme_constant_override("shadow_offset_x", 3)
-	countdown_label.add_theme_constant_override("shadow_offset_y", 3)
 	countdown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	countdown_label.add_theme_constant_override("outline_size", 4)
 	# Left-aligned so letters stay in place as text grows
@@ -334,9 +309,6 @@ func _create_death_phrase_label() -> void:
 	death_phrase_label = Label.new()
 	death_phrase_label.add_theme_font_size_override("font_size", 46)
 	death_phrase_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	death_phrase_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-	death_phrase_label.add_theme_constant_override("shadow_offset_x", 3)
-	death_phrase_label.add_theme_constant_override("shadow_offset_y", 3)
 	death_phrase_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	death_phrase_label.add_theme_constant_override("outline_size", 4)
 	death_phrase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
