@@ -628,7 +628,6 @@ func _update_sprites() -> void:
 
 	# ── STALKS ───────────────────────────────────────────────────────────
 	# Stalks extend from dome top to eye positions — no gap
-	var dome_h: float = TEX_DOME.get_height() * dome_sy
 	var dome_top_y: float = tip_y - dome_h
 	var left_eye_pos := Vector2(-STALK_SPREAD, dome_top_y - STALK_LENGTH)
 	var right_eye_pos := Vector2(STALK_SPREAD, dome_top_y - STALK_LENGTH)
