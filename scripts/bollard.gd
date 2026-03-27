@@ -21,10 +21,11 @@ const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
-const GRAB_SWING_FORCE := 4000.0   # Tangential force when leaning while stuck
-const GRAB_SPRING := 8000.0        # How firmly the tip sticks to the anchor
-const GRAB_DAMP := 12.0            # Velocity damping toward/away from anchor
-const GRAB_MAX_TIME := 2.0         # Max seconds you can stay stuck
+const GRAB_PULL := 3500.0           # Spring force pulling toward anchor
+const GRAB_SWING := 4500.0         # Tangential force when leaning while grabbed
+const GRAB_DAMP := 8.0             # Radial velocity damping to prevent bounce
+const GRAB_MAX_TIME := 2.5         # Max seconds you can stay grabbed
+const GRAB_RANGE := 120.0          # Max distance to latch onto a surface
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
@@ -60,13 +61,12 @@ const INVINCIBLE_TIME := 1.5
 var is_emerging: bool = false
 var emerge_progress: float = 0.0
 
-# ── Grab State (Sticky Tip) ────────────────────────────────────────────────
+# ── Grab State (Grapple Pull) ──────────────────────────────────────────────
 var is_grabbing: bool = false
 var want_to_grab: bool = false
 var grab_timer: float = 0.0
-var grab_target: Node2D = null       # What we stuck to
-var grab_anchor: Vector2 = Vector2.ZERO  # World-space stick point
-var grab_length: float = 0.0         # Distance from anchor to our center when grab started
+var grab_target: Node2D = null          # What we latched to
+var grab_anchor: Vector2 = Vector2.ZERO # World-space latch point on the surface
 
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
@@ -186,16 +186,16 @@ func _physics_process(delta: float) -> void:
 
 func _process_input(delta: float) -> void:
 	if is_grabbing:
-		# STUCK TO SURFACE: lean applies tangential swing force
+		# GRAPPLE: lean applies tangential swing force around the anchor
 		if Input.is_action_pressed(act_lean_left):
 			_apply_swing_force(-1.0)
 		if Input.is_action_pressed(act_lean_right):
 			_apply_swing_force(1.0)
-		# Extend/retract changes the tether length while stuck
+		# Extend/retract still works while grabbed
 		if Input.is_action_pressed(act_raise):
-			grab_length = maxf(grab_length - EXTEND_SPEED * 15.0 * delta, 20.0)
+			extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 		if Input.is_action_pressed(act_lower):
-			grab_length = minf(grab_length + EXTEND_SPEED * 15.0 * delta, 200.0)
+			extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
 	else:
 		# Normal lean: torque rotates the body around the base
 		if Input.is_action_pressed(act_lean_left):
@@ -243,50 +243,106 @@ func _check_launch() -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB — Sticky Tip                                                        ║
+# ║ GRAB — Grapple Pull                                                      ║
 # ║                                                                           ║
-# ║ When the tip of the snail touches a surface while grab is held, it       ║
-# ║ sticks at that point. The snail swings from the anchor under gravity.    ║
-# ║ Lean left/right applies tangential force to swing. Extend/retract        ║
-# ║ changes the tether length. No physics joints — pure force-based.         ║
+# ║ Press grab near a surface → latch to the closest point on it.           ║
+# ║ A spring force pulls you toward the anchor each frame. Lean left/right  ║
+# ║ applies tangential force to swing around the anchor. Release the grab   ║
+# ║ button to let go instantly, keeping your momentum. No physics joints.    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
-
-func _get_tip_position() -> Vector2:
-	# The tip of the snail body in world space
-	var post_h := lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
-	return to_global(Vector2(0, -post_h))
-
 
 func _try_grab() -> void:
 	if is_grabbing:
 		return
 
-	var tip := _get_tip_position()
+	# Find the nearest body we can grapple to
+	var best_body: PhysicsBody2D = null
+	var best_dist := GRAB_RANGE
 
-	# Check grab area overlaps (covers the body/post)
-	var bodies := grab_area.get_overlapping_bodies()
-	for body in bodies:
+	# Check grab area overlaps
+	for body in grab_area.get_overlapping_bodies():
 		if body == self:
 			continue
 		if body is PhysicsBody2D:
-			_start_grab(body, tip)
-			return
+			var d := global_position.distance_to(body.global_position)
+			if d < best_dist:
+				best_dist = d
+				best_body = body
+
 	# Also check direct body contacts
 	for body in get_colliding_bodies():
 		if body == self:
 			continue
 		if body is PhysicsBody2D:
-			_start_grab(body, tip)
-			return
+			var d := global_position.distance_to(body.global_position)
+			if d < best_dist:
+				best_dist = d
+				best_body = body
+
+	if best_body:
+		_start_grab(best_body)
 
 
-func _start_grab(target: PhysicsBody2D, tip_pos: Vector2) -> void:
+func _start_grab(target: PhysicsBody2D) -> void:
 	is_grabbing = true
 	grab_timer = 0.0
 	grab_target = target
-	grab_anchor = tip_pos
-	grab_length = (global_position - tip_pos).length()
-	# Keep existing velocity for smooth transition into swing
+	# Anchor = closest point on target's surface to us
+	grab_anchor = _closest_point_on_body(target)
+
+
+func _closest_point_on_body(body: PhysicsBody2D) -> Vector2:
+	# Find the closest point on the body's collision shapes to our position
+	var best := body.global_position
+	var best_dist := global_position.distance_to(best)
+
+	for child in body.get_children():
+		if not (child is CollisionShape2D) or child.disabled:
+			continue
+		var shape := child.shape
+		var shape_pos := body.global_position + child.position.rotated(body.rotation)
+
+		var candidate := global_position
+		if shape is CircleShape2D:
+			var dir := (global_position - shape_pos).normalized()
+			candidate = shape_pos + dir * shape.radius
+		elif shape is RectangleShape2D:
+			# Closest point on AABB (simplified — ignores body rotation for speed)
+			var half := shape.size * 0.5
+			var local := global_position - shape_pos
+			local.x = clampf(local.x, -half.x, half.x)
+			local.y = clampf(local.y, -half.y, half.y)
+			candidate = shape_pos + local
+
+		var d := global_position.distance_to(candidate)
+		if d < best_dist:
+			best_dist = d
+			best = candidate
+
+	# Also handle CollisionPolygon2D (ground)
+	for child in body.get_children():
+		if not (child is CollisionPolygon2D):
+			continue
+		var poly := child.polygon
+		for i in poly.size():
+			var a := body.global_position + poly[i]
+			var b := body.global_position + poly[(i + 1) % poly.size()]
+			var candidate := _closest_point_on_segment(global_position, a, b)
+			var d := global_position.distance_to(candidate)
+			if d < best_dist:
+				best_dist = d
+				best = candidate
+
+	return best
+
+
+func _closest_point_on_segment(point: Vector2, a: Vector2, b: Vector2) -> Vector2:
+	var ab := b - a
+	var len_sq := ab.length_squared()
+	if len_sq < 0.001:
+		return a
+	var t := clampf((point - a).dot(ab) / len_sq, 0.0, 1.0)
+	return a + ab * t
 
 
 func _release_grab() -> void:
@@ -297,15 +353,14 @@ func _release_grab() -> void:
 
 
 func _apply_swing_force(direction: float) -> void:
-	# Apply force tangent to the arc (perpendicular to the rope)
 	var to_anchor := grab_anchor - global_position
 	var dist := to_anchor.length()
 	if dist < 1.0:
 		return
-	# Tangent is perpendicular to the rope direction
 	var rope_dir := to_anchor / dist
-	var tangent := Vector2(-rope_dir.y, rope_dir.x)  # 90 degrees CCW
-	apply_central_force(tangent * direction * GRAB_SWING_FORCE)
+	# Tangent = perpendicular to rope, in the direction requested
+	var tangent := Vector2(-rope_dir.y, rope_dir.x)
+	apply_central_force(tangent * direction * GRAB_SWING)
 
 
 func _update_grab(delta: float) -> void:
@@ -318,22 +373,21 @@ func _update_grab(delta: float) -> void:
 			_release_grab()
 			return
 
-		# If the target is moving (another player), track its position
+		# Track moving targets
 		if grab_target is RigidBody2D:
 			grab_anchor += grab_target.linear_velocity * delta
 
-		# Enforce tether constraint: spring force pulling us toward the
-		# correct distance from anchor
+		# Pull toward anchor (grapple hook force)
 		var to_anchor := grab_anchor - global_position
 		var dist := to_anchor.length()
 		if dist > 1.0:
 			var rope_dir := to_anchor / dist
-			var stretch := dist - grab_length
-			# Spring: pull toward correct length
-			apply_central_force(rope_dir * stretch * GRAB_SPRING)
-			# Damp radial velocity (velocity along the rope) to prevent bouncing
+			# Always pull toward anchor
+			apply_central_force(rope_dir * GRAB_PULL)
+			# Damp radial velocity to prevent wild oscillation
 			var radial_vel := linear_velocity.dot(rope_dir)
-			apply_central_force(-rope_dir * radial_vel * GRAB_DAMP)
+			if radial_vel < 0.0:  # Only damp when moving away from anchor
+				apply_central_force(rope_dir * (-radial_vel) * GRAB_DAMP)
 
 	elif want_to_grab:
 		_try_grab()
@@ -367,7 +421,21 @@ func _on_body_entered(body: Node) -> void:
 		var my_ratio: float = my_speed / total
 		var dmg: float = impact * DAMAGE_MULTIPLIER * my_ratio * 2.0
 		var dir: Vector2 = (other.global_position - global_position).normalized()
+		# Shell blocks damage — if we're hitting the other snail's shell
+		# (base area), the hit is deflected and no damage is dealt.
+		if other.has_method("is_shell_hit") and other.is_shell_hit(global_position):
+			return
 		other.take_damage(dmg, dir)
+
+
+func is_shell_hit(attacker_pos: Vector2) -> bool:
+	# Check if the attacker hit our shell (base) area.
+	# The shell sits at our origin. If the attacker's position in our local
+	# space is near the base and not up along the post, it's a shell hit.
+	var local := to_local(attacker_pos)
+	var post_h := lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
+	# Shell zone: y is in the lower 30% of the body (near base) and within shell radius
+	return local.y > -post_h * 0.3 and local.length() < BASE_RADIUS * 1.8
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -559,20 +627,22 @@ func _update_sprites() -> void:
 	spr_dome.self_modulate = body_c
 
 	# ── STALKS ───────────────────────────────────────────────────────────
-	var dome_top_y: float = tip_y - hw
+	# Stalks extend from dome top to eye positions — no gap
+	var dome_h: float = TEX_DOME.get_height() * dome_sy
+	var dome_top_y: float = tip_y - dome_h
 	var left_eye_pos := Vector2(-STALK_SPREAD, dome_top_y - STALK_LENGTH)
 	var right_eye_pos := Vector2(STALK_SPREAD, dome_top_y - STALK_LENGTH)
 
-	var stalk_mid_l := (Vector2(-2, dome_top_y) + left_eye_pos) * 0.5
-	var stalk_mid_r := (Vector2(2, dome_top_y) + right_eye_pos) * 0.5
-	spr_stalk_l.position = stalk_mid_l
-	spr_stalk_r.position = stalk_mid_r
+	# Stalk base starts inside the dome (2px overlap) so there's no gap
+	var stalk_base_y := dome_top_y + 2.0
+	var stalk_total_l := stalk_base_y - left_eye_pos.y
+	var stalk_total_r := stalk_base_y - right_eye_pos.y
+	spr_stalk_l.position = Vector2(-STALK_SPREAD, (stalk_base_y + left_eye_pos.y) * 0.5)
+	spr_stalk_r.position = Vector2(STALK_SPREAD, (stalk_base_y + right_eye_pos.y) * 0.5)
 	spr_stalk_l.self_modulate = body_c
 	spr_stalk_r.self_modulate = body_c
-	# Scale stalks to match actual length
-	var stalk_sy: float = STALK_LENGTH / TEX_STALK.get_height()
-	spr_stalk_l.scale = Vector2(1.0, stalk_sy)
-	spr_stalk_r.scale = Vector2(1.0, stalk_sy)
+	spr_stalk_l.scale = Vector2(1.0, stalk_total_l / TEX_STALK.get_height())
+	spr_stalk_r.scale = Vector2(1.0, stalk_total_r / TEX_STALK.get_height())
 
 	# ── EYES + PUPILS ────────────────────────────────────────────────────
 	var nervousness: float = clampf(damage_percent / 100.0, 0.0, 1.5)
@@ -712,5 +782,4 @@ func _ai_grab_attempt(delta: float) -> void:
 		_apply_swing_force(dir)
 	else:
 		apply_torque(LEAN_TORQUE * dir * 0.5)
-	if not is_grabbing:
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
