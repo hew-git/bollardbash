@@ -126,8 +126,10 @@ func _setup_arena() -> void:
 	_setup_curved_ground()
 	_setup_center_circle()
 	_move_platforms_inward()
+	_clay_platforms()
 	_create_wall(WALL_LEFT_X, "WallLeft")
 	_create_wall(WALL_RIGHT_X, "WallRight")
+	_setup_background()
 
 
 func _move_platforms_inward() -> void:
@@ -137,10 +139,44 @@ func _move_platforms_inward() -> void:
 	$PlatformRight.position.x = 960.0
 
 
+func _setup_background() -> void:
+	# Warm diorama backdrop — like a tabletop clay set
+	var bg: ColorRect = $Background
+	bg.color = Color(0.62, 0.78, 0.88)  # Slightly warmer sky
+
+	# Add a floor-colored rect behind the ground area for depth
+	var floor_bg := ColorRect.new()
+	floor_bg.z_index = -9
+	floor_bg.offset_left = -600.0
+	floor_bg.offset_top = 480.0
+	floor_bg.offset_right = 1880.0
+	floor_bg.offset_bottom = 1300.0
+	floor_bg.color = Color(0.42, 0.33, 0.26)  # Warm brown table surface
+	add_child(floor_bg)
+
+	# Horizon line accent — where sky meets table
+	var horizon := ColorRect.new()
+	horizon.z_index = -8
+	horizon.offset_left = -600.0
+	horizon.offset_top = 470.0
+	horizon.offset_right = 1880.0
+	horizon.offset_bottom = 490.0
+	horizon.color = Color(0.52, 0.43, 0.36)
+	add_child(horizon)
+
+
 func _setup_curved_ground() -> void:
 	# Remove old ground children (rect shape + visuals)
 	for child in ground.get_children():
 		child.queue_free()
+
+	# ── CLAY GROUND COLORS ──
+	var dirt_base := Color(0.42, 0.30, 0.22)     # Warm brown clay dirt
+	var dirt_shadow := dirt_base.darkened(0.35)
+	var dirt_highlight := dirt_base.lightened(0.12)
+	var grass_base := Color(0.45, 0.68, 0.32)     # Bright green clay grass
+	var grass_shadow := grass_base.darkened(0.2)
+	var grass_highlight := grass_base.lightened(0.15)
 
 	# Build curved top surface points
 	var top_points := PackedVector2Array()
@@ -161,22 +197,171 @@ func _setup_curved_ground() -> void:
 	col_poly.polygon = full_points
 	ground.add_child(col_poly)
 
-	# Ground body visual (brown dirt)
+	# Drop shadow (offset down-right, behind everything)
+	var shadow_points := PackedVector2Array()
+	for pt in full_points:
+		shadow_points.append(pt + Vector2(4, 5))
+	var shadow := Polygon2D.new()
+	shadow.polygon = shadow_points
+	shadow.color = dirt_shadow
+	ground.add_child(shadow)
+
+	# Base dirt body
 	var dirt := Polygon2D.new()
 	dirt.polygon = full_points
-	dirt.color = Color(0.376, 0.263, 0.208)
+	dirt.color = dirt_base
 	ground.add_child(dirt)
 
-	# Grass line on top
-	var grass := Line2D.new()
-	grass.points = top_points
-	grass.width = 6.0
-	grass.default_color = Color(0.416, 0.659, 0.31)
-	ground.add_child(grass)
+	# Dirt highlight strip (top area, lighter like light hitting the surface)
+	var hl_points := PackedVector2Array()
+	for i in GROUND_SEGMENTS + 1:
+		var t := float(i) / float(GROUND_SEGMENTS) * 2.0 - 1.0
+		var x := t * GROUND_HALF_WIDTH
+		var y := -20.0 - GROUND_CURVE * t * t
+		hl_points.append(Vector2(x, y))
+	for i in range(GROUND_SEGMENTS, -1, -1):
+		var t := float(i) / float(GROUND_SEGMENTS) * 2.0 - 1.0
+		var x := t * GROUND_HALF_WIDTH
+		var y := -20.0 - GROUND_CURVE * t * t + 8.0  # 8px below top
+		hl_points.append(Vector2(x, y))
+	var hl := Polygon2D.new()
+	hl.polygon = hl_points
+	hl.color = dirt_highlight
+	ground.add_child(hl)
+
+	# Grass layer — thick clay strip along the top curve
+	var grass_top := PackedVector2Array()
+	var grass_bot := PackedVector2Array()
+	for i in GROUND_SEGMENTS + 1:
+		var t := float(i) / float(GROUND_SEGMENTS) * 2.0 - 1.0
+		var x := t * GROUND_HALF_WIDTH
+		var y := -20.0 - GROUND_CURVE * t * t
+		grass_top.append(Vector2(x, y - 4.0))
+		grass_bot.append(Vector2(x, y + 4.0))
+	var grass_poly := PackedVector2Array()
+	grass_poly.append_array(grass_top)
+	for i in range(grass_bot.size() - 1, -1, -1):
+		grass_poly.append(grass_bot[i])
+
+	# Grass shadow (slightly offset)
+	var grass_shadow_poly := PackedVector2Array()
+	for pt in grass_poly:
+		grass_shadow_poly.append(pt + Vector2(2, 2.5))
+	var g_shadow := Polygon2D.new()
+	g_shadow.polygon = grass_shadow_poly
+	g_shadow.color = grass_shadow
+	ground.add_child(g_shadow)
+
+	# Grass base
+	var g_base := Polygon2D.new()
+	g_base.polygon = grass_poly
+	g_base.color = grass_base
+	ground.add_child(g_base)
+
+	# Grass highlight line (top edge catches the light)
+	var g_hl := Line2D.new()
+	g_hl.points = grass_top
+	g_hl.width = 2.5
+	g_hl.default_color = grass_highlight
+	ground.add_child(g_hl)
+
+	# Rounded end caps (small clay circles at ground edges for sculpted look)
+	var left_edge := top_points[0]
+	var right_edge := top_points[top_points.size() - 1]
+	for edge_pt in [left_edge, right_edge]:
+		_make_clay_circle_group(ground, edge_pt, 8.0, dirt_base)
+		_make_clay_circle_group(ground, edge_pt + Vector2(0, -2), 5.0, grass_base)
 
 
 func _setup_center_circle() -> void:
 	center_circle.position = CENTER_CIRCLE_POS
+	# Replace the scene's default visual with a clay-styled one
+	var old_visual := center_circle.get_node_or_null("CenterVisual")
+	if old_visual:
+		old_visual.queue_free()
+
+	var stone_color := Color(0.50, 0.44, 0.38)  # Warm stone clay
+	var r := CENTER_CIRCLE_RADIUS
+
+	# Shadow circle
+	var shadow := _make_circle_polygon(Vector2(3, 4), r + 2, stone_color.darkened(0.4))
+	center_circle.add_child(shadow)
+
+	# Base stone
+	var base := _make_circle_polygon(Vector2.ZERO, r, stone_color)
+	center_circle.add_child(base)
+
+	# Inner highlight (top-left)
+	var hl := _make_circle_polygon(Vector2(-3, -3), r * 0.75, stone_color.lightened(0.1))
+	center_circle.add_child(hl)
+
+	# Specular spot
+	var spec := _make_circle_polygon(Vector2(-r * 0.25, -r * 0.3), r * 0.25, stone_color.lightened(0.25))
+	center_circle.add_child(spec)
+
+	# Dark ring (sculpted groove)
+	var ring := _make_ring_polygon(Vector2.ZERO, r * 0.85, r * 0.9, stone_color.darkened(0.2))
+	center_circle.add_child(ring)
+
+
+func _clay_platforms() -> void:
+	# Restyle the floating platforms with clay block look
+	for plat_info in [
+		{node = $PlatformLeft, visual = "PlatLeftVisual"},
+		{node = $PlatformRight, visual = "PlatRightVisual"}
+	]:
+		var plat: StaticBody2D = plat_info.node
+		var old_vis = plat.get_node_or_null(plat_info.visual)
+		if old_vis:
+			old_vis.queue_free()
+
+		var wood_color := Color(0.44, 0.32, 0.24)  # Warm brown clay wood
+		var hw := 90.0
+		var hh := 8.0
+
+		# Shadow
+		var shadow := Polygon2D.new()
+		shadow.polygon = PackedVector2Array([
+			Vector2(-hw + 3, -hh + 3), Vector2(hw + 3, -hh + 3),
+			Vector2(hw + 3, hh + 3), Vector2(-hw + 3, hh + 3)])
+		shadow.color = wood_color.darkened(0.4)
+		plat.add_child(shadow)
+
+		# Base block
+		var base := Polygon2D.new()
+		base.polygon = PackedVector2Array([
+			Vector2(-hw, -hh), Vector2(hw, -hh),
+			Vector2(hw, hh), Vector2(-hw, hh)])
+		base.color = wood_color
+		plat.add_child(base)
+
+		# Top highlight strip
+		var top_hl := Polygon2D.new()
+		top_hl.polygon = PackedVector2Array([
+			Vector2(-hw + 2, -hh), Vector2(hw - 2, -hh),
+			Vector2(hw - 2, -hh + 3), Vector2(-hw + 2, -hh + 3)])
+		top_hl.color = wood_color.lightened(0.15)
+		plat.add_child(top_hl)
+
+		# Bottom shadow strip
+		var bot_sh := Polygon2D.new()
+		bot_sh.polygon = PackedVector2Array([
+			Vector2(-hw + 2, hh - 2), Vector2(hw - 2, hh - 2),
+			Vector2(hw - 2, hh), Vector2(-hw + 2, hh)])
+		bot_sh.color = wood_color.darkened(0.15)
+		plat.add_child(bot_sh)
+
+		# Center specular line
+		var spec := Polygon2D.new()
+		spec.polygon = PackedVector2Array([
+			Vector2(-hw * 0.6, -hh + 2), Vector2(hw * 0.3, -hh + 2),
+			Vector2(hw * 0.3, -hh + 4), Vector2(-hw * 0.6, -hh + 4)])
+		spec.color = wood_color.lightened(0.22)
+		plat.add_child(spec)
+
+		# Rounded end caps
+		for xdir in [-1.0, 1.0]:
+			_make_clay_circle_group(plat, Vector2(xdir * hw, 0), hh, wood_color)
 
 
 func _create_wall(x_pos: float, wall_name: String) -> void:
@@ -193,12 +378,120 @@ func _create_wall(x_pos: float, wall_name: String) -> void:
 
 	var hw := WALL_WIDTH / 2.0
 	var hh := WALL_HEIGHT / 2.0
-	var visual := Polygon2D.new()
-	visual.polygon = PackedVector2Array([
+	var wall_color := Color(0.50, 0.42, 0.36)  # Warm stone clay
+
+	# Drop shadow
+	var shadow := Polygon2D.new()
+	shadow.polygon = PackedVector2Array([
+		Vector2(-hw + 4, -hh + 4), Vector2(hw + 4, -hh + 4),
+		Vector2(hw + 4, hh + 4), Vector2(-hw + 4, hh + 4)])
+	shadow.color = wall_color.darkened(0.4)
+	wall.add_child(shadow)
+
+	# Base block
+	var base := Polygon2D.new()
+	base.polygon = PackedVector2Array([
 		Vector2(-hw, -hh), Vector2(hw, -hh),
 		Vector2(hw, hh), Vector2(-hw, hh)])
-	visual.color = Color(0.45, 0.38, 0.33)
-	wall.add_child(visual)
+	base.color = wall_color
+	wall.add_child(base)
+
+	# Left edge shadow (away from light)
+	var left_sh := Polygon2D.new()
+	left_sh.polygon = PackedVector2Array([
+		Vector2(-hw, -hh), Vector2(-hw + 3, -hh),
+		Vector2(-hw + 3, hh), Vector2(-hw, hh)])
+	left_sh.color = wall_color.darkened(0.15)
+	wall.add_child(left_sh)
+
+	# Right edge shadow
+	var right_sh := Polygon2D.new()
+	right_sh.polygon = PackedVector2Array([
+		Vector2(hw - 2, -hh), Vector2(hw, -hh),
+		Vector2(hw, hh), Vector2(hw - 2, hh)])
+	right_sh.color = wall_color.darkened(0.08)
+	wall.add_child(right_sh)
+
+	# Center-left highlight strip (where light hits)
+	var hl := Polygon2D.new()
+	var hl_x := -hw + WALL_WIDTH * 0.28
+	var hl_w := WALL_WIDTH * 0.28
+	hl.polygon = PackedVector2Array([
+		Vector2(hl_x, -hh + 2), Vector2(hl_x + hl_w, -hh + 2),
+		Vector2(hl_x + hl_w, hh - 2), Vector2(hl_x, hh - 2)])
+	hl.color = wall_color.lightened(0.12)
+	wall.add_child(hl)
+
+	# Specular thin strip
+	var sp := Polygon2D.new()
+	var sp_x := -hw + WALL_WIDTH * 0.32
+	var sp_w := WALL_WIDTH * 0.08
+	sp.polygon = PackedVector2Array([
+		Vector2(sp_x, -hh + 5), Vector2(sp_x + sp_w, -hh + 5),
+		Vector2(sp_x + sp_w, hh - 5), Vector2(sp_x, hh - 5)])
+	sp.color = wall_color.lightened(0.22)
+	wall.add_child(sp)
+
+	# Rounded top cap
+	_make_clay_circle_group(wall, Vector2(0, -hh), hw, wall_color)
+	# Rounded bottom cap
+	_make_clay_circle_group(wall, Vector2(0, hh), hw, wall_color)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ CLAY SHAPE HELPERS + SPRITE TRANSITION GUIDE                            ║
+# ║                                                                          ║
+# ║ All arena elements use layered Polygon2D shapes for a 3D clay look.     ║
+# ║ To replace any arena piece with a sprite:                                ║
+# ║   1. Create a PNG at the noted size below                                ║
+# ║   2. Add a Sprite2D child to the relevant StaticBody2D node              ║
+# ║   3. Assign your PNG as the texture                                      ║
+# ║   4. Remove/comment the Polygon2D creation code for that piece           ║
+# ║                                                                          ║
+# ║ ARENA PARTS:                                                             ║
+# ║   Ground      — ~990x50, origin at Ground node (640, 520)               ║
+# ║   Grass strip — ~990x8, sits on top edge of ground                      ║
+# ║   Walls       — 20x200 each, at (30, 300) and (1250, 300)              ║
+# ║   Platforms   — 180x16 each, at (~320, 330) and (~960, 330)            ║
+# ║   Center rock — 60x60 circle, at (640, 190)                             ║
+# ║   Background  — full screen, sky + table surface                        ║
+# ║                                                                          ║
+# ║ Light direction: top-left (consistent with bollard.gd)                  ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _make_clay_circle_group(parent: Node, center: Vector2, radius: float, base_color: Color) -> void:
+	var shadow := _make_circle_polygon(center + Vector2(2, 2.5), radius, base_color.darkened(0.35))
+	parent.add_child(shadow)
+	var base := _make_circle_polygon(center, radius, base_color)
+	parent.add_child(base)
+	var hl := _make_circle_polygon(center + Vector2(-radius * 0.2, -radius * 0.25), radius * 0.5, base_color.lightened(0.15))
+	parent.add_child(hl)
+
+
+func _make_circle_polygon(center: Vector2, radius: float, color: Color, segments: int = 16) -> Polygon2D:
+	var pts := PackedVector2Array()
+	for i in segments:
+		var angle := float(i) / float(segments) * TAU
+		pts.append(center + Vector2(cos(angle), sin(angle)) * radius)
+	var poly := Polygon2D.new()
+	poly.polygon = pts
+	poly.color = color
+	return poly
+
+
+func _make_ring_polygon(center: Vector2, inner_r: float, outer_r: float, color: Color, segments: int = 24) -> Polygon2D:
+	# Approximate a ring as a series of quads
+	var pts := PackedVector2Array()
+	for i in segments:
+		var angle := float(i) / float(segments) * TAU
+		pts.append(center + Vector2(cos(angle), sin(angle)) * outer_r)
+	for i in range(segments - 1, -1, -1):
+		var angle := float(i) / float(segments) * TAU
+		pts.append(center + Vector2(cos(angle), sin(angle)) * inner_r)
+	var poly := Polygon2D.new()
+	poly.polygon = pts
+	poly.color = color
+	return poly
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -497,7 +790,10 @@ func _draw() -> void:
 	for dot in slime_dots:
 		var alpha := clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.5
 		var c := Color(dot.color.r, dot.color.g, dot.color.b, alpha)
+		# Clay-style slime: shadow + base + highlight
+		draw_circle(dot.pos + Vector2(1.5, 1.5), 5.5, Color(0, 0, 0, alpha * 0.25))
 		draw_circle(dot.pos, 5.0, c)
+		draw_circle(dot.pos + Vector2(-1.2, -1.2), 2.5, Color(c.r + 0.1, c.g + 0.1, c.b + 0.1, alpha * 0.6))
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
