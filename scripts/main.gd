@@ -125,8 +125,16 @@ func _ready() -> void:
 func _setup_arena() -> void:
 	_setup_curved_ground()
 	_setup_center_circle()
+	_move_platforms_inward()
 	_create_wall(WALL_LEFT_X, "WallLeft")
 	_create_wall(WALL_RIGHT_X, "WallRight")
+
+
+func _move_platforms_inward() -> void:
+	# Move floating horizontal platforms closer to center so there's a bigger gap
+	# between them and the side walls
+	$PlatformLeft.position.x = 320.0
+	$PlatformRight.position.x = 960.0
 
 
 func _setup_curved_ground() -> void:
@@ -247,11 +255,13 @@ func _create_countdown_label() -> void:
 
 func _create_death_phrase_label() -> void:
 	death_phrase_label = Label.new()
-	death_phrase_label.add_theme_font_size_override("font_size", 26)
+	death_phrase_label.add_theme_font_size_override("font_size", 46)
 	death_phrase_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
-	death_phrase_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.6))
-	death_phrase_label.add_theme_constant_override("shadow_offset_x", 2)
-	death_phrase_label.add_theme_constant_override("shadow_offset_y", 2)
+	death_phrase_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+	death_phrase_label.add_theme_constant_override("shadow_offset_x", 3)
+	death_phrase_label.add_theme_constant_override("shadow_offset_y", 3)
+	death_phrase_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	death_phrase_label.add_theme_constant_override("outline_size", 4)
 	death_phrase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	death_phrase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	death_phrase_label.offset_left = 240.0
@@ -272,10 +282,13 @@ func _start_countdown() -> void:
 	game_active = false
 	countdown_label.visible = true
 	countdown_label.text = ""
-	# Players emerge from ground during countdown
+	# Players load in IMMEDIATELY — visible and emerging from ground right away
+	for p: Bollard in [player1, player2]:
+		p.visible = true
+		p.is_dead = false
 	player1.start_emerge(SPAWN_P1)
 	player2.start_emerge(SPAWN_P2)
-	# Freeze after emerge completes — they can't move until "escarGO!"
+	# Freeze after emerge — they can't move until "escarGO!"
 	player1.is_frozen = true
 	player2.is_frozen = true
 
@@ -410,11 +423,21 @@ func _restart_game() -> void:
 	# Clear slime
 	slime_dots.clear()
 	queue_redraw()
-	# Reset stocks explicitly
+	# Hard-reset BOTH players before countdown starts
 	for p: Bollard in [player1, player2]:
 		p.stocks = 3
-		p.visible = true
 		p.is_dead = false
+		p.is_frozen = false
+		p.is_emerging = false
+		p.is_grabbing = false
+		p.want_to_grab = false
+		p.damage_percent = 0.0
+		p.extend_amount = 0.5
+		p.linear_velocity = Vector2.ZERO
+		p.angular_velocity = 0.0
+		p.rotation = 0.0
+		p.visible = true
+		p.is_invincible = false
 		if p.has_meta("respawn_timer"):
 			p.remove_meta("respawn_timer")
 	_start_countdown()
