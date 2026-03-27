@@ -177,22 +177,27 @@ func _setup_curved_ground() -> void:
 
 	# ── VISUAL: dirt body sprite ──────────────────────────────────────
 	# Replace: swap sprites/arena/ground_dirt.png (200x50 → stretched to 990x50)
+	# Position so top edge aligns with collision surface at center (local y=-20)
+	var dirt_h := 40.0  # visual dirt height
 	var dirt_spr := Sprite2D.new()
 	dirt_spr.texture = TEX_DIRT
 	dirt_spr.scale = Vector2(
 		(GROUND_HALF_WIDTH * 2.0) / TEX_DIRT.get_width(),
-		50.0 / TEX_DIRT.get_height())
-	dirt_spr.position = Vector2(0, -5)  # Center of ground body
+		dirt_h / TEX_DIRT.get_height())
+	# Top edge at y=-20 → center at y=-20 + dirt_h/2 = y=0
+	dirt_spr.position = Vector2(0, 0)
 	ground.add_child(dirt_spr)
 
 	# ── VISUAL: grass strip sprite ────────────────────────────────────
-	# Replace: swap sprites/arena/ground_grass.png (200x10 → stretched to 990x10)
+	# Replace: swap sprites/arena/ground_grass.png (200x10 → stretched to 990x8)
+	var grass_h := 8.0
 	var grass_spr := Sprite2D.new()
 	grass_spr.texture = TEX_GRASS
 	grass_spr.scale = Vector2(
 		(GROUND_HALF_WIDTH * 2.0) / TEX_GRASS.get_width(),
-		10.0 / TEX_GRASS.get_height())
-	grass_spr.position = Vector2(0, -22)  # On top edge of dirt
+		grass_h / TEX_GRASS.get_height())
+	# Grass sits on top of collision surface: top at y=-20-grass_h, center at y=-20-grass_h/2
+	grass_spr.position = Vector2(0, -20.0 - grass_h * 0.5)
 	grass_spr.z_index = 1
 	ground.add_child(grass_spr)
 
