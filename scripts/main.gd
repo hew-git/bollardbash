@@ -454,9 +454,9 @@ func _update_slomo_and_flashes(delta: float) -> void:
 			f.node.queue_free()
 			impact_flashes.remove_at(i)
 		else:
-			var progress := 1.0 - f.timer / FLASH_DURATION
-			# Expand outward and fade
-			var s := lerpf(3.0, 8.0, progress)
+			var t: float = f.timer
+			var progress: float = 1.0 - t / FLASH_DURATION
+			var s: float = lerpf(3.0, 8.0, progress)
 			f.node.scale = Vector2(s, s)
 			f.node.self_modulate.a = lerpf(1.0, 0.0, progress)
 		i -= 1
