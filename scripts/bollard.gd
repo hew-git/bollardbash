@@ -581,8 +581,9 @@ func _update_shell_toss(delta: float) -> void:
 		for hit in hits:
 			var collider = hit.collider
 			if collider is RigidBody2D and collider != self and collider.has_method("take_damage"):
-				var dir := (collider.global_position - shell_toss_pos).normalized()
-				collider.take_damage(SHELL_TOSS_DAMAGE, dir)
+				var target_body: RigidBody2D = collider
+				var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
+				target_body.take_damage(SHELL_TOSS_DAMAGE, dir)
 				shell_toss_hit = true
 				# Bounce shell off the hit target
 				shell_toss_vel = -shell_toss_vel * 0.3
