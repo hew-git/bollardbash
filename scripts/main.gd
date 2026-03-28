@@ -175,31 +175,26 @@ func _setup_curved_ground() -> void:
 	col_poly.polygon = full_points
 	ground.add_child(col_poly)
 
-	# ── VISUAL: dirt body sprite ──────────────────────────────────────
-	# Replace: swap sprites/arena/ground_dirt.png (200x50 → stretched to 990x50)
-	# Position so top edge aligns with collision surface at center (local y=-20)
-	var dirt_h := 40.0  # visual dirt height
-	var dirt_spr := Sprite2D.new()
-	dirt_spr.texture = TEX_DIRT
-	dirt_spr.scale = Vector2(
-		(GROUND_HALF_WIDTH * 2.0) / TEX_DIRT.get_width(),
-		dirt_h / TEX_DIRT.get_height())
-	# Top edge at y=-20 → center at y=-20 + dirt_h/2 = y=0
-	dirt_spr.position = Vector2(0, 0)
-	ground.add_child(dirt_spr)
+	# ── VISUAL: dirt body (Polygon2D matching the curved collision shape) ─
+	var dirt_poly := Polygon2D.new()
+	dirt_poly.polygon = full_points
+	dirt_poly.color = Color(0.55, 0.36, 0.24)  # Warm brown dirt
+	ground.add_child(dirt_poly)
 
-	# ── VISUAL: grass strip sprite ────────────────────────────────────
-	# Replace: swap sprites/arena/ground_grass.png (200x10 → stretched to 990x8)
-	var grass_h := 8.0
-	var grass_spr := Sprite2D.new()
-	grass_spr.texture = TEX_GRASS
-	grass_spr.scale = Vector2(
-		(GROUND_HALF_WIDTH * 2.0) / TEX_GRASS.get_width(),
-		grass_h / TEX_GRASS.get_height())
-	# Grass sits on top of collision surface: top at y=-20-grass_h, center at y=-20-grass_h/2
-	grass_spr.position = Vector2(0, -20.0 - grass_h * 0.5)
-	grass_spr.z_index = 1
-	ground.add_child(grass_spr)
+	# ── VISUAL: grass strip (thin curved polygon on top of the dirt) ──────
+	var grass_thickness := 6.0
+	var grass_points := PackedVector2Array()
+	# Top edge: offset upward from collision surface
+	for i in GROUND_SEGMENTS + 1:
+		grass_points.append(top_points[i] + Vector2(0, -grass_thickness))
+	# Bottom edge: the collision surface itself (reversed order)
+	for i in range(GROUND_SEGMENTS, -1, -1):
+		grass_points.append(top_points[i])
+	var grass_poly := Polygon2D.new()
+	grass_poly.polygon = grass_points
+	grass_poly.color = Color(0.35, 0.65, 0.25)  # Green grass
+	grass_poly.z_index = 1
+	ground.add_child(grass_poly)
 
 
 func _setup_center_circle() -> void:
@@ -490,6 +485,12 @@ func _restart_game() -> void:
 		p.is_emerging = false
 		p.is_grabbing = false
 		p.want_to_grab = false
+		p.is_charging = false
+		p.charge_amount = 0.0
+		p.is_dashing = false
+		p.charge_cooldown = 0.0
+		p.shell_missing = false
+		p.shell_toss_cooldown = 0.0
 		p.damage_percent = 0.0
 		p.extend_amount = 0.5
 		p.linear_velocity = Vector2.ZERO
@@ -698,6 +699,8 @@ func _setup_input() -> void:
 	_add_key("p1_raise",      KEY_W)
 	_add_key("p1_lower",      KEY_S)
 	_add_key("p1_grab",       KEY_E)
+	_add_key("p1_charge",     KEY_Q)
+	_add_key("p1_toss",       KEY_F)
 
 	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
 	_add_joy_axis("p1_lean_right", JOY_AXIS_LEFT_X,  1.0, 0)
@@ -705,12 +708,16 @@ func _setup_input() -> void:
 	_add_joy_axis("p1_lower",      JOY_AXIS_RIGHT_Y,  1.0, 0)
 	_add_joy_button("p1_grab",     JOY_BUTTON_RIGHT_SHOULDER, 0)
 	_add_joy_button("p1_grab",     JOY_BUTTON_A, 0)
+	_add_joy_button("p1_charge",   JOY_BUTTON_X, 0)
+	_add_joy_button("p1_toss",     JOY_BUTTON_Y, 0)
 
 	_add_key("p2_lean_left",  KEY_LEFT)
 	_add_key("p2_lean_right", KEY_RIGHT)
 	_add_key("p2_raise",      KEY_UP)
 	_add_key("p2_lower",      KEY_DOWN)
 	_add_key("p2_grab",       KEY_SLASH)
+	_add_key("p2_charge",     KEY_SHIFT)
+	_add_key("p2_toss",       KEY_PERIOD)
 
 	_add_joy_axis("p2_lean_left",  JOY_AXIS_LEFT_X, -1.0, 1)
 	_add_joy_axis("p2_lean_right", JOY_AXIS_LEFT_X,  1.0, 1)
@@ -718,6 +725,8 @@ func _setup_input() -> void:
 	_add_joy_axis("p2_lower",      JOY_AXIS_RIGHT_Y,  1.0, 1)
 	_add_joy_button("p2_grab",     JOY_BUTTON_RIGHT_SHOULDER, 1)
 	_add_joy_button("p2_grab",     JOY_BUTTON_A, 1)
+	_add_joy_button("p2_charge",   JOY_BUTTON_X, 1)
+	_add_joy_button("p2_toss",     JOY_BUTTON_Y, 1)
 
 	for action in ["p1_lean_left", "p1_lean_right", "p1_raise", "p1_lower",
 					"p2_lean_left", "p2_lean_right", "p2_raise", "p2_lower"]:

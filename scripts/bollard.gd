@@ -25,6 +25,22 @@ const GRAB_LATCH_TIME := 0.3        # Seconds locked to surface before auto-flin
 const GRAB_FLING_MULT := 2.2        # Velocity multiplier on release
 const GRAB_RANGE := 120.0           # Max distance to latch onto a surface
 
+# ── Charge Attack ───────────────────────────────────────────────────────────
+const CHARGE_TIME := 0.8            # Seconds to reach full charge
+const CHARGE_IMPULSE := 800.0       # Impulse at full charge
+const CHARGE_DAMAGE := 15.0         # Damage dealt on charged hit
+const CHARGE_HIT_RADIUS := 40.0     # Radius to detect hits during dash
+const CHARGE_DASH_TIME := 0.25      # Duration of the dash (invulnerable burst)
+const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
+
+# ── Shell Toss ──────────────────────────────────────────────────────────────
+const SHELL_TOSS_SPEED := 600.0     # Speed of thrown shell
+const SHELL_TOSS_DAMAGE := 12.0     # Damage on hit
+const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
+const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
+const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
+const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
+
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
 const STALK_LENGTH := 14.0
@@ -67,6 +83,22 @@ var grab_target: Node2D = null          # What we latched to
 var grab_anchor: Vector2 = Vector2.ZERO # World-space latch point on the surface
 var grab_entry_vel: Vector2 = Vector2.ZERO  # Velocity when grab started
 
+# ── Charge Attack State ────────────────────────────────────────────────────
+var is_charging: bool = false
+var charge_amount: float = 0.0          # 0..1
+var charge_dir: float = 0.0            # -1 or 1
+var is_dashing: bool = false
+var dash_timer: float = 0.0
+var charge_cooldown: float = 0.0
+
+# ── Shell Toss State ──────────────────────────────────────────────────────
+var shell_missing: bool = false         # True while shell is flying
+var shell_toss_pos: Vector2 = Vector2.ZERO
+var shell_toss_vel: Vector2 = Vector2.ZERO
+var shell_toss_timer: float = 0.0
+var shell_toss_cooldown: float = 0.0
+var shell_toss_hit: bool = false        # Already hit someone this throw
+
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
 
@@ -90,6 +122,8 @@ var act_lean_right: String
 var act_raise: String
 var act_lower: String
 var act_grab: String
+var act_charge: String
+var act_toss: String
 
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var base_shape: CollisionShape2D = $BaseShape
@@ -111,6 +145,8 @@ var spr_pupil_r: Sprite2D
 var spr_eye_hl_l: Sprite2D
 var spr_eye_hl_r: Sprite2D
 var spr_grab: Sprite2D
+var spr_thrown_shell: Sprite2D   # The shell projectile when tossed
+var spr_thrown_spiral: Sprite2D  # Spiral overlay on thrown shell
 # Blink lines drawn over eyes (Line2D since there's no blink sprite)
 var blink_line_l: Line2D
 var blink_line_r: Line2D
@@ -123,6 +159,8 @@ func _ready() -> void:
 	act_raise = prefix + "raise"
 	act_lower = prefix + "lower"
 	act_grab = prefix + "grab"
+	act_charge = prefix + "charge"
+	act_toss = prefix + "toss"
 
 	contact_monitor = true
 	max_contacts_reported = 8
@@ -173,6 +211,8 @@ func _physics_process(delta: float) -> void:
 
 	_update_collision_shape()
 	_update_grab(delta)
+	_update_charge(delta)
+	_update_shell_toss(delta)
 	_check_launch()
 	_update_invincibility(delta)
 	_update_blink(delta)
@@ -184,11 +224,39 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_input(delta: float) -> void:
-	# Lean and extend always work (no special grab-mode controls)
+	# During dash, no input — you're flying
+	if is_dashing:
+		return
+
+	# Read lean direction
+	var lean_dir := 0.0
 	if Input.is_action_pressed(act_lean_left):
-		apply_torque(-LEAN_TORQUE)
-	if Input.is_action_pressed(act_lean_right):
-		apply_torque(LEAN_TORQUE)
+		lean_dir = -1.0
+	elif Input.is_action_pressed(act_lean_right):
+		lean_dir = 1.0
+
+	# ── Charge Attack: hold charge + lean to build up, release to dash ───
+	if Input.is_action_pressed(act_charge) and charge_cooldown <= 0.0 and not shell_missing:
+		is_charging = true
+		if lean_dir != 0.0:
+			charge_dir = lean_dir
+		charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
+		# While charging: slower movement, can still lean to aim
+		if lean_dir != 0.0:
+			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
+		return
+	elif is_charging:
+		# Released charge button — fire the dash
+		_start_charge_dash()
+		return
+
+	# ── Shell Toss: press toss to throw shell ────────────────────────────
+	if Input.is_action_just_pressed(act_toss) and not shell_missing and shell_toss_cooldown <= 0.0:
+		_start_shell_toss(lean_dir)
+
+	# Normal movement
+	if lean_dir != 0.0:
+		apply_torque(LEAN_TORQUE * lean_dir)
 	if Input.is_action_pressed(act_raise):
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 	if Input.is_action_pressed(act_lower):
@@ -392,6 +460,145 @@ func _update_grab(delta: float) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ CHARGE ATTACK                                                            ║
+# ║                                                                           ║
+# ║ Hold charge + lean direction to build up power (0.8s to full).           ║
+# ║ Release to dash in that direction. Full charge = big impulse + damage.   ║
+# ║ During dash you're briefly invulnerable.                                 ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _start_charge_dash() -> void:
+	if charge_amount < 0.15:
+		# Too little charge — cancel
+		is_charging = false
+		charge_amount = 0.0
+		return
+	is_charging = false
+	is_dashing = true
+	dash_timer = 0.0
+	# Dash direction: use charge_dir, default to facing direction
+	if charge_dir == 0.0:
+		charge_dir = 1.0 if cos(rotation) >= 0.0 else -1.0
+	var impulse_strength := CHARGE_IMPULSE * charge_amount
+	var dash_vec := Vector2(charge_dir * impulse_strength, -impulse_strength * 0.3)
+	apply_central_impulse(dash_vec)
+	charge_amount = 0.0
+
+
+func _update_charge(delta: float) -> void:
+	if charge_cooldown > 0.0:
+		charge_cooldown -= delta
+
+	if is_dashing:
+		dash_timer += delta
+		# Check for hits during dash
+		_check_charge_hits()
+		if dash_timer >= CHARGE_DASH_TIME:
+			is_dashing = false
+			charge_cooldown = CHARGE_COOLDOWN
+
+
+func _check_charge_hits() -> void:
+	for body in get_colliding_bodies():
+		if body == self or not (body is RigidBody2D):
+			continue
+		if not body.has_method("take_damage"):
+			continue
+		var dist := global_position.distance_to(body.global_position)
+		if dist < CHARGE_HIT_RADIUS:
+			var dir := (body.global_position - global_position).normalized()
+			# Shell blocks charge too
+			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
+				# Bounce off the shell
+				linear_velocity = linear_velocity.bounce(dir) * 0.5
+				is_dashing = false
+				charge_cooldown = CHARGE_COOLDOWN
+				return
+			body.take_damage(CHARGE_DAMAGE, dir)
+			is_dashing = false
+			charge_cooldown = CHARGE_COOLDOWN
+			return
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ SHELL TOSS                                                               ║
+# ║                                                                           ║
+# ║ Press toss to throw your shell as a projectile. It arcs with gravity,   ║
+# ║ bounces off surfaces, and damages the opponent on hit. While the shell   ║
+# ║ is gone you have no shell shield — is_shell_hit() returns false.         ║
+# ║ Shell returns after a few seconds.                                       ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _start_shell_toss(lean_dir: float) -> void:
+	shell_missing = true
+	shell_toss_hit = false
+	shell_toss_timer = 0.0
+	# Launch from the shell position (base of snail)
+	shell_toss_pos = global_position
+	# Direction: lean direction or facing direction
+	var toss_dir := lean_dir
+	if toss_dir == 0.0:
+		toss_dir = 1.0 if cos(rotation) >= 0.0 else -1.0
+	shell_toss_vel = Vector2(toss_dir * SHELL_TOSS_SPEED, -SHELL_TOSS_SPEED * 0.4)
+
+
+func _update_shell_toss(delta: float) -> void:
+	if shell_toss_cooldown > 0.0:
+		shell_toss_cooldown -= delta
+
+	if not shell_missing:
+		return
+
+	shell_toss_timer += delta
+
+	# Apply gravity
+	shell_toss_vel.y += SHELL_GRAVITY * delta
+	shell_toss_pos += shell_toss_vel * delta
+
+	# Simple ground/wall bounce using raycasting
+	var space := get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(
+		shell_toss_pos - shell_toss_vel.normalized() * 5.0,
+		shell_toss_pos)
+	query.exclude = [get_rid()]
+	var result := space.intersect_ray(query)
+	if result:
+		shell_toss_pos = result.position + result.normal * 5.0
+		shell_toss_vel = shell_toss_vel.bounce(result.normal) * SHELL_BOUNCE
+
+	# Check hit on other snails
+	if not shell_toss_hit:
+		for body in get_tree().get_nodes_in_group(""):
+			pass  # We'll check differently
+		# Use a direct space query for nearby bodies
+		var shape_query := PhysicsShapeQueryParameters2D.new()
+		var circle := CircleShape2D.new()
+		circle.radius = BASE_RADIUS
+		shape_query.shape = circle
+		shape_query.transform = Transform2D(0.0, shell_toss_pos)
+		shape_query.exclude = [get_rid()]
+		var hits := space.intersect_shape(shape_query, 4)
+		for hit in hits:
+			var collider = hit.collider
+			if collider is RigidBody2D and collider != self and collider.has_method("take_damage"):
+				var dir := (collider.global_position - shell_toss_pos).normalized()
+				collider.take_damage(SHELL_TOSS_DAMAGE, dir)
+				shell_toss_hit = true
+				# Bounce shell off the hit target
+				shell_toss_vel = -shell_toss_vel * 0.3
+				break
+
+	# Return shell after time expires
+	if shell_toss_timer >= SHELL_RETURN_TIME:
+		_return_shell()
+
+
+func _return_shell() -> void:
+	shell_missing = false
+	shell_toss_cooldown = SHELL_TOSS_COOLDOWN
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ COMBAT                                                                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -427,9 +634,10 @@ func _on_body_entered(body: Node) -> void:
 
 
 func is_shell_hit(attacker_pos: Vector2) -> bool:
+	# No shell = no shield
+	if shell_missing:
+		return false
 	# Check if the attacker hit our shell (base) area.
-	# The shell sits at our origin. If the attacker's position in our local
-	# space is near the base and not up along the post, it's a shell hit.
 	var local := to_local(attacker_pos)
 	var post_h := lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
 	# Shell zone: y is in the lower 30% of the body (near base) and within shell radius
@@ -462,6 +670,12 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	damage_percent = 0.0
 	want_to_grab = false
 	_release_grab()
+	is_charging = false
+	charge_amount = 0.0
+	is_dashing = false
+	charge_cooldown = 0.0
+	shell_missing = false
+	shell_toss_cooldown = 0.0
 	is_invincible = true
 	invincible_timer = 0.0
 
@@ -569,6 +783,26 @@ func _setup_sprites() -> void:
 	spr_grab = _make_sprite(TEX_GRAB, Vector2.ZERO, 5)
 	spr_grab.visible = false
 
+	# Thrown shell (global coords — not attached to snail body)
+	spr_thrown_shell = Sprite2D.new()
+	spr_thrown_shell.texture = TEX_SHELL
+	spr_thrown_shell.self_modulate = accent_color
+	var ts_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
+	spr_thrown_shell.scale = Vector2(ts_scale, ts_scale)
+	spr_thrown_shell.z_index = 5
+	spr_thrown_shell.top_level = true  # Positioned in world space
+	spr_thrown_shell.visible = false
+	add_child(spr_thrown_shell)
+
+	spr_thrown_spiral = Sprite2D.new()
+	spr_thrown_spiral.texture = TEX_SPIRAL
+	spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
+	spr_thrown_spiral.scale = Vector2(ts_scale, ts_scale)
+	spr_thrown_spiral.z_index = 5
+	spr_thrown_spiral.top_level = true
+	spr_thrown_spiral.visible = false
+	add_child(spr_thrown_spiral)
+
 	# Blink lines (Line2D since they're just flat lines)
 	blink_line_l = Line2D.new()
 	blink_line_l.width = 2.5
@@ -603,9 +837,32 @@ func _update_sprites() -> void:
 	var shell_c := accent_color.lightened(0.5) if flash else accent_color
 	var body_c := bollard_color.lightened(0.5) if flash else bollard_color
 
+	# ── CHARGE VISUAL ────────────────────────────────────────────────────
+	if is_charging and charge_amount > 0.1:
+		# Shake body and tint progressively redder as charge builds
+		var shake := charge_amount * 3.0
+		spr_body.position.x += randf_range(-shake, shake)
+		body_c = body_c.lerp(Color(1.0, 0.3, 0.2), charge_amount * 0.5)
+		shell_c = shell_c.lerp(Color(1.0, 0.5, 0.2), charge_amount * 0.4)
+	if is_dashing:
+		body_c = Color(1.0, 0.4, 0.2)
+		shell_c = Color(1.0, 0.6, 0.2)
+
 	# ── SHELL ────────────────────────────────────────────────────────────
+	spr_shell.visible = not shell_missing
+	spr_spiral.visible = not shell_missing
 	spr_shell.self_modulate = shell_c
 	spr_spiral.self_modulate = shell_c.darkened(0.15)
+
+	# ── THROWN SHELL (world-space projectile) ─────────────────────────────
+	spr_thrown_shell.visible = shell_missing
+	spr_thrown_spiral.visible = shell_missing
+	if shell_missing:
+		spr_thrown_shell.global_position = shell_toss_pos
+		spr_thrown_spiral.global_position = shell_toss_pos
+		# Spin the thrown shell
+		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
+		spr_thrown_spiral.rotation = spr_thrown_shell.rotation
 
 	# ── BODY (stretch vertically) ────────────────────────────────────────
 	spr_body.visible = post_h > 3.0
@@ -733,6 +990,15 @@ func _process_ai(delta: float) -> void:
 				want_to_grab = false
 				_release_grab()
 				_ai_pick_action()
+		"charge_attack":
+			_ai_charge_attack(delta)
+			if ai_timer > ai_action_duration:
+				if is_charging:
+					_start_charge_dash()
+				_ai_pick_action()
+		"shell_toss":
+			_ai_shell_toss()
+			_ai_pick_action()
 
 func _ai_pick_action() -> void:
 	ai_timer = 0.0
@@ -744,10 +1010,16 @@ func _ai_pick_action() -> void:
 	elif abs_dist > 250.0:
 		ai_state = "approach"
 		ai_action_duration = randf_range(0.5, 2.0)
-	elif roll < 0.12:
+	elif roll < 0.08:
 		ai_state = "lower_spin"
 		ai_action_duration = randf_range(0.4, 0.8)
-	elif roll < 0.25:
+	elif roll < 0.18:
+		ai_state = "charge_attack"
+		ai_action_duration = randf_range(0.8, 1.5)
+	elif roll < 0.26:
+		ai_state = "shell_toss"
+		ai_action_duration = 0.1  # Instant
+	elif roll < 0.36:
 		ai_state = "grab_attempt"
 		ai_action_duration = randf_range(0.5, 1.5)
 	elif roll < 0.65:
@@ -779,7 +1051,19 @@ func _ai_retreat(delta: float) -> void:
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	if not is_grabbing:
-		# Approach target and trigger grab
 		apply_torque(LEAN_TORQUE * dir * 0.5)
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 		want_to_grab = true
+
+func _ai_charge_attack(delta: float) -> void:
+	var dir := signf(ai_target.global_position.x - global_position.x)
+	is_charging = true
+	charge_dir = dir
+	charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
+	apply_torque(LEAN_TORQUE * dir * 0.3)
+
+func _ai_shell_toss() -> void:
+	if shell_missing or shell_toss_cooldown > 0.0:
+		return
+	var dir := signf(ai_target.global_position.x - global_position.x)
+	_start_shell_toss(dir)
