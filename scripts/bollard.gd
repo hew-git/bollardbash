@@ -21,11 +21,9 @@ const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
-const GRAB_PULL := 3500.0           # Spring force pulling toward anchor
-const GRAB_SWING := 4500.0         # Tangential force when leaning while grabbed
-const GRAB_DAMP := 8.0             # Radial velocity damping to prevent bounce
-const GRAB_MAX_TIME := 2.5         # Max seconds you can stay grabbed
-const GRAB_RANGE := 120.0          # Max distance to latch onto a surface
+const GRAB_LATCH_TIME := 0.3        # Seconds locked to surface before auto-fling
+const GRAB_FLING_MULT := 2.2        # Velocity multiplier on release
+const GRAB_RANGE := 120.0           # Max distance to latch onto a surface
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
@@ -61,12 +59,13 @@ const INVINCIBLE_TIME := 1.5
 var is_emerging: bool = false
 var emerge_progress: float = 0.0
 
-# ── Grab State (Grapple Pull) ──────────────────────────────────────────────
+# ── Grab State (Latch and Fling) ───────────────────────────────────────────
 var is_grabbing: bool = false
 var want_to_grab: bool = false
 var grab_timer: float = 0.0
 var grab_target: Node2D = null          # What we latched to
 var grab_anchor: Vector2 = Vector2.ZERO # World-space latch point on the surface
+var grab_entry_vel: Vector2 = Vector2.ZERO  # Velocity when grab started
 
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
@@ -185,31 +184,19 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _process_input(delta: float) -> void:
-	if is_grabbing:
-		# GRAPPLE: lean applies tangential swing force around the anchor
-		if Input.is_action_pressed(act_lean_left):
-			_apply_swing_force(-1.0)
-		if Input.is_action_pressed(act_lean_right):
-			_apply_swing_force(1.0)
-		# Extend/retract still works while grabbed
-		if Input.is_action_pressed(act_raise):
-			extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
-		if Input.is_action_pressed(act_lower):
-			extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
-	else:
-		# Normal lean: torque rotates the body around the base
-		if Input.is_action_pressed(act_lean_left):
-			apply_torque(-LEAN_TORQUE)
-		if Input.is_action_pressed(act_lean_right):
-			apply_torque(LEAN_TORQUE)
-		# Extend/retract body
-		if Input.is_action_pressed(act_raise):
-			extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
-		if Input.is_action_pressed(act_lower):
-			extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
+	# Lean and extend always work (no special grab-mode controls)
+	if Input.is_action_pressed(act_lean_left):
+		apply_torque(-LEAN_TORQUE)
+	if Input.is_action_pressed(act_lean_right):
+		apply_torque(LEAN_TORQUE)
+	if Input.is_action_pressed(act_raise):
+		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
+	if Input.is_action_pressed(act_lower):
+		extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
 
-	# Grab — hold the button to enter "ready to grab" state
-	want_to_grab = Input.is_action_pressed(act_grab)
+	# Grab — single press triggers latch (not held)
+	if Input.is_action_just_pressed(act_grab):
+		want_to_grab = true
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -243,19 +230,19 @@ func _check_launch() -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB — Grapple Pull                                                      ║
+# ║ GRAB — Latch and Fling                                                   ║
 # ║                                                                           ║
-# ║ Press grab near a surface → latch to the closest point on it.           ║
-# ║ A spring force pulls you toward the anchor each frame. Lean left/right  ║
-# ║ applies tangential force to swing around the anchor. Release the grab   ║
-# ║ button to let go instantly, keeping your momentum. No physics joints.    ║
+# ║ Press grab near a surface → latch to closest point on it. Your entry    ║
+# ║ velocity is converted to angular momentum around the latch point.        ║
+# ║ After ~0.3s you auto-release with the built-up swing velocity ×          ║
+# ║ GRAB_FLING_MULT. No manual swing — it's purely momentum-based.          ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _try_grab() -> void:
 	if is_grabbing:
 		return
 
-	# Find the nearest body we can grapple to
+	# Find the nearest body we can latch to
 	var best_body: PhysicsBody2D = null
 	var best_dist := GRAB_RANGE
 
@@ -287,12 +274,11 @@ func _start_grab(target: PhysicsBody2D) -> void:
 	is_grabbing = true
 	grab_timer = 0.0
 	grab_target = target
-	# Anchor = closest point on target's surface to us
 	grab_anchor = _closest_point_on_body(target)
+	grab_entry_vel = linear_velocity
 
 
 func _closest_point_on_body(body: PhysicsBody2D) -> Vector2:
-	# Find the closest point on the body's collision shapes to our position
 	var best := body.global_position
 	var best_dist := global_position.distance_to(best)
 
@@ -353,45 +339,61 @@ func _release_grab() -> void:
 	grab_target = null
 
 
-func _apply_swing_force(direction: float) -> void:
-	var to_anchor := grab_anchor - global_position
-	var dist := to_anchor.length()
-	if dist < 1.0:
-		return
-	var rope_dir := to_anchor / dist
-	# Tangent = perpendicular to rope, in the direction requested
-	var tangent := Vector2(-rope_dir.y, rope_dir.x)
-	apply_central_force(tangent * direction * GRAB_SWING)
+func _fling_release() -> void:
+	# Calculate the tangential (swing) velocity from orbiting around the anchor
+	var to_self := global_position - grab_anchor
+	var dist := to_self.length()
+	if dist > 1.0:
+		var radial := to_self / dist
+		# Tangent perpendicular to the radial direction
+		var tangent := Vector2(-radial.y, radial.x)
+		# Project current velocity onto tangent to get swing speed
+		var swing_speed := linear_velocity.dot(tangent)
+		# Fling in the tangential direction with multiplier
+		var fling_vel := tangent * swing_speed * GRAB_FLING_MULT
+		linear_velocity = fling_vel
+	is_grabbing = false
+	grab_target = null
 
 
 func _update_grab(delta: float) -> void:
 	if is_grabbing:
-		if not is_instance_valid(grab_target) or not want_to_grab:
+		if not is_instance_valid(grab_target):
 			_release_grab()
 			return
 		grab_timer += delta
-		if grab_timer >= GRAB_MAX_TIME:
-			_release_grab()
-			return
 
-		# Track moving targets
+		# Track moving targets (e.g. other snails)
 		if grab_target is RigidBody2D:
 			grab_anchor += grab_target.linear_velocity * delta
 
-		# Pull toward anchor (grapple hook force)
-		var to_anchor := grab_anchor - global_position
-		var dist := to_anchor.length()
+		# Constrain to orbit: keep distance fixed, convert velocity to tangential
+		var to_self := global_position - grab_anchor
+		var dist := to_self.length()
 		if dist > 1.0:
-			var rope_dir := to_anchor / dist
-			# Always pull toward anchor
-			apply_central_force(rope_dir * GRAB_PULL)
-			# Damp radial velocity to prevent wild oscillation
-			var radial_vel := linear_velocity.dot(rope_dir)
-			if radial_vel < 0.0:  # Only damp when moving away from anchor
-				apply_central_force(rope_dir * (-radial_vel) * GRAB_DAMP)
+			var radial := to_self / dist
+			var tangent := Vector2(-radial.y, radial.x)
+
+			# On first frame, convert entry velocity to tangential orbit
+			if grab_timer <= delta * 1.5:
+				var tang_speed := grab_entry_vel.dot(tangent)
+				linear_velocity = tangent * tang_speed
+
+			# Keep snail at fixed radius from anchor (rope constraint)
+			var orbit_radius := clampf(dist, 20.0, GRAB_RANGE)
+			global_position = grab_anchor + radial * orbit_radius
+
+			# Remove radial velocity component — only tangential remains
+			var radial_vel := linear_velocity.dot(radial)
+			linear_velocity -= radial * radial_vel
+
+		# Auto-release after latch time with fling
+		if grab_timer >= GRAB_LATCH_TIME:
+			_fling_release()
 
 	elif want_to_grab:
 		_try_grab()
+		want_to_grab = false
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -697,7 +699,6 @@ func _process_ai(delta: float) -> void:
 		want_to_grab = false
 		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.5 * delta)
 		return
-	want_to_grab = (ai_state == "grab_attempt")
 	ai_timer += delta
 	match ai_state:
 		"idle":
@@ -778,8 +779,8 @@ func _ai_retreat(delta: float) -> void:
 
 func _ai_grab_attempt(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if is_grabbing:
-		_apply_swing_force(dir)
-	else:
+	if not is_grabbing:
+		# Approach target and trigger grab
 		apply_torque(LEAN_TORQUE * dir * 0.5)
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
+		want_to_grab = true
