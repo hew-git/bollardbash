@@ -86,6 +86,13 @@ var countdown_label: Label
 var death_phrase_label: Label
 var death_phrase_timer: float = 0.0
 
+# ── Hit Slomo + Flash ──────────────────────────────────────────────────────
+const SLOMO_DURATION := 0.15        # Real-time seconds of slowdown
+const SLOMO_SCALE := 0.15           # Time scale during slomo (0.15 = 15% speed)
+const FLASH_DURATION := 0.3         # How long the impact flash lasts
+var slomo_timer: float = 0.0
+var impact_flashes: Array = []      # [{node: Sprite2D, timer: float}]
+
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = false
 var countdown_active: bool = true
@@ -118,7 +125,13 @@ func _ready() -> void:
 	player1.slime_color = Color(0.55, 0.75, 0.35, 0.6)
 	player2.slime_color = Color(0.35, 0.65, 0.75, 0.6)
 
+	player1.big_hit.connect(_on_big_hit)
+	player2.big_hit.connect(_on_big_hit)
 	player2.ai_target = player1
+	# Auto-detect second controller: if connected, P2 is human
+	if Input.get_connected_joypads().size() >= 2:
+		player2.is_ai = false
+		player2.ai_target = null
 	game_over_label.visible = false
 	controls_label.visible = true
 	p1_effect.visible = false
@@ -395,10 +408,58 @@ func _physics_process(delta: float) -> void:
 	_update_hud()
 	_update_death_phrase(delta)
 	_update_slime(delta)
+	_update_slomo_and_flashes(delta)
 
 	controls_visible_timer += delta
 	if controls_visible_timer > 8.0 and controls_label.visible:
 		controls_label.visible = false
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ HIT SLOMO + IMPACT FLASH                                                 ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _on_big_hit(impact_pos: Vector2) -> void:
+	# Trigger slowmo
+	slomo_timer = SLOMO_DURATION
+	Engine.time_scale = SLOMO_SCALE
+
+	# Spawn impact flash — white circle that expands and fades
+	var flash := Sprite2D.new()
+	flash.texture = preload("res://sprites/snail/eye_highlight.png")  # Small white circle
+	flash.global_position = impact_pos
+	flash.scale = Vector2(3.0, 3.0)
+	flash.z_index = 10
+	flash.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
+	add_child(flash)
+	impact_flashes.append({"node": flash, "timer": FLASH_DURATION})
+
+
+func _update_slomo_and_flashes(delta: float) -> void:
+	# Slomo uses unscaled delta to count down in real time
+	if slomo_timer > 0.0:
+		# delta is already scaled by Engine.time_scale, so unscale it
+		var real_delta := delta / maxf(Engine.time_scale, 0.01)
+		slomo_timer -= real_delta
+		if slomo_timer <= 0.0:
+			Engine.time_scale = 1.0
+
+	# Update impact flashes (expand + fade)
+	var i := impact_flashes.size() - 1
+	while i >= 0:
+		var f = impact_flashes[i]
+		var real_dt := delta / maxf(Engine.time_scale, 0.01)
+		f.timer -= real_dt
+		if f.timer <= 0.0:
+			f.node.queue_free()
+			impact_flashes.remove_at(i)
+		else:
+			var progress := 1.0 - f.timer / FLASH_DURATION
+			# Expand outward and fade
+			var s := lerpf(3.0, 8.0, progress)
+			f.node.scale = Vector2(s, s)
+			f.node.self_modulate.a = lerpf(1.0, 0.0, progress)
+		i -= 1
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -459,6 +520,12 @@ func _end_game(loser: Bollard) -> void:
 	game_over_label.visible = true
 
 func _restart_game() -> void:
+	Engine.time_scale = 1.0
+	slomo_timer = 0.0
+	# Clean up any lingering flashes
+	for f in impact_flashes:
+		f.node.queue_free()
+	impact_flashes.clear()
 	game_over_label.visible = false
 	controls_label.visible = true
 	controls_visible_timer = 0.0
@@ -489,6 +556,7 @@ func _restart_game() -> void:
 		p.charge_amount = 0.0
 		p.is_dashing = false
 		p.charge_cooldown = 0.0
+		p.dashes_remaining = p.CHARGE_MAX_DASHES
 		p.is_toss_charging = false
 		p.toss_charge_amount = 0.0
 		p.shell_missing = false
@@ -513,10 +581,25 @@ func _input(event: InputEvent) -> void:
 			_restart_game()
 		if event.keycode == KEY_ESCAPE:
 			get_tree().quit()
+		# P key toggles P2 between AI and human
+		if event.keycode == KEY_P:
+			_toggle_p2_ai()
 	# Controller: Select/Back button to restart
 	if event is InputEventJoypadButton and event.pressed:
 		if event.button_index == JOY_BUTTON_BACK and not countdown_active:
 			_restart_game()
+	# If P2 is AI and we get any input from controller device 1, switch to human
+	if player2.is_ai and event.device == 1:
+		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+			_toggle_p2_ai()
+
+
+func _toggle_p2_ai() -> void:
+	player2.is_ai = not player2.is_ai
+	if player2.is_ai:
+		player2.ai_target = player1
+	else:
+		player2.ai_target = null
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗

@@ -27,11 +27,12 @@ const GRAB_RANGE := 120.0           # Max distance to latch onto a surface
 
 # ── Charge Attack ───────────────────────────────────────────────────────────
 const CHARGE_TIME := 0.6            # Seconds to reach full charge
-const CHARGE_IMPULSE := 1400.0      # Impulse at full charge (strong enough for recovery)
+const CHARGE_IMPULSE := 1800.0      # Impulse at full charge (strong recovery)
 const CHARGE_DAMAGE := 20.0         # Damage dealt on charged hit
 const CHARGE_HIT_RADIUS := 40.0     # Radius to detect hits during dash
-const CHARGE_DASH_TIME := 0.25      # Duration of the dash (invulnerable burst)
+const CHARGE_DASH_TIME := 0.35      # Duration of the dash (invulnerable burst)
 const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
+const CHARGE_MAX_DASHES := 2        # Number of dashes before cooldown
 
 # ── Shell Toss ──────────────────────────────────────────────────────────────
 const SHELL_TOSS_SPEED := 1800.0    # Max speed of thrown shell (at full charge)
@@ -94,6 +95,10 @@ var charge_amount: float = 0.0          # 0..1
 var is_dashing: bool = false
 var dash_timer: float = 0.0
 var charge_cooldown: float = 0.0
+var dashes_remaining: int = CHARGE_MAX_DASHES  # Resets after cooldown
+
+# ── Hit Effect (slomo + flash) ─────────────────────────────────────────────
+signal big_hit(impact_pos: Vector2)     # Emitted on charge/toss hit for slomo
 
 # ── Shell Toss State ──────────────────────────────────────────────────────
 var shell_missing: bool = false         # True while shell is flying
@@ -260,7 +265,7 @@ func _process_input(delta: float) -> void:
 	var lean_dir := aim_dir.x
 
 	# ── Charge Attack: hold charge to build up, aim with WASD, release to dash
-	if Input.is_action_pressed(act_charge) and charge_cooldown <= 0.0:
+	if Input.is_action_pressed(act_charge) and charge_cooldown <= 0.0 and dashes_remaining > 0:
 		is_charging = true
 		charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
 		# Retract into shell while charging (tuck in for the dash)
@@ -502,13 +507,13 @@ func _update_grab(delta: float) -> void:
 
 func _start_charge_dash() -> void:
 	if charge_amount < 0.15:
-		# Too little charge — cancel
 		is_charging = false
 		charge_amount = 0.0
 		return
 	is_charging = false
 	is_dashing = true
 	dash_timer = 0.0
+	dashes_remaining -= 1
 	# Dash in aimed direction; default to facing direction if no aim
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
@@ -522,14 +527,17 @@ func _start_charge_dash() -> void:
 func _update_charge(delta: float) -> void:
 	if charge_cooldown > 0.0:
 		charge_cooldown -= delta
+		if charge_cooldown <= 0.0:
+			dashes_remaining = CHARGE_MAX_DASHES
 
 	if is_dashing:
 		dash_timer += delta
-		# Check for hits during dash
 		_check_charge_hits()
 		if dash_timer >= CHARGE_DASH_TIME:
 			is_dashing = false
-			charge_cooldown = CHARGE_COOLDOWN
+			# Only start cooldown when all dashes used
+			if dashes_remaining <= 0:
+				charge_cooldown = CHARGE_COOLDOWN
 
 
 func _check_charge_hits() -> void:
@@ -553,8 +561,12 @@ func _check_charge_hits() -> void:
 			if body is RigidBody2D:
 				var impact_force := linear_velocity.length() * 3.0
 				body.apply_central_impulse(dir * impact_force)
+			# Slomo + flash
+			var hit_pos := (global_position + body.global_position) * 0.5
+			big_hit.emit(hit_pos)
 			is_dashing = false
-			charge_cooldown = CHARGE_COOLDOWN
+			if dashes_remaining <= 0:
+				charge_cooldown = CHARGE_COOLDOWN
 			return
 
 
@@ -624,9 +636,11 @@ func _update_shell_toss(delta: float) -> void:
 				var target_body: RigidBody2D = collider
 				var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
 				target_body.take_damage(SHELL_TOSS_DAMAGE, dir)
-				# Billiard-style impact: shell transfers momentum to target
-				var shell_impact := shell_toss_vel.length() * 2.5
+				# Billiard-style impact: shell transfers momentum (20% softer)
+				var shell_impact := shell_toss_vel.length() * 2.0
 				target_body.apply_central_impulse(dir * shell_impact)
+				# Slomo + flash
+				big_hit.emit(shell_toss_pos)
 				shell_toss_hit = true
 				# Bounce shell off the hit target
 				shell_toss_vel = -shell_toss_vel * 0.3
@@ -718,6 +732,7 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	charge_amount = 0.0
 	is_dashing = false
 	charge_cooldown = 0.0
+	dashes_remaining = CHARGE_MAX_DASHES
 	is_toss_charging = false
 	toss_charge_amount = 0.0
 	shell_missing = false
