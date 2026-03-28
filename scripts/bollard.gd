@@ -26,7 +26,7 @@ const GRAB_FLING_MULT := 2.2        # Velocity multiplier on release
 const GRAB_RANGE := 120.0           # Max distance to latch onto a surface
 
 # ── Charge Attack ───────────────────────────────────────────────────────────
-const CHARGE_TIME := 0.6            # Seconds to reach full charge
+const CHARGE_TIME := 0.3            # Seconds to reach full charge (fast for recovery)
 const CHARGE_IMPULSE := 1800.0      # Impulse at full charge (strong recovery)
 const CHARGE_DAMAGE := 20.0         # Damage dealt on charged hit
 const CHARGE_HIT_RADIUS := 40.0     # Radius to detect hits during dash
@@ -145,6 +145,7 @@ var act_toss: String
 @onready var post_shape: CollisionShape2D = $PostShape
 @onready var grab_area: Area2D = $GrabArea
 @onready var grab_shape: CollisionShape2D = $GrabArea/GrabShape
+var dome_shape: CollisionShape2D  # Created at runtime for dome cap
 
 # ── Sprite Node References (created in _ready) ────────────────────────────
 var spr_shell: Sprite2D
@@ -196,6 +197,14 @@ func _ready() -> void:
 
 	base_shape.shape = base_shape.shape.duplicate()
 	post_shape.shape = post_shape.shape.duplicate()
+
+	# Create dome collision shape at runtime (circle cap on top of body)
+	dome_shape = CollisionShape2D.new()
+	var dome_circle := CircleShape2D.new()
+	dome_circle.radius = POST_HALF_WIDTH
+	dome_shape.shape = dome_circle
+	dome_shape.position = Vector2(0, -MIN_HEIGHT)
+	add_child(dome_shape)
 
 	# Replace the grab area's circle with a rectangle covering the full body (post)
 	grab_shape.shape = RectangleShape2D.new()
@@ -315,6 +324,11 @@ func _update_collision_shape() -> void:
 	rect.size = Vector2(POST_HALF_WIDTH * 2.0, post_h)
 	post_shape.position = Vector2(0, -post_h / 2.0)
 	post_shape.disabled = extend_amount < 0.03
+
+	# Dome cap sits on top of the post
+	if dome_shape:
+		dome_shape.position = Vector2(0, -post_h)
+		dome_shape.disabled = extend_amount < 0.03
 
 	# Grab area covers the full body (post), not just the tip
 	var grab_rect := grab_shape.shape as RectangleShape2D
@@ -520,6 +534,14 @@ func _start_charge_dash() -> void:
 		var facing := 1.0 if cos(rotation) >= 0.0 else -1.0
 		dash_dir = Vector2(facing, 0.0)
 	var impulse_strength := CHARGE_IMPULSE * charge_amount
+	# Airborne boost: 2x impulse when not touching ground (recovery mechanic)
+	var on_ground := false
+	for body in get_colliding_bodies():
+		if body is StaticBody2D:
+			on_ground = true
+			break
+	if not on_ground:
+		impulse_strength *= 2.0
 	apply_central_impulse(dash_dir * impulse_strength)
 	charge_amount = 0.0
 
