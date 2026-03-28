@@ -541,7 +541,7 @@ func _start_charge_dash() -> void:
 			on_ground = true
 			break
 	if not on_ground:
-		impulse_strength *= 2.0
+		impulse_strength *= 1.75
 	apply_central_impulse(dash_dir * impulse_strength)
 	charge_amount = 0.0
 

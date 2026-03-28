@@ -88,8 +88,8 @@ var death_phrase_label: Label
 var death_phrase_timer: float = 0.0
 
 # ── Hit Slomo + Shards + Ripple ────────────────────────────────────────────
-const SLOMO_DURATION := 0.3         # Real-time seconds of slowdown
-const SLOMO_SCALE := 0.15           # Time scale during slomo (0.15 = 15% speed)
+const SLOMO_DURATION := 0.4         # Real-time seconds of slowdown
+const SLOMO_SCALE := 0.25           # Time scale during slomo (25% speed)
 const SHARD_DURATION := 0.4         # How long impact shards last
 const SHARD_COUNT := 8              # Number of shards per impact
 const SHARD_SPEED := 300.0          # Shard outward speed
@@ -184,8 +184,8 @@ uniform vec2 center = vec2(0.5, 0.5);
 uniform float time = 0.0;
 uniform float active = 0.0;
 uniform float duration = 0.5;
-uniform float ripple_width = 0.06;
-uniform float ripple_strength = 0.015;
+uniform float ripple_width = 0.10;
+uniform float ripple_strength = 0.03;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
