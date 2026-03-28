@@ -708,6 +708,8 @@ func _setup_input() -> void:
 	_add_key("p1_grab",       KEY_E)
 	_add_key("p1_charge",     KEY_Q)
 	_add_key("p1_toss",       KEY_F)
+	_add_key("p1_raise",      KEY_R)
+	_add_key("p1_lower",      KEY_C)
 
 	# P1 controller: left stick = lean/aim, right stick = raise/lower body
 	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
@@ -729,6 +731,8 @@ func _setup_input() -> void:
 	_add_key("p2_grab",       KEY_SLASH)
 	_add_key("p2_charge",     KEY_SHIFT)
 	_add_key("p2_toss",       KEY_PERIOD)
+	_add_key("p2_raise",      KEY_PAGEUP)
+	_add_key("p2_lower",      KEY_PAGEDOWN)
 
 	# P2 controller: same layout as P1, device 1
 	_add_joy_axis("p2_lean_left",  JOY_AXIS_LEFT_X, -1.0, 1)
