@@ -176,6 +176,6 @@ offset_right = 940.0
 offset_bottom = 80.0
 theme_override_font_sizes/font_size = 13
 text = "P1: WASD aim/lean, R/C raise/lower, E grab, Q charge, F toss  |  Controller: L-Stick, R-Stick, RB, X, Y
-P2: AI  (or Arrows + / grab, Shift charge, . toss, PgUp/PgDn raise/lower)    ESC = Quit    R = Restart"
+P2: AI  (or Arrows + / grab, Shift charge, . toss, PgUp/PgDn raise/lower)    ESC = Quit    T = Restart"
 horizontal_alignment = 1
 vertical_alignment = 0

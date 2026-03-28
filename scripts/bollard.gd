@@ -27,8 +27,8 @@ const GRAB_RANGE := 120.0           # Max distance to latch onto a surface
 
 # ── Charge Attack ───────────────────────────────────────────────────────────
 const CHARGE_TIME := 0.6            # Seconds to reach full charge
-const CHARGE_IMPULSE := 800.0       # Impulse at full charge
-const CHARGE_DAMAGE := 15.0         # Damage dealt on charged hit
+const CHARGE_IMPULSE := 1400.0      # Impulse at full charge (strong enough for recovery)
+const CHARGE_DAMAGE := 20.0         # Damage dealt on charged hit
 const CHARGE_HIT_RADIUS := 40.0     # Radius to detect hits during dash
 const CHARGE_DASH_TIME := 0.25      # Duration of the dash (invulnerable burst)
 const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
@@ -263,14 +263,11 @@ func _process_input(delta: float) -> void:
 	if Input.is_action_pressed(act_charge) and charge_cooldown <= 0.0:
 		is_charging = true
 		charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
+		# Retract into shell while charging (tuck in for the dash)
+		extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.0 * delta, 0.0)
 		# Slow lean while charging
 		if lean_dir != 0.0:
 			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
-		# Raise/lower still works on controller
-		if Input.is_action_pressed(act_raise):
-			extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
-		if Input.is_action_pressed(act_lower):
-			extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
 		return
 	elif is_charging:
 		_start_charge_dash()
@@ -292,17 +289,11 @@ func _process_input(delta: float) -> void:
 	if lean_dir != 0.0:
 		apply_torque(LEAN_TORQUE * lean_dir)
 
-	# Raise/lower — controller right stick only (W/S are now aim)
-	var has_extend_input := false
+	# Raise/lower — stays where you leave it
 	if Input.is_action_pressed(act_raise):
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
-		has_extend_input = true
 	if Input.is_action_pressed(act_lower):
 		extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
-		has_extend_input = true
-	# Auto-extend toward neutral when no raise/lower input
-	if not has_extend_input:
-		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.3 * delta)
 
 	# Grab — single press triggers latch (not held)
 	if Input.is_action_just_pressed(act_grab):
@@ -558,6 +549,10 @@ func _check_charge_hits() -> void:
 				charge_cooldown = CHARGE_COOLDOWN
 				return
 			body.take_damage(CHARGE_DAMAGE, dir)
+			# Billiard-style impact: big extra knockback on target
+			if body is RigidBody2D:
+				var impact_force := linear_velocity.length() * 3.0
+				body.apply_central_impulse(dir * impact_force)
 			is_dashing = false
 			charge_cooldown = CHARGE_COOLDOWN
 			return
@@ -629,6 +624,9 @@ func _update_shell_toss(delta: float) -> void:
 				var target_body: RigidBody2D = collider
 				var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
 				target_body.take_damage(SHELL_TOSS_DAMAGE, dir)
+				# Billiard-style impact: shell transfers momentum to target
+				var shell_impact := shell_toss_vel.length() * 2.5
+				target_body.apply_central_impulse(dir * shell_impact)
 				shell_toss_hit = true
 				# Bounce shell off the hit target
 				shell_toss_vel = -shell_toss_vel * 0.3
