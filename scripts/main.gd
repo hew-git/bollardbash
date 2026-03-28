@@ -485,6 +485,12 @@ func _restart_game() -> void:
 		p.is_emerging = false
 		p.is_grabbing = false
 		p.want_to_grab = false
+		p.is_charging = false
+		p.charge_amount = 0.0
+		p.is_dashing = false
+		p.charge_cooldown = 0.0
+		p.shell_missing = false
+		p.shell_toss_cooldown = 0.0
 		p.damage_percent = 0.0
 		p.extend_amount = 0.5
 		p.linear_velocity = Vector2.ZERO
@@ -693,6 +699,8 @@ func _setup_input() -> void:
 	_add_key("p1_raise",      KEY_W)
 	_add_key("p1_lower",      KEY_S)
 	_add_key("p1_grab",       KEY_E)
+	_add_key("p1_charge",     KEY_Q)
+	_add_key("p1_toss",       KEY_F)
 
 	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
 	_add_joy_axis("p1_lean_right", JOY_AXIS_LEFT_X,  1.0, 0)
@@ -700,12 +708,16 @@ func _setup_input() -> void:
 	_add_joy_axis("p1_lower",      JOY_AXIS_RIGHT_Y,  1.0, 0)
 	_add_joy_button("p1_grab",     JOY_BUTTON_RIGHT_SHOULDER, 0)
 	_add_joy_button("p1_grab",     JOY_BUTTON_A, 0)
+	_add_joy_button("p1_charge",   JOY_BUTTON_X, 0)
+	_add_joy_button("p1_toss",     JOY_BUTTON_Y, 0)
 
 	_add_key("p2_lean_left",  KEY_LEFT)
 	_add_key("p2_lean_right", KEY_RIGHT)
 	_add_key("p2_raise",      KEY_UP)
 	_add_key("p2_lower",      KEY_DOWN)
 	_add_key("p2_grab",       KEY_SLASH)
+	_add_key("p2_charge",     KEY_SHIFT)
+	_add_key("p2_toss",       KEY_PERIOD)
 
 	_add_joy_axis("p2_lean_left",  JOY_AXIS_LEFT_X, -1.0, 1)
 	_add_joy_axis("p2_lean_right", JOY_AXIS_LEFT_X,  1.0, 1)
@@ -713,6 +725,8 @@ func _setup_input() -> void:
 	_add_joy_axis("p2_lower",      JOY_AXIS_RIGHT_Y,  1.0, 1)
 	_add_joy_button("p2_grab",     JOY_BUTTON_RIGHT_SHOULDER, 1)
 	_add_joy_button("p2_grab",     JOY_BUTTON_A, 1)
+	_add_joy_button("p2_charge",   JOY_BUTTON_X, 1)
+	_add_joy_button("p2_toss",     JOY_BUTTON_Y, 1)
 
 	for action in ["p1_lean_left", "p1_lean_right", "p1_raise", "p1_lower",
 					"p2_lean_left", "p2_lean_right", "p2_raise", "p2_lower"]:
