@@ -242,29 +242,24 @@ func _try_grab() -> void:
 	if is_grabbing:
 		return
 
-	# Find the nearest body we can latch to
-	var best_body: PhysicsBody2D = null
-	var best_dist := GRAB_RANGE
-
-	# Check grab area overlaps
+	# Collect all candidate bodies from grab area overlaps + direct contacts
+	var candidates: Array[PhysicsBody2D] = []
 	for body in grab_area.get_overlapping_bodies():
-		if body == self:
-			continue
-		if body is PhysicsBody2D:
-			var d := global_position.distance_to(body.global_position)
-			if d < best_dist:
-				best_dist = d
-				best_body = body
-
-	# Also check direct body contacts
+		if body != self and body is PhysicsBody2D and body not in candidates:
+			candidates.append(body)
 	for body in get_colliding_bodies():
-		if body == self:
-			continue
-		if body is PhysicsBody2D:
-			var d := global_position.distance_to(body.global_position)
-			if d < best_dist:
-				best_dist = d
-				best_body = body
+		if body != self and body is PhysicsBody2D and body not in candidates:
+			candidates.append(body)
+
+	# Rank by closest surface point (not body center — ground center is far away)
+	var best_body: PhysicsBody2D = null
+	var best_dist := 999999.0
+	for body in candidates:
+		var surface_pt := _closest_point_on_body(body)
+		var d := global_position.distance_to(surface_pt)
+		if d < best_dist:
+			best_dist = d
+			best_body = body
 
 	if best_body:
 		_start_grab(best_body)
@@ -455,10 +450,14 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	emerge_progress = 0.0
 	is_frozen = false
 	visible = true
-	global_position = spawn_pos
-	rotation = 0.0
+	# Teleport RigidBody2D properly: reset via PhysicsServer so the engine
+	# doesn't fight the position change
 	linear_velocity = Vector2.ZERO
 	angular_velocity = 0.0
+	var body_rid := get_rid()
+	PhysicsServer2D.body_set_state(body_rid, PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(0.0, spawn_pos))
+	global_position = spawn_pos
+	rotation = 0.0
 	extend_amount = 0.0
 	damage_percent = 0.0
 	want_to_grab = false

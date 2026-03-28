@@ -494,8 +494,10 @@ func _restart_game() -> void:
 		p.extend_amount = 0.5
 		p.linear_velocity = Vector2.ZERO
 		p.angular_velocity = 0.0
-		p.rotation = 0.0
+		# Teleport RigidBody2D via PhysicsServer so the engine respects it
+		PhysicsServer2D.body_set_state(p.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(0.0, spawns[i]))
 		p.global_position = spawns[i]
+		p.rotation = 0.0
 		p.visible = true
 		p.is_invincible = false
 		if p.has_meta("respawn_timer"):
