@@ -9,7 +9,7 @@ const TEX_ROCK := preload("res://sprites/arena/center_rock.png")
 const TEX_SLIME := preload("res://sprites/arena/slime_dot.png")
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
-const BLAST_ZONE := Rect2(-500, -800, 2280, 1900)
+const BLAST_ZONE := Rect2(-700, -900, 2680, 2100)
 const SPAWN_P1 := Vector2(450, 478)
 const SPAWN_P2 := Vector2(830, 478)
 const RESPAWN_DELAY := 2.0
@@ -22,10 +22,11 @@ const GROUND_Y := 520.0
 const CENTER_CIRCLE_POS := Vector2(640, 190)
 const CENTER_CIRCLE_RADIUS := 30.0
 const WALL_WIDTH := 20.0
-const WALL_HEIGHT := 200.0
-const WALL_LEFT_X := 30.0
-const WALL_RIGHT_X := 1250.0
-const WALL_Y := 300.0
+const WALL_HEIGHT := 240.0
+const WALL_LEFT_X := -30.0
+const WALL_RIGHT_X := 1310.0
+const WALL_Y := 340.0
+const WALL_ANGLE_INWARD := 30.0     # Bottom edge angled inward by this many pixels
 
 # ── HUD Constants ───────────────────────────────────────────────────────────
 const P1_BAR_LEFT := 240.0
@@ -86,12 +87,18 @@ var countdown_label: Label
 var death_phrase_label: Label
 var death_phrase_timer: float = 0.0
 
-# ── Hit Slomo + Flash ──────────────────────────────────────────────────────
-const SLOMO_DURATION := 0.15        # Real-time seconds of slowdown
+# ── Hit Slomo + Shards + Ripple ────────────────────────────────────────────
+const SLOMO_DURATION := 0.3         # Real-time seconds of slowdown
 const SLOMO_SCALE := 0.15           # Time scale during slomo (0.15 = 15% speed)
-const FLASH_DURATION := 0.3         # How long the impact flash lasts
+const SHARD_DURATION := 0.4         # How long impact shards last
+const SHARD_COUNT := 8              # Number of shards per impact
+const SHARD_SPEED := 300.0          # Shard outward speed
+const RIPPLE_DURATION := 0.5        # Screen ripple duration
 var slomo_timer: float = 0.0
-var impact_flashes: Array = []      # [{node: Sprite2D, timer: float}]
+var impact_shards: Array = []       # [{node: Line2D, vel: Vector2, timer: float}]
+var ripple_timer: float = 0.0
+var ripple_center: Vector2 = Vector2.ZERO
+var ripple_rect: ColorRect          # Screen-covering rect with ripple shader
 
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = false
@@ -118,8 +125,11 @@ func _ready() -> void:
 	_create_countdown_label()
 	_create_death_phrase_label()
 
-	# Camera — slight zoom out to see wall platforms
-	$Camera2D.zoom = Vector2(0.92, 0.92)
+	# Camera — zoomed out for more recovery room
+	$Camera2D.zoom = Vector2(0.80, 0.80)
+
+	# Screen ripple effect overlay
+	_setup_ripple_shader()
 
 	# Slime colors per player
 	player1.slime_color = Color(0.55, 0.75, 0.35, 0.6)
@@ -158,6 +168,54 @@ func _move_platforms_inward() -> void:
 	# between them and the side walls
 	$PlatformLeft.position.x = 320.0
 	$PlatformRight.position.x = 960.0
+
+
+func _setup_ripple_shader() -> void:
+	ripple_rect = ColorRect.new()
+	ripple_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Cover the full viewport
+	ripple_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var shader := Shader.new()
+	shader.code = """
+shader_type canvas_item;
+
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform vec2 center = vec2(0.5, 0.5);
+uniform float time = 0.0;
+uniform bool active = false;
+uniform float duration = 0.5;
+uniform float ripple_width = 0.06;
+uniform float ripple_strength = 0.015;
+
+void fragment() {
+	vec2 uv = SCREEN_UV;
+	if (!active && time <= 0.0) {
+		COLOR = textureLod(screen_tex, uv, 0.0);
+	} else {
+		float dist = distance(uv, center);
+		float progress = clamp(time / duration, 0.0, 1.0);
+		float ring_pos = progress * 0.8;
+		float ring_dist = abs(dist - ring_pos);
+		float ring = smoothstep(ripple_width, 0.0, ring_dist);
+		float fade = 1.0 - progress;
+		vec2 dir = normalize(uv - center + vec2(0.001));
+		vec2 offset = dir * ring * ripple_strength * fade;
+		COLOR = textureLod(screen_tex, uv + offset, 0.0);
+	}
+}
+"""
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("center", Vector2(0.5, 0.5))
+	mat.set_shader_parameter("time", 0.0)
+	mat.set_shader_parameter("active", false)
+	mat.set_shader_parameter("duration", RIPPLE_DURATION)
+	ripple_rect.material = mat
+	# Add to a CanvasLayer so it renders over everything
+	var ripple_layer := CanvasLayer.new()
+	ripple_layer.layer = 100
+	add_child(ripple_layer)
+	ripple_layer.add_child(ripple_rect)
 
 
 func _setup_background() -> void:
@@ -253,20 +311,27 @@ func _create_wall(x_pos: float, wall_name: String) -> void:
 	wall.position = Vector2(x_pos, WALL_Y)
 	add_child(wall)
 
-	var shape := CollisionShape2D.new()
-	var rect := RectangleShape2D.new()
-	rect.size = Vector2(WALL_WIDTH, WALL_HEIGHT)
-	shape.shape = rect
-	wall.add_child(shape)
+	# Angled wall: top is straight, bottom edge angles inward toward stage
+	var is_left := x_pos < 640.0
+	var half_w := WALL_WIDTH * 0.5
+	var half_h := WALL_HEIGHT * 0.5
+	var inward := WALL_ANGLE_INWARD if is_left else -WALL_ANGLE_INWARD
+	var poly_points := PackedVector2Array([
+		Vector2(-half_w, -half_h),           # Top outer
+		Vector2(half_w, -half_h),            # Top inner
+		Vector2(half_w + inward, half_h),    # Bottom inner (angled toward stage)
+		Vector2(-half_w + inward, half_h),   # Bottom outer (angled toward stage)
+	])
 
-	# ── VISUAL: wall sprite ──────────────────────────────────────────
-	# Replace: swap sprites/arena/wall.png (24x200)
-	var wall_spr := Sprite2D.new()
-	wall_spr.texture = TEX_WALL
-	var wall_sx: float = WALL_WIDTH / TEX_WALL.get_width()
-	var wall_sy: float = WALL_HEIGHT / TEX_WALL.get_height()
-	wall_spr.scale = Vector2(wall_sx, wall_sy)
-	wall.add_child(wall_spr)
+	var col_poly := CollisionPolygon2D.new()
+	col_poly.polygon = poly_points
+	wall.add_child(col_poly)
+
+	# ── VISUAL: wall polygon matching collision ──────────────────────
+	var wall_visual := Polygon2D.new()
+	wall_visual.polygon = poly_points
+	wall_visual.color = Color(0.45, 0.35, 0.28)  # Dark brown wall
+	wall.add_child(wall_visual)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -388,6 +453,9 @@ func _update_countdown(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _physics_process(delta: float) -> void:
+	# Slomo + impact effects always update regardless of game state
+	_update_slomo_and_flashes(delta)
+
 	if countdown_active:
 		_update_countdown(delta)
 		_update_hud()
@@ -408,7 +476,6 @@ func _physics_process(delta: float) -> void:
 	_update_hud()
 	_update_death_phrase(delta)
 	_update_slime(delta)
-	_update_slomo_and_flashes(delta)
 
 	controls_visible_timer += delta
 	if controls_visible_timer > 8.0 and controls_label.visible:
@@ -424,42 +491,82 @@ func _on_big_hit(impact_pos: Vector2) -> void:
 	slomo_timer = SLOMO_DURATION
 	Engine.time_scale = SLOMO_SCALE
 
-	# Spawn impact flash — white circle that expands and fades
-	var flash := Sprite2D.new()
-	flash.texture = preload("res://sprites/snail/eye_highlight.png")  # Small white circle
-	flash.global_position = impact_pos
-	flash.scale = Vector2(3.0, 3.0)
-	flash.z_index = 10
-	flash.self_modulate = Color(1.0, 1.0, 1.0, 1.0)
-	add_child(flash)
-	impact_flashes.append({"node": flash, "timer": FLASH_DURATION})
+	# Spawn white shards shooting outward from impact point
+	for s_i in SHARD_COUNT:
+		var angle := (float(s_i) / float(SHARD_COUNT)) * TAU + randf_range(-0.2, 0.2)
+		var dir := Vector2(cos(angle), sin(angle))
+		var shard := Line2D.new()
+		shard.width = 2.5
+		shard.default_color = Color(1.0, 1.0, 1.0, 1.0)
+		shard.z_index = 10
+		# Shard is a short line segment starting at impact
+		var start_pos := impact_pos + dir * 4.0
+		shard.add_point(start_pos)
+		shard.add_point(start_pos + dir * 12.0)
+		shard.top_level = true
+		add_child(shard)
+		impact_shards.append({
+			"node": shard, "vel": dir * SHARD_SPEED * randf_range(0.7, 1.3),
+			"timer": SHARD_DURATION, "origin": impact_pos})
+
+	# Trigger screen ripple
+	ripple_timer = RIPPLE_DURATION
+	ripple_center = impact_pos
+	if ripple_rect and ripple_rect.material:
+		var mat: ShaderMaterial = ripple_rect.material
+		# Convert world pos to UV (0..1) relative to camera view
+		var cam: Camera2D = $Camera2D
+		var screen_size := get_viewport().get_visible_rect().size
+		var cam_pos := cam.global_position
+		var zoom := cam.zoom
+		var world_tl := cam_pos - screen_size / (2.0 * zoom)
+		var world_size := screen_size / zoom
+		var uv := (impact_pos - world_tl) / world_size
+		mat.set_shader_parameter("center", uv)
+		mat.set_shader_parameter("time", 0.0)
+		mat.set_shader_parameter("active", true)
 
 
 func _update_slomo_and_flashes(delta: float) -> void:
 	# Slomo uses unscaled delta to count down in real time
 	if slomo_timer > 0.0:
-		# delta is already scaled by Engine.time_scale, so unscale it
 		var real_delta := delta / maxf(Engine.time_scale, 0.01)
 		slomo_timer -= real_delta
 		if slomo_timer <= 0.0:
 			Engine.time_scale = 1.0
 
-	# Update impact flashes (expand + fade)
-	var i := impact_flashes.size() - 1
+	# Update impact shards (fly outward + fade)
+	var i := impact_shards.size() - 1
 	while i >= 0:
-		var f = impact_flashes[i]
+		var sh = impact_shards[i]
 		var real_dt := delta / maxf(Engine.time_scale, 0.01)
-		f.timer -= real_dt
-		if f.timer <= 0.0:
-			f.node.queue_free()
-			impact_flashes.remove_at(i)
+		sh.timer -= real_dt
+		if sh.timer <= 0.0:
+			sh.node.queue_free()
+			impact_shards.remove_at(i)
 		else:
-			var t: float = f.timer
-			var progress: float = 1.0 - t / FLASH_DURATION
-			var s: float = lerpf(3.0, 8.0, progress)
-			f.node.scale = Vector2(s, s)
-			f.node.self_modulate.a = lerpf(1.0, 0.0, progress)
+			# Move shard outward
+			var vel: Vector2 = sh.vel
+			var n: Line2D = sh.node
+			for p_i in n.get_point_count():
+				n.set_point_position(p_i, n.get_point_position(p_i) + vel * real_dt)
+			# Fade out
+			var progress: float = 1.0 - sh.timer / SHARD_DURATION
+			n.default_color.a = lerpf(1.0, 0.0, progress)
+			# Shards slow down over time
+			sh.vel *= 0.95
 		i -= 1
+
+	# Update screen ripple shader
+	if ripple_timer > 0.0:
+		var real_dt := delta / maxf(Engine.time_scale, 0.01)
+		ripple_timer -= real_dt
+		if ripple_rect and ripple_rect.material:
+			var mat: ShaderMaterial = ripple_rect.material
+			var elapsed := RIPPLE_DURATION - ripple_timer
+			mat.set_shader_parameter("time", elapsed)
+			if ripple_timer <= 0.0:
+				mat.set_shader_parameter("active", false)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -470,11 +577,32 @@ func _check_blast_zone(player: Bollard) -> void:
 	if player.is_dead:
 		return
 	if not BLAST_ZONE.has_point(player.global_position):
+		# Death slime splash at the point they crossed the boundary
+		_spawn_death_slime(player)
 		player.die()
 		if player.stocks <= 0:
 			_end_game(player)
 		else:
 			_show_death_phrase()
+
+
+func _spawn_death_slime(player: Bollard) -> void:
+	# Big burst of slime at the death position (clamped to visible area edge)
+	var pos := player.global_position
+	# Clamp to near-edge of blast zone so splash is visible
+	pos.x = clampf(pos.x, BLAST_ZONE.position.x + 50.0, BLAST_ZONE.end.x - 50.0)
+	pos.y = clampf(pos.y, BLAST_ZONE.position.y + 50.0, BLAST_ZONE.end.y - 50.0)
+	var splash_count := 30
+	for s_i in splash_count:
+		var offset := Vector2(randf_range(-80.0, 80.0), randf_range(-60.0, 60.0))
+		var dot_pos := pos + offset
+		var c := player.slime_color
+		c.a = 0.8
+		slime_dots.append({"pos": dot_pos, "color": c, "age": 0.0})
+	# Cap total dots
+	while slime_dots.size() > SLIME_MAX_DOTS:
+		slime_dots.pop_front()
+	queue_redraw()
 
 
 func _handle_respawn(player: Bollard, spawn_pos: Vector2, delta: float) -> void:
@@ -522,10 +650,13 @@ func _end_game(loser: Bollard) -> void:
 func _restart_game() -> void:
 	Engine.time_scale = 1.0
 	slomo_timer = 0.0
-	# Clean up any lingering flashes
-	for f in impact_flashes:
-		f.node.queue_free()
-	impact_flashes.clear()
+	ripple_timer = 0.0
+	if ripple_rect and ripple_rect.material:
+		ripple_rect.material.set_shader_parameter("active", false)
+	# Clean up any lingering shards
+	for sh in impact_shards:
+		sh.node.queue_free()
+	impact_shards.clear()
 	game_over_label.visible = false
 	controls_label.visible = true
 	controls_visible_timer = 0.0
