@@ -182,14 +182,14 @@ shader_type canvas_item;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 uniform vec2 center = vec2(0.5, 0.5);
 uniform float time = 0.0;
-uniform bool active = false;
+uniform float active = 0.0;
 uniform float duration = 0.5;
 uniform float ripple_width = 0.06;
 uniform float ripple_strength = 0.015;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
-	if (!active && time <= 0.0) {
+	if (active < 0.5 && time <= 0.0) {
 		COLOR = textureLod(screen_tex, uv, 0.0);
 	} else {
 		float dist = distance(uv, center);
@@ -208,7 +208,7 @@ void fragment() {
 	mat.shader = shader
 	mat.set_shader_parameter("center", Vector2(0.5, 0.5))
 	mat.set_shader_parameter("time", 0.0)
-	mat.set_shader_parameter("active", false)
+	mat.set_shader_parameter("active", 0.0)
 	mat.set_shader_parameter("duration", RIPPLE_DURATION)
 	ripple_rect.material = mat
 	# Add to a CanvasLayer so it renders over everything
@@ -524,7 +524,7 @@ func _on_big_hit(impact_pos: Vector2) -> void:
 		var uv := (impact_pos - world_tl) / world_size
 		mat.set_shader_parameter("center", uv)
 		mat.set_shader_parameter("time", 0.0)
-		mat.set_shader_parameter("active", true)
+		mat.set_shader_parameter("active", 1.0)
 
 
 func _update_slomo_and_flashes(delta: float) -> void:
@@ -540,8 +540,10 @@ func _update_slomo_and_flashes(delta: float) -> void:
 	while i >= 0:
 		var sh = impact_shards[i]
 		var real_dt := delta / maxf(Engine.time_scale, 0.01)
-		sh.timer -= real_dt
-		if sh.timer <= 0.0:
+		var sh_time: float = sh.timer
+		sh_time -= real_dt
+		sh.timer = sh_time
+		if sh_time <= 0.0:
 			sh.node.queue_free()
 			impact_shards.remove_at(i)
 		else:
@@ -551,10 +553,13 @@ func _update_slomo_and_flashes(delta: float) -> void:
 			for p_i in n.get_point_count():
 				n.set_point_position(p_i, n.get_point_position(p_i) + vel * real_dt)
 			# Fade out
-			var progress: float = 1.0 - sh.timer / SHARD_DURATION
-			n.default_color.a = lerpf(1.0, 0.0, progress)
+			var progress: float = 1.0 - sh_time / SHARD_DURATION
+			var c := n.default_color
+			c.a = lerpf(1.0, 0.0, progress)
+			n.default_color = c
 			# Shards slow down over time
-			sh.vel *= 0.95
+			var slow_vel: Vector2 = sh.vel
+			sh.vel = slow_vel * 0.95
 		i -= 1
 
 	# Update screen ripple shader
@@ -566,7 +571,7 @@ func _update_slomo_and_flashes(delta: float) -> void:
 			var elapsed := RIPPLE_DURATION - ripple_timer
 			mat.set_shader_parameter("time", elapsed)
 			if ripple_timer <= 0.0:
-				mat.set_shader_parameter("active", false)
+				mat.set_shader_parameter("active", 0.0)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -652,7 +657,7 @@ func _restart_game() -> void:
 	slomo_timer = 0.0
 	ripple_timer = 0.0
 	if ripple_rect and ripple_rect.material:
-		ripple_rect.material.set_shader_parameter("active", false)
+		ripple_rect.material.set_shader_parameter("active", 0.0)
 	# Clean up any lingering shards
 	for sh in impact_shards:
 		sh.node.queue_free()
