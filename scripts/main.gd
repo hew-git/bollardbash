@@ -455,7 +455,7 @@ func _update_death_phrase(delta: float) -> void:
 func _end_game(loser: Bollard) -> void:
 	game_active = false
 	var winner_name := "Player 1" if loser == player2 else "Player 2 (AI)"
-	game_over_label.text = winner_name + " WINS!\n\nPress R to restart"
+	game_over_label.text = winner_name + " WINS!\n\nPress T to restart"
 	game_over_label.visible = true
 
 func _restart_game() -> void:
@@ -509,10 +509,14 @@ func _restart_game() -> void:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_R and not countdown_active:
+		if event.keycode == KEY_T and not countdown_active:
 			_restart_game()
 		if event.keycode == KEY_ESCAPE:
 			get_tree().quit()
+	# Controller: Select/Back button to restart
+	if event is InputEventJoypadButton and event.pressed:
+		if event.button_index == JOY_BUTTON_BACK and not countdown_active:
+			_restart_game()
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
