@@ -34,9 +34,9 @@ const CHARGE_DASH_TIME := 0.25      # Duration of the dash (invulnerable burst)
 const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
 
 # ── Shell Toss ──────────────────────────────────────────────────────────────
-const SHELL_TOSS_SPEED := 600.0     # Max speed of thrown shell (at full charge)
-const SHELL_TOSS_MIN_SPEED := 200.0 # Min speed (quick tap)
-const SHELL_TOSS_DAMAGE := 12.0     # Damage on hit
+const SHELL_TOSS_SPEED := 1800.0    # Max speed of thrown shell (at full charge)
+const SHELL_TOSS_MIN_SPEED := 600.0 # Min speed (quick tap)
+const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
