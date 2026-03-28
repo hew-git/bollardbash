@@ -415,9 +415,10 @@ func _check_blast_zone(player: Bollard) -> void:
 		return
 	if not BLAST_ZONE.has_point(player.global_position):
 		player.die()
-		_show_death_phrase()
 		if player.stocks <= 0:
 			_end_game(player)
+		else:
+			_show_death_phrase()
 
 
 func _handle_respawn(player: Bollard, spawn_pos: Vector2, delta: float) -> void:
@@ -477,8 +478,12 @@ func _restart_game() -> void:
 	# Clear slime
 	slime_dots.clear()
 	queue_redraw()
-	# Hard-reset BOTH players before countdown starts
-	for p: Bollard in [player1, player2]:
+	# Hard-reset BOTH players before countdown starts — stocks reset to 3,
+	# dead players revive, alive players teleport to spawn
+	var spawns: Array[Vector2] = [SPAWN_P1, SPAWN_P2]
+	var players: Array[Bollard] = [player1, player2]
+	for i in players.size():
+		var p: Bollard = players[i]
 		p.stocks = 3
 		p.is_dead = false
 		p.is_frozen = false
@@ -490,6 +495,7 @@ func _restart_game() -> void:
 		p.linear_velocity = Vector2.ZERO
 		p.angular_velocity = 0.0
 		p.rotation = 0.0
+		p.global_position = spawns[i]
 		p.visible = true
 		p.is_invincible = false
 		if p.has_meta("respawn_timer"):
