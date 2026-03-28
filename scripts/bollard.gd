@@ -26,7 +26,7 @@ const GRAB_FLING_MULT := 2.2        # Velocity multiplier on release
 const GRAB_RANGE := 120.0           # Max distance to latch onto a surface
 
 # ── Charge Attack ───────────────────────────────────────────────────────────
-const CHARGE_TIME := 0.8            # Seconds to reach full charge
+const CHARGE_TIME := 0.6            # Seconds to reach full charge
 const CHARGE_IMPULSE := 800.0       # Impulse at full charge
 const CHARGE_DAMAGE := 15.0         # Damage dealt on charged hit
 const CHARGE_HIT_RADIUS := 40.0     # Radius to detect hits during dash
@@ -34,16 +34,18 @@ const CHARGE_DASH_TIME := 0.25      # Duration of the dash (invulnerable burst)
 const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
 
 # ── Shell Toss ──────────────────────────────────────────────────────────────
-const SHELL_TOSS_SPEED := 600.0     # Speed of thrown shell
+const SHELL_TOSS_SPEED := 600.0     # Max speed of thrown shell (at full charge)
+const SHELL_TOSS_MIN_SPEED := 200.0 # Min speed (quick tap)
 const SHELL_TOSS_DAMAGE := 12.0     # Damage on hit
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
 const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
+const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
-const STALK_LENGTH := 14.0
+const STALK_LENGTH := 22.0
 const STALK_SPREAD := 7.0
 
 # ── Sprite Textures (preloaded — swap these PNGs for custom art) ──────────
@@ -83,16 +85,20 @@ var grab_target: Node2D = null          # What we latched to
 var grab_anchor: Vector2 = Vector2.ZERO # World-space latch point on the surface
 var grab_entry_vel: Vector2 = Vector2.ZERO  # Velocity when grab started
 
+# ── Aim Direction (shared by charge + toss) ────────────────────────────────
+var aim_dir: Vector2 = Vector2.ZERO     # Current aim from WASD/stick
+
 # ── Charge Attack State ────────────────────────────────────────────────────
 var is_charging: bool = false
 var charge_amount: float = 0.0          # 0..1
-var charge_dir: float = 0.0            # -1 or 1
 var is_dashing: bool = false
 var dash_timer: float = 0.0
 var charge_cooldown: float = 0.0
 
 # ── Shell Toss State ──────────────────────────────────────────────────────
 var shell_missing: bool = false         # True while shell is flying
+var is_toss_charging: bool = false      # Holding toss to charge aim+power
+var toss_charge_amount: float = 0.0     # 0..1
 var shell_toss_pos: Vector2 = Vector2.ZERO
 var shell_toss_vel: Vector2 = Vector2.ZERO
 var shell_toss_timer: float = 0.0
@@ -107,8 +113,10 @@ var is_blinking: bool = false
 var blink_timer: float = 0.0
 var next_blink_time: float = 3.0
 
-# ── Nervous Eye State ──────────────────────────────────────────────────────
-var nervous_timer: float = 0.0
+# ── Eye Look State (replaces sine-wave nervous eyes) ──────────────────────
+var eye_look_target: float = 0.0     # Where pupil wants to be (-1..1)
+var eye_look_current: float = 0.0    # Smoothed current offset
+var eye_look_hold_timer: float = 2.0 # Time left holding current gaze
 
 # ── AI State ────────────────────────────────────────────────────────────────
 var ai_target: Bollard = null
@@ -121,6 +129,8 @@ var act_lean_left: String
 var act_lean_right: String
 var act_raise: String
 var act_lower: String
+var act_aim_up: String
+var act_aim_down: String
 var act_grab: String
 var act_charge: String
 var act_toss: String
@@ -145,6 +155,7 @@ var spr_pupil_r: Sprite2D
 var spr_eye_hl_l: Sprite2D
 var spr_eye_hl_r: Sprite2D
 var spr_grab: Sprite2D
+var spr_body_circle: Sprite2D    # Body-colored circle behind shell (visible when shell tossed)
 var spr_thrown_shell: Sprite2D   # The shell projectile when tossed
 var spr_thrown_spiral: Sprite2D  # Spiral overlay on thrown shell
 # Blink lines drawn over eyes (Line2D since there's no blink sprite)
@@ -158,6 +169,8 @@ func _ready() -> void:
 	act_lean_right = prefix + "lean_right"
 	act_raise = prefix + "raise"
 	act_lower = prefix + "lower"
+	act_aim_up = prefix + "aim_up"
+	act_aim_down = prefix + "aim_down"
 	act_grab = prefix + "grab"
 	act_charge = prefix + "charge"
 	act_toss = prefix + "toss"
@@ -197,12 +210,11 @@ func _physics_process(delta: float) -> void:
 	if is_frozen:
 		_update_collision_shape()
 		_update_blink(delta)
-		nervous_timer += delta
+		_update_eye_look(delta)
 		_update_sprites()
 		return
 
 	prev_extend = extend_amount
-	nervous_timer += delta
 
 	if is_ai:
 		_process_ai(delta)
@@ -216,6 +228,7 @@ func _physics_process(delta: float) -> void:
 	_check_launch()
 	_update_invincibility(delta)
 	_update_blink(delta)
+	_update_eye_look(delta)
 	_update_sprites()
 
 
@@ -223,44 +236,73 @@ func _physics_process(delta: float) -> void:
 # ║ INPUT                                                                    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
+func _get_aim_dir() -> Vector2:
+	# Build a 2D aim vector from WASD / left stick
+	var aim := Vector2.ZERO
+	if Input.is_action_pressed(act_lean_left):
+		aim.x -= 1.0
+	if Input.is_action_pressed(act_lean_right):
+		aim.x += 1.0
+	if Input.is_action_pressed(act_aim_up):
+		aim.y -= 1.0
+	if Input.is_action_pressed(act_aim_down):
+		aim.y += 1.0
+	return aim.normalized() if aim.length() > 0.1 else Vector2.ZERO
+
+
 func _process_input(delta: float) -> void:
 	# During dash, no input — you're flying
 	if is_dashing:
 		return
 
-	# Read lean direction
-	var lean_dir := 0.0
-	if Input.is_action_pressed(act_lean_left):
-		lean_dir = -1.0
-	elif Input.is_action_pressed(act_lean_right):
-		lean_dir = 1.0
+	# Read aim + lean
+	aim_dir = _get_aim_dir()
+	var lean_dir := aim_dir.x
 
-	# ── Charge Attack: hold charge + lean to build up, release to dash ───
-	if Input.is_action_pressed(act_charge) and charge_cooldown <= 0.0 and not shell_missing:
+	# ── Charge Attack: hold charge to build up, aim with WASD, release to dash
+	if Input.is_action_pressed(act_charge) and charge_cooldown <= 0.0:
 		is_charging = true
-		if lean_dir != 0.0:
-			charge_dir = lean_dir
 		charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
-		# While charging: slower movement, can still lean to aim
+		# Slow lean while charging
 		if lean_dir != 0.0:
 			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
+		# Raise/lower still works on controller
+		if Input.is_action_pressed(act_raise):
+			extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
+		if Input.is_action_pressed(act_lower):
+			extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
 		return
 	elif is_charging:
-		# Released charge button — fire the dash
 		_start_charge_dash()
 		return
 
-	# ── Shell Toss: press toss to throw shell ────────────────────────────
-	if Input.is_action_just_pressed(act_toss) and not shell_missing and shell_toss_cooldown <= 0.0:
-		_start_shell_toss(lean_dir)
+	# ── Shell Toss: hold toss to charge, aim with WASD, release to throw ─
+	if Input.is_action_pressed(act_toss) and not shell_missing and shell_toss_cooldown <= 0.0:
+		is_toss_charging = true
+		toss_charge_amount = minf(toss_charge_amount + delta / SHELL_TOSS_CHARGE_TIME, 1.0)
+		# Slow lean while aiming toss
+		if lean_dir != 0.0:
+			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
+		return
+	elif is_toss_charging:
+		_fire_shell_toss()
+		return
 
-	# Normal movement
+	# Normal movement — lean with left/right
 	if lean_dir != 0.0:
 		apply_torque(LEAN_TORQUE * lean_dir)
+
+	# Raise/lower — controller right stick only (W/S are now aim)
+	var has_extend_input := false
 	if Input.is_action_pressed(act_raise):
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
+		has_extend_input = true
 	if Input.is_action_pressed(act_lower):
 		extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
+		has_extend_input = true
+	# Auto-extend toward neutral when no raise/lower input
+	if not has_extend_input:
+		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.3 * delta)
 
 	# Grab — single press triggers latch (not held)
 	if Input.is_action_just_pressed(act_grab):
@@ -476,12 +518,13 @@ func _start_charge_dash() -> void:
 	is_charging = false
 	is_dashing = true
 	dash_timer = 0.0
-	# Dash direction: use charge_dir, default to facing direction
-	if charge_dir == 0.0:
-		charge_dir = 1.0 if cos(rotation) >= 0.0 else -1.0
+	# Dash in aimed direction; default to facing direction if no aim
+	var dash_dir := aim_dir
+	if dash_dir.length() < 0.1:
+		var facing := 1.0 if cos(rotation) >= 0.0 else -1.0
+		dash_dir = Vector2(facing, 0.0)
 	var impulse_strength := CHARGE_IMPULSE * charge_amount
-	var dash_vec := Vector2(charge_dir * impulse_strength, -impulse_strength * 0.3)
-	apply_central_impulse(dash_vec)
+	apply_central_impulse(dash_dir * impulse_strength)
 	charge_amount = 0.0
 
 
@@ -529,17 +572,22 @@ func _check_charge_hits() -> void:
 # ║ Shell returns after a few seconds.                                       ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _start_shell_toss(lean_dir: float) -> void:
+func _fire_shell_toss() -> void:
+	# Called when toss button is released after charging
+	is_toss_charging = false
 	shell_missing = true
 	shell_toss_hit = false
 	shell_toss_timer = 0.0
-	# Launch from the shell position (base of snail)
 	shell_toss_pos = global_position
-	# Direction: lean direction or facing direction
-	var toss_dir := lean_dir
-	if toss_dir == 0.0:
-		toss_dir = 1.0 if cos(rotation) >= 0.0 else -1.0
-	shell_toss_vel = Vector2(toss_dir * SHELL_TOSS_SPEED, -SHELL_TOSS_SPEED * 0.4)
+	# Direction from aim; default to facing direction if no aim
+	var toss_dir := aim_dir
+	if toss_dir.length() < 0.1:
+		var facing := 1.0 if cos(rotation) >= 0.0 else -1.0
+		toss_dir = Vector2(facing, -0.3).normalized()
+	# Speed scales with charge amount
+	var speed := lerpf(SHELL_TOSS_MIN_SPEED, SHELL_TOSS_SPEED, toss_charge_amount)
+	shell_toss_vel = toss_dir * speed
+	toss_charge_amount = 0.0
 
 
 func _update_shell_toss(delta: float) -> void:
@@ -568,9 +616,6 @@ func _update_shell_toss(delta: float) -> void:
 
 	# Check hit on other snails
 	if not shell_toss_hit:
-		for body in get_tree().get_nodes_in_group(""):
-			pass  # We'll check differently
-		# Use a direct space query for nearby bodies
 		var shape_query := PhysicsShapeQueryParameters2D.new()
 		var circle := CircleShape2D.new()
 		circle.radius = BASE_RADIUS
@@ -675,6 +720,8 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	charge_amount = 0.0
 	is_dashing = false
 	charge_cooldown = 0.0
+	is_toss_charging = false
+	toss_charge_amount = 0.0
 	shell_missing = false
 	shell_toss_cooldown = 0.0
 	is_invincible = true
@@ -685,7 +732,7 @@ func _update_emerge(delta: float) -> void:
 	extend_amount = lerpf(0.0, 0.5, emerge_progress)
 	_update_collision_shape()
 	_update_blink(delta)
-	nervous_timer += delta
+	_update_eye_look(delta)
 	_update_sprites()
 	if emerge_progress >= 1.0:
 		is_emerging = false
@@ -716,6 +763,28 @@ func _update_blink(delta: float) -> void:
 		if blink_timer > next_blink_time:
 			is_blinking = true
 			blink_timer = 0.0
+
+
+func _update_eye_look(delta: float) -> void:
+	eye_look_hold_timer -= delta
+	if eye_look_hold_timer <= 0.0:
+		# Pick new gaze direction: left, center, or right
+		var roll := randf()
+		if roll < 0.25:
+			eye_look_target = 0.0
+		elif roll < 0.625:
+			eye_look_target = 1.0
+		else:
+			eye_look_target = -1.0
+		# Hold duration: shorter when more damaged (more nervous)
+		var nervousness := clampf(damage_percent / 100.0, 0.0, 1.5)
+		var min_hold := lerpf(1.5, 0.15, nervousness)
+		var max_hold := lerpf(3.5, 0.5, nervousness)
+		eye_look_hold_timer = randf_range(min_hold, max_hold)
+	# Smoothly move pupils toward target — faster when more damaged
+	var nervousness := clampf(damage_percent / 100.0, 0.0, 1.5)
+	var move_speed := 4.0 + nervousness * 10.0
+	eye_look_current = move_toward(eye_look_current, eye_look_target, move_speed * delta)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -753,6 +822,12 @@ func _setup_sprites() -> void:
 	spr_spiral = _make_sprite(TEX_SPIRAL, Vector2.ZERO, -1)
 	spr_spiral.self_modulate = accent_color.darkened(0.15)
 	spr_spiral.scale = Vector2(shell_scale, shell_scale)
+
+	# Body circle — body-colored circle behind shell, visible when shell is tossed
+	var body_circle_scale := (BASE_RADIUS * 1.7) / TEX_SHELL.get_width()
+	spr_body_circle = _make_sprite(TEX_SHELL, Vector2.ZERO, -2)
+	spr_body_circle.self_modulate = bollard_color
+	spr_body_circle.scale = Vector2(body_circle_scale, body_circle_scale)
 
 	# Body (stretches vertically)
 	spr_body = _make_sprite(TEX_BODY, Vector2.ZERO, 0)
@@ -840,14 +915,20 @@ func _update_sprites() -> void:
 
 	# ── CHARGE VISUAL ────────────────────────────────────────────────────
 	if is_charging and charge_amount > 0.1:
-		# Shake body and tint progressively redder as charge builds
 		var shake := charge_amount * 3.0
 		spr_body.position.x += randf_range(-shake, shake)
 		body_c = body_c.lerp(Color(1.0, 0.3, 0.2), charge_amount * 0.5)
 		shell_c = shell_c.lerp(Color(1.0, 0.5, 0.2), charge_amount * 0.4)
+	if is_toss_charging and toss_charge_amount > 0.1:
+		var shake := toss_charge_amount * 2.0
+		spr_body.position.x += randf_range(-shake, shake)
+		shell_c = shell_c.lerp(Color(1.0, 0.8, 0.2), toss_charge_amount * 0.5)
 	if is_dashing:
 		body_c = Color(1.0, 0.4, 0.2)
 		shell_c = Color(1.0, 0.6, 0.2)
+
+	# ── BODY CIRCLE (behind shell — visible when shell is tossed) ────────
+	spr_body_circle.self_modulate = body_c
 
 	# ── SHELL ────────────────────────────────────────────────────────────
 	spr_shell.visible = not shell_missing
@@ -904,10 +985,8 @@ func _update_sprites() -> void:
 	spr_stalk_r.scale = Vector2(1.0, stalk_total_r / TEX_STALK.get_height())
 
 	# ── EYES + PUPILS ────────────────────────────────────────────────────
-	var nervousness: float = clampf(damage_percent / 100.0, 0.0, 1.5)
-	var eye_shift_speed: float = 4.0 + nervousness * 10.0
-	var eye_shift_amount: float = nervousness * 2.8
-	var pupil_offset_x: float = sin(nervous_timer * eye_shift_speed) * eye_shift_amount
+	var eye_shift_amount: float = 2.0 + clampf(damage_percent / 100.0, 0.0, 1.5) * 2.5
+	var pupil_offset_x: float = eye_look_current * eye_shift_amount
 
 	if is_blinking:
 		spr_eye_l.visible = false
@@ -1059,7 +1138,7 @@ func _ai_grab_attempt(delta: float) -> void:
 func _ai_charge_attack(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	is_charging = true
-	charge_dir = dir
+	aim_dir = Vector2(dir, randf_range(-0.3, 0.0)).normalized()
 	charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
 	apply_torque(LEAN_TORQUE * dir * 0.3)
 
@@ -1067,4 +1146,6 @@ func _ai_shell_toss() -> void:
 	if shell_missing or shell_toss_cooldown > 0.0:
 		return
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	_start_shell_toss(dir)
+	aim_dir = Vector2(dir, randf_range(-0.5, 0.1)).normalized()
+	toss_charge_amount = randf_range(0.4, 1.0)
+	_fire_shell_toss()
