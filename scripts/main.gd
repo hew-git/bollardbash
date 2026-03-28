@@ -119,6 +119,10 @@ func _ready() -> void:
 	player2.slime_color = Color(0.35, 0.65, 0.75, 0.6)
 
 	player2.ai_target = player1
+	# Auto-detect second controller: if connected, P2 is human
+	if Input.get_connected_joypads().size() >= 2:
+		player2.is_ai = false
+		player2.ai_target = null
 	game_over_label.visible = false
 	controls_label.visible = true
 	p1_effect.visible = false
@@ -513,10 +517,25 @@ func _input(event: InputEvent) -> void:
 			_restart_game()
 		if event.keycode == KEY_ESCAPE:
 			get_tree().quit()
+		# P key toggles P2 between AI and human
+		if event.keycode == KEY_P:
+			_toggle_p2_ai()
 	# Controller: Select/Back button to restart
 	if event is InputEventJoypadButton and event.pressed:
 		if event.button_index == JOY_BUTTON_BACK and not countdown_active:
 			_restart_game()
+	# If P2 is AI and we get any input from controller device 1, switch to human
+	if player2.is_ai and event.device == 1:
+		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
+			_toggle_p2_ai()
+
+
+func _toggle_p2_ai() -> void:
+	player2.is_ai = not player2.is_ai
+	if player2.is_ai:
+		player2.ai_target = player1
+	else:
+		player2.ai_target = null
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
