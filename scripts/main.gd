@@ -489,6 +489,8 @@ func _restart_game() -> void:
 		p.charge_amount = 0.0
 		p.is_dashing = false
 		p.charge_cooldown = 0.0
+		p.is_toss_charging = false
+		p.toss_charge_amount = 0.0
 		p.shell_missing = false
 		p.shell_toss_cooldown = 0.0
 		p.damage_percent = 0.0
@@ -548,7 +550,8 @@ func _try_add_slime(player: Bollard, delta: float) -> void:
 	# Check if touching any static body (surface)
 	for body in player.get_colliding_bodies():
 		if body is StaticBody2D:
-			var pos := player.global_position
+			# Place slime at bottom of shell (ground contact point)
+			var pos := player.global_position + Vector2(0, player.BASE_RADIUS * 0.85)
 			slime_dots.append({"pos": pos, "color": player.slime_color, "age": 0.0})
 			# Cap total dots
 			if slime_dots.size() > SLIME_MAX_DOTS:
@@ -557,14 +560,17 @@ func _try_add_slime(player: Bollard, delta: float) -> void:
 
 
 func _draw() -> void:
-	# Slime dots — drawn with the slime sprite texture for consistency
-	# Replace: swap sprites/arena/slime_dot.png (12x12)
-	var slime_size := TEX_SLIME.get_size()
-	var half := slime_size * 0.5
+	# Slime dots — drawn as wide, flat puddles hugging the ground
+	var slime_w := TEX_SLIME.get_width()
+	var slime_h := TEX_SLIME.get_height()
 	for dot in slime_dots:
-		var alpha := clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.5
+		var alpha := clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.6
 		var c := Color(dot.color.r, dot.color.g, dot.color.b, alpha)
-		draw_texture(TEX_SLIME, dot.pos - half, c)
+		# Flatten: draw 1.6x wider and 0.4x shorter for a viscous puddle look
+		var w := slime_w * 1.6
+		var h := slime_h * 0.4
+		var rect := Rect2(dot.pos.x - w * 0.5, dot.pos.y - h * 0.5, w, h)
+		draw_texture_rect(TEX_SLIME, rect, false, c)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -694,16 +700,20 @@ func _damage_color(pct: float) -> Color:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_input() -> void:
+	# P1 keyboard: WASD = directional (lean + aim), Q=charge, F=toss, E=grab
 	_add_key("p1_lean_left",  KEY_A)
 	_add_key("p1_lean_right", KEY_D)
-	_add_key("p1_raise",      KEY_W)
-	_add_key("p1_lower",      KEY_S)
+	_add_key("p1_aim_up",     KEY_W)
+	_add_key("p1_aim_down",   KEY_S)
 	_add_key("p1_grab",       KEY_E)
 	_add_key("p1_charge",     KEY_Q)
 	_add_key("p1_toss",       KEY_F)
 
+	# P1 controller: left stick = lean/aim, right stick = raise/lower body
 	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
 	_add_joy_axis("p1_lean_right", JOY_AXIS_LEFT_X,  1.0, 0)
+	_add_joy_axis("p1_aim_up",     JOY_AXIS_LEFT_Y, -1.0, 0)
+	_add_joy_axis("p1_aim_down",   JOY_AXIS_LEFT_Y,  1.0, 0)
 	_add_joy_axis("p1_raise",      JOY_AXIS_RIGHT_Y, -1.0, 0)
 	_add_joy_axis("p1_lower",      JOY_AXIS_RIGHT_Y,  1.0, 0)
 	_add_joy_button("p1_grab",     JOY_BUTTON_RIGHT_SHOULDER, 0)
@@ -711,16 +721,20 @@ func _setup_input() -> void:
 	_add_joy_button("p1_charge",   JOY_BUTTON_X, 0)
 	_add_joy_button("p1_toss",     JOY_BUTTON_Y, 0)
 
+	# P2 keyboard: Arrows = directional, Shift=charge, .=toss, /=grab
 	_add_key("p2_lean_left",  KEY_LEFT)
 	_add_key("p2_lean_right", KEY_RIGHT)
-	_add_key("p2_raise",      KEY_UP)
-	_add_key("p2_lower",      KEY_DOWN)
+	_add_key("p2_aim_up",     KEY_UP)
+	_add_key("p2_aim_down",   KEY_DOWN)
 	_add_key("p2_grab",       KEY_SLASH)
 	_add_key("p2_charge",     KEY_SHIFT)
 	_add_key("p2_toss",       KEY_PERIOD)
 
+	# P2 controller: same layout as P1, device 1
 	_add_joy_axis("p2_lean_left",  JOY_AXIS_LEFT_X, -1.0, 1)
 	_add_joy_axis("p2_lean_right", JOY_AXIS_LEFT_X,  1.0, 1)
+	_add_joy_axis("p2_aim_up",     JOY_AXIS_LEFT_Y, -1.0, 1)
+	_add_joy_axis("p2_aim_down",   JOY_AXIS_LEFT_Y,  1.0, 1)
 	_add_joy_axis("p2_raise",      JOY_AXIS_RIGHT_Y, -1.0, 1)
 	_add_joy_axis("p2_lower",      JOY_AXIS_RIGHT_Y,  1.0, 1)
 	_add_joy_button("p2_grab",     JOY_BUTTON_RIGHT_SHOULDER, 1)
@@ -728,8 +742,9 @@ func _setup_input() -> void:
 	_add_joy_button("p2_charge",   JOY_BUTTON_X, 1)
 	_add_joy_button("p2_toss",     JOY_BUTTON_Y, 1)
 
-	for action in ["p1_lean_left", "p1_lean_right", "p1_raise", "p1_lower",
-					"p2_lean_left", "p2_lean_right", "p2_raise", "p2_lower"]:
+	for action in ["p1_lean_left", "p1_lean_right", "p1_aim_up", "p1_aim_down",
+					"p2_lean_left", "p2_lean_right", "p2_aim_up", "p2_aim_down",
+					"p1_raise", "p1_lower", "p2_raise", "p2_lower"]:
 		InputMap.action_set_deadzone(action, 0.3)
 
 func _add_key(action_name: String, key: Key) -> void:
