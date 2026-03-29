@@ -39,6 +39,7 @@ const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
 const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
+const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
@@ -74,6 +75,7 @@ var emerge_progress: float = 0.0
 
 # ── Aim Direction (shared by charge + toss) ────────────────────────────────
 var aim_dir: Vector2 = Vector2.ZERO     # Current aim from WASD/stick
+var last_aim_dir: Vector2 = Vector2(1.0, 0.0)  # Last non-zero aim (fallback for release)
 
 # ── Charge Attack State ────────────────────────────────────────────────────
 var is_charging: bool = false
@@ -95,6 +97,7 @@ var shell_toss_vel: Vector2 = Vector2.ZERO
 var shell_toss_timer: float = 0.0
 var shell_toss_cooldown: float = 0.0
 var shell_toss_hit: bool = false        # Already hit someone this throw
+var shell_deflected: bool = false       # Shell was deflected back — can hit owner
 
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
@@ -252,6 +255,8 @@ func _process_input(delta: float) -> void:
 
 	# Read aim + lean
 	aim_dir = _get_aim_dir()
+	if aim_dir.length() > 0.1:
+		last_aim_dir = aim_dir
 	var lean_dir := aim_dir.x
 
 	# ── Charge Attack: hold charge to build up, aim with WASD, release to dash
@@ -337,11 +342,10 @@ func _start_charge_dash() -> void:
 	is_dashing = true
 	dash_timer = 0.0
 	dashes_remaining -= 1
-	# Dash in aimed direction; default to facing direction if no aim
+	# Dash in aimed direction; fallback to last aimed direction
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
-		var facing := 1.0 if cos(rotation) >= 0.0 else -1.0
-		dash_dir = Vector2(facing, 0.0)
+		dash_dir = last_aim_dir
 	var impulse_strength := CHARGE_IMPULSE * charge_amount
 	# Airborne boost: 2x impulse when not touching ground (recovery mechanic)
 	var on_ground := false
@@ -415,13 +419,13 @@ func _fire_shell_toss() -> void:
 	is_toss_charging = false
 	shell_missing = true
 	shell_toss_hit = false
+	shell_deflected = false
 	shell_toss_timer = 0.0
 	shell_toss_pos = global_position
-	# Direction from aim; default to facing direction if no aim
+	# Direction from aim; fallback to last aimed direction
 	var toss_dir := aim_dir
 	if toss_dir.length() < 0.1:
-		var facing := 1.0 if cos(rotation) >= 0.0 else -1.0
-		toss_dir = Vector2(facing, -0.3).normalized()
+		toss_dir = last_aim_dir
 	# Speed scales with charge amount
 	var speed := lerpf(SHELL_TOSS_MIN_SPEED, SHELL_TOSS_SPEED, toss_charge_amount)
 	shell_toss_vel = toss_dir * speed
@@ -473,30 +477,51 @@ func _update_shell_toss(delta: float) -> void:
 				shell_toss_vel = shell_toss_vel.bounce(push_dir) * SHELL_BOUNCE
 			break
 
-	# Check hit on other snails
+	# Check hit on snails
 	if not shell_toss_hit:
 		var shape_query := PhysicsShapeQueryParameters2D.new()
 		var circle := CircleShape2D.new()
 		circle.radius = BASE_RADIUS
 		shape_query.shape = circle
 		shape_query.transform = Transform2D(0.0, shell_toss_pos)
-		shape_query.exclude = [get_rid()]
+		# After deflect, shell can hit its owner (no exclude)
+		if not shell_deflected:
+			shape_query.exclude = [get_rid()]
 		var hits := space.intersect_shape(shape_query, 4)
 		for hit in hits:
 			var collider = hit.collider
-			if collider is RigidBody2D and collider != self and collider.has_method("take_damage"):
-				var target_body: RigidBody2D = collider
-				var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
-				target_body.take_damage(SHELL_TOSS_DAMAGE, dir)
-				# Billiard-style impact: shell transfers momentum (20% softer)
-				var shell_impact := shell_toss_vel.length() * 2.0
-				target_body.apply_central_impulse(dir * shell_impact)
-				# Slomo + flash
+			if not (collider is RigidBody2D) or not collider.has_method("take_damage"):
+				continue
+			var target_body: RigidBody2D = collider
+			# Skip self only if shell hasn't been deflected
+			if target_body == self and not shell_deflected:
+				continue
+			# DEFLECT: if the target is dashing, they smack the shell back
+			var is_target_dashing := false
+			if target_body is Bollard:
+				var target_snail: Bollard = target_body
+				is_target_dashing = target_snail.is_dashing
+			if is_target_dashing:
+				# Deflect shell back toward thrower at boosted speed
+				var deflect_dir: Vector2 = (global_position - shell_toss_pos).normalized()
+				var deflect_speed := shell_toss_vel.length() * SHELL_DEFLECT_BOOST
+				shell_toss_vel = deflect_dir * deflect_speed
+				shell_deflected = true
+				# Reset timer so the shell doesn't vanish immediately
+				shell_toss_timer = 0.0
+				# Slomo + flash on the deflect
 				big_hit.emit(shell_toss_pos)
-				shell_toss_hit = true
-				# Bounce shell off the hit target
-				shell_toss_vel = -shell_toss_vel * 0.3
 				break
+			var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
+			target_body.take_damage(SHELL_TOSS_DAMAGE, dir)
+			# Billiard-style impact: shell transfers momentum
+			var shell_impact := shell_toss_vel.length() * 2.0
+			target_body.apply_central_impulse(dir * shell_impact)
+			# Slomo + flash
+			big_hit.emit(shell_toss_pos)
+			shell_toss_hit = true
+			shell_toss_vel = -shell_toss_vel * 0.3
+			break
 
 	# Return shell after time expires
 	if shell_toss_timer >= SHELL_RETURN_TIME:
@@ -505,6 +530,7 @@ func _update_shell_toss(delta: float) -> void:
 
 func _return_shell() -> void:
 	shell_missing = false
+	shell_deflected = false
 	shell_toss_cooldown = SHELL_TOSS_COOLDOWN
 
 
@@ -596,6 +622,7 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	is_toss_charging = false
 	toss_charge_amount = 0.0
 	shell_missing = false
+	shell_deflected = false
 	shell_toss_cooldown = 0.0
 	is_invincible = true
 	invincible_timer = 0.0
@@ -986,6 +1013,7 @@ func _ai_charge_attack(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	is_charging = true
 	aim_dir = Vector2(dir, randf_range(-0.3, 0.0)).normalized()
+	last_aim_dir = aim_dir
 	charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
 	apply_torque(LEAN_TORQUE * dir * 0.3)
 
@@ -994,5 +1022,6 @@ func _ai_shell_toss() -> void:
 		return
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	aim_dir = Vector2(dir, randf_range(-0.5, 0.1)).normalized()
+	last_aim_dir = aim_dir
 	toss_charge_amount = randf_range(0.4, 1.0)
 	_fire_shell_toss()

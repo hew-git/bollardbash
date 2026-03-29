@@ -720,6 +720,7 @@ func _restart_game() -> void:
 		p.is_toss_charging = false
 		p.toss_charge_amount = 0.0
 		p.shell_missing = false
+		p.shell_deflected = false
 		p.shell_toss_cooldown = 0.0
 		p.damage_percent = 0.0
 		p.extend_amount = 0.5
