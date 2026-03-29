@@ -21,10 +21,6 @@ const LAUNCH_BOOST := 300.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
-const GRAB_LATCH_TIME := 0.3        # Seconds locked to surface before auto-fling
-const GRAB_FLING_MULT := 2.2        # Velocity multiplier on release
-const GRAB_RANGE := 120.0           # Max distance to latch onto a surface
-
 # ── Charge Attack ───────────────────────────────────────────────────────────
 const CHARGE_TIME := 0.3            # Seconds to reach full charge (fast for recovery)
 const CHARGE_IMPULSE := 1800.0      # Impulse at full charge (strong recovery)
@@ -58,8 +54,6 @@ const TEX_EYE := preload("res://sprites/snail/eye.png")
 const TEX_PUPIL := preload("res://sprites/snail/pupil.png")
 const TEX_EYE_HL := preload("res://sprites/snail/eye_highlight.png")
 const TEX_STALK := preload("res://sprites/snail/stalk.png")
-const TEX_GRAB := preload("res://sprites/snail/grab_dot.png")
-
 # ── Emerge Constants ────────────────────────────────────────────────────────
 const EMERGE_DURATION := 0.6
 
@@ -77,14 +71,6 @@ const INVINCIBLE_TIME := 1.5
 # ── Emerge State ────────────────────────────────────────────────────────────
 var is_emerging: bool = false
 var emerge_progress: float = 0.0
-
-# ── Grab State (Latch and Fling) ───────────────────────────────────────────
-var is_grabbing: bool = false
-var want_to_grab: bool = false
-var grab_timer: float = 0.0
-var grab_target: Node2D = null          # What we latched to
-var grab_anchor: Vector2 = Vector2.ZERO # World-space latch point on the surface
-var grab_entry_vel: Vector2 = Vector2.ZERO  # Velocity when grab started
 
 # ── Aim Direction (shared by charge + toss) ────────────────────────────────
 var aim_dir: Vector2 = Vector2.ZERO     # Current aim from WASD/stick
@@ -136,15 +122,12 @@ var act_raise: String
 var act_lower: String
 var act_aim_up: String
 var act_aim_down: String
-var act_grab: String
 var act_charge: String
 var act_toss: String
 
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var base_shape: CollisionShape2D = $BaseShape
 @onready var post_shape: CollisionShape2D = $PostShape
-@onready var grab_area: Area2D = $GrabArea
-@onready var grab_shape: CollisionShape2D = $GrabArea/GrabShape
 var dome_shape: CollisionShape2D  # Created at runtime for dome cap
 
 # ── Sprite Node References (created in _ready) ────────────────────────────
@@ -160,7 +143,6 @@ var spr_pupil_l: Sprite2D
 var spr_pupil_r: Sprite2D
 var spr_eye_hl_l: Sprite2D
 var spr_eye_hl_r: Sprite2D
-var spr_grab: Sprite2D
 var spr_body_circle: Sprite2D    # Body-colored circle behind shell (visible when shell tossed)
 var spr_thrown_shell: Sprite2D   # The shell projectile when tossed
 var spr_thrown_spiral: Sprite2D  # Spiral overlay on thrown shell
@@ -177,7 +159,6 @@ func _ready() -> void:
 	act_lower = prefix + "lower"
 	act_aim_up = prefix + "aim_up"
 	act_aim_down = prefix + "aim_down"
-	act_grab = prefix + "grab"
 	act_charge = prefix + "charge"
 	act_toss = prefix + "toss"
 
@@ -206,8 +187,9 @@ func _ready() -> void:
 	dome_shape.position = Vector2(0, -MIN_HEIGHT)
 	add_child(dome_shape)
 
-	# Replace the grab area's circle with a rectangle covering the full body (post)
-	grab_shape.shape = RectangleShape2D.new()
+	# Disable the grab area (grab mechanic removed)
+	$GrabArea.monitoring = false
+	$GrabArea.monitorable = false
 
 	next_blink_time = randf_range(1.5, 5.0)
 	_setup_sprites()
@@ -236,7 +218,6 @@ func _physics_process(delta: float) -> void:
 		_process_input(delta)
 
 	_update_collision_shape()
-	_update_grab(delta)
 	_update_charge(delta)
 	_update_shell_toss(delta)
 	_check_launch()
@@ -309,10 +290,6 @@ func _process_input(delta: float) -> void:
 	if Input.is_action_pressed(act_lower):
 		extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
 
-	# Grab — single press triggers latch (not held)
-	if Input.is_action_just_pressed(act_grab):
-		want_to_grab = true
-
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ COLLISION SHAPE                                                          ║
@@ -330,12 +307,6 @@ func _update_collision_shape() -> void:
 		dome_shape.position = Vector2(0, -post_h)
 		dome_shape.disabled = extend_amount < 0.03
 
-	# Grab area covers the full body (post), not just the tip
-	var grab_rect := grab_shape.shape as RectangleShape2D
-	if grab_rect:
-		grab_rect.size = Vector2(POST_HALF_WIDTH * 2.0 + 12, maxf(post_h, 10.0))
-	grab_area.position = Vector2(0, -post_h * 0.5)
-
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ LAUNCH MECHANIC                                                          ║
@@ -347,168 +318,6 @@ func _check_launch() -> void:
 	if extend_speed_now > 0.08 and upside_down:
 		var boost := LAUNCH_BOOST * extend_speed_now * 6.0
 		apply_central_impulse(Vector2(0, -boost))
-
-
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ GRAB — Latch and Fling                                                   ║
-# ║                                                                           ║
-# ║ Press grab near a surface → latch to closest point on it. Your entry    ║
-# ║ velocity is converted to angular momentum around the latch point.        ║
-# ║ After ~0.3s you auto-release with the built-up swing velocity ×          ║
-# ║ GRAB_FLING_MULT. No manual swing — it's purely momentum-based.          ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
-
-func _try_grab() -> void:
-	if is_grabbing:
-		return
-
-	# Collect all candidate bodies from grab area overlaps + direct contacts
-	var candidates: Array[PhysicsBody2D] = []
-	for body in grab_area.get_overlapping_bodies():
-		if body != self and body is PhysicsBody2D and body not in candidates:
-			candidates.append(body)
-	for body in get_colliding_bodies():
-		if body != self and body is PhysicsBody2D and body not in candidates:
-			candidates.append(body)
-
-	# Rank by closest surface point (not body center — ground center is far away)
-	var best_body: PhysicsBody2D = null
-	var best_dist := 999999.0
-	for body in candidates:
-		var surface_pt := _closest_point_on_body(body)
-		var d := global_position.distance_to(surface_pt)
-		if d < best_dist:
-			best_dist = d
-			best_body = body
-
-	if best_body:
-		_start_grab(best_body)
-
-
-func _start_grab(target: PhysicsBody2D) -> void:
-	is_grabbing = true
-	grab_timer = 0.0
-	grab_target = target
-	grab_anchor = _closest_point_on_body(target)
-	grab_entry_vel = linear_velocity
-
-
-func _closest_point_on_body(body: PhysicsBody2D) -> Vector2:
-	var best := body.global_position
-	var best_dist := global_position.distance_to(best)
-
-	for child in body.get_children():
-		if not (child is CollisionShape2D) or child.disabled:
-			continue
-		var shape = child.shape
-		var shape_pos = body.global_position + child.position.rotated(body.rotation)
-
-		var candidate = global_position
-		if shape is CircleShape2D:
-			var cs: CircleShape2D = shape
-			var dir = (global_position - shape_pos).normalized()
-			candidate = shape_pos + dir * cs.radius
-		elif shape is RectangleShape2D:
-			var rs: RectangleShape2D = shape
-			var half = rs.size * 0.5
-			var local = global_position - shape_pos
-			local.x = clampf(local.x, -half.x, half.x)
-			local.y = clampf(local.y, -half.y, half.y)
-			candidate = shape_pos + local
-
-		var d = global_position.distance_to(candidate)
-		if d < best_dist:
-			best_dist = d
-			best = candidate
-
-	# Also handle CollisionPolygon2D (ground)
-	for child in body.get_children():
-		if not (child is CollisionPolygon2D):
-			continue
-		var poly = child.polygon
-		for i in poly.size():
-			var a = body.global_position + poly[i]
-			var b = body.global_position + poly[(i + 1) % poly.size()]
-			var candidate = _closest_point_on_segment(global_position, a, b)
-			var d = global_position.distance_to(candidate)
-			if d < best_dist:
-				best_dist = d
-				best = candidate
-
-	return best
-
-
-func _closest_point_on_segment(point: Vector2, a: Vector2, b: Vector2) -> Vector2:
-	var ab := b - a
-	var len_sq := ab.length_squared()
-	if len_sq < 0.001:
-		return a
-	var t := clampf((point - a).dot(ab) / len_sq, 0.0, 1.0)
-	return a + ab * t
-
-
-func _release_grab() -> void:
-	if not is_grabbing:
-		return
-	is_grabbing = false
-	grab_target = null
-
-
-func _fling_release() -> void:
-	# Calculate the tangential (swing) velocity from orbiting around the anchor
-	var to_self := global_position - grab_anchor
-	var dist := to_self.length()
-	if dist > 1.0:
-		var radial := to_self / dist
-		# Tangent perpendicular to the radial direction
-		var tangent := Vector2(-radial.y, radial.x)
-		# Project current velocity onto tangent to get swing speed
-		var swing_speed := linear_velocity.dot(tangent)
-		# Fling in the tangential direction with multiplier
-		var fling_vel := tangent * swing_speed * GRAB_FLING_MULT
-		linear_velocity = fling_vel
-	is_grabbing = false
-	grab_target = null
-
-
-func _update_grab(delta: float) -> void:
-	if is_grabbing:
-		if not is_instance_valid(grab_target):
-			_release_grab()
-			return
-		grab_timer += delta
-
-		# Track moving targets (e.g. other snails)
-		if grab_target is RigidBody2D:
-			grab_anchor += grab_target.linear_velocity * delta
-
-		# Constrain to orbit: keep distance fixed, convert velocity to tangential
-		var to_self := global_position - grab_anchor
-		var dist := to_self.length()
-		if dist > 1.0:
-			var radial := to_self / dist
-			var tangent := Vector2(-radial.y, radial.x)
-
-			# On first frame, convert entry velocity to tangential orbit
-			if grab_timer <= delta * 1.5:
-				var tang_speed := grab_entry_vel.dot(tangent)
-				linear_velocity = tangent * tang_speed
-
-			# Keep snail at fixed radius from anchor (rope constraint)
-			var orbit_radius := clampf(dist, 20.0, GRAB_RANGE)
-			global_position = grab_anchor + radial * orbit_radius
-
-			# Remove radial velocity component — only tangential remains
-			var radial_vel := linear_velocity.dot(radial)
-			linear_velocity -= radial * radial_vel
-
-		# Auto-release after latch time with fling
-		if grab_timer >= GRAB_LATCH_TIME:
-			_fling_release()
-
-	elif want_to_grab:
-		_try_grab()
-		want_to_grab = false
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -541,7 +350,7 @@ func _start_charge_dash() -> void:
 			on_ground = true
 			break
 	if not on_ground:
-		impulse_strength *= 2.0
+		impulse_strength *= 1.75
 	apply_central_impulse(dash_dir * impulse_strength)
 	charge_amount = 0.0
 
@@ -710,6 +519,16 @@ func _on_body_entered(body: Node) -> void:
 		# (base area), the hit is deflected and no damage is dealt.
 		if other.has_method("is_shell_hit") and other.is_shell_hit(global_position):
 			return
+		# Dashing into another snail = big hit (same impact as shell toss)
+		if is_dashing:
+			dmg = maxf(dmg, CHARGE_DAMAGE)
+			var impact_force := linear_velocity.length() * 3.0
+			other.apply_central_impulse(dir * impact_force)
+			var hit_pos := (global_position + other.global_position) * 0.5
+			big_hit.emit(hit_pos)
+			is_dashing = false
+			if dashes_remaining <= 0:
+				charge_cooldown = CHARGE_COOLDOWN
 		other.take_damage(dmg, dir)
 
 
@@ -748,8 +567,6 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	rotation = 0.0
 	extend_amount = 0.0
 	damage_percent = 0.0
-	want_to_grab = false
-	_release_grab()
 	is_charging = false
 	charge_amount = 0.0
 	is_dashing = false
@@ -843,7 +660,7 @@ func _update_eye_look(delta: float) -> void:
 # ║   eye.png            12x12  — eyeball (used twice)                       ║
 # ║   pupil.png           8x8   — pupil (used twice)                        ║
 # ║   eye_highlight.png   6x6   — white reflection dot (used twice)         ║
-# ║   grab_dot.png       10x10  — red grab indicator                        ║
+# ║   (grab_dot.png      10x10  — unused, grab removed)                     ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_sprites() -> void:
@@ -889,10 +706,6 @@ func _setup_sprites() -> void:
 	# Eye highlights
 	spr_eye_hl_l = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
 	spr_eye_hl_r = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
-
-	# Grab indicator
-	spr_grab = _make_sprite(TEX_GRAB, Vector2.ZERO, 5)
-	spr_grab.visible = false
 
 	# Thrown shell (global coords — not attached to snail body)
 	spr_thrown_shell = Sprite2D.new()
@@ -1055,11 +868,6 @@ func _update_sprites() -> void:
 		spr_eye_hl_l.position = left_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
 		spr_eye_hl_r.position = right_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
 
-	# ── GRAB INDICATOR ──────────────────────────────────────────────────
-	spr_grab.visible = is_grabbing and is_instance_valid(grab_target)
-	if spr_grab.visible:
-		spr_grab.position = Vector2(0, tip_y)
-
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ AI                                                                       ║
@@ -1067,7 +875,6 @@ func _update_sprites() -> void:
 
 func _process_ai(delta: float) -> void:
 	if ai_target == null or not is_instance_valid(ai_target) or ai_target.is_dead:
-		want_to_grab = false
 		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.5 * delta)
 		return
 	ai_timer += delta
@@ -1099,12 +906,6 @@ func _process_ai(delta: float) -> void:
 			_ai_retreat(delta)
 			if ai_timer > ai_action_duration:
 				_ai_pick_action()
-		"grab_attempt":
-			_ai_grab_attempt(delta)
-			if ai_timer > ai_action_duration:
-				want_to_grab = false
-				_release_grab()
-				_ai_pick_action()
 		"charge_attack":
 			_ai_charge_attack(delta)
 			if ai_timer > ai_action_duration:
@@ -1134,10 +935,7 @@ func _ai_pick_action() -> void:
 	elif roll < 0.26:
 		ai_state = "shell_toss"
 		ai_action_duration = 0.1  # Instant
-	elif roll < 0.36:
-		ai_state = "grab_attempt"
-		ai_action_duration = randf_range(0.5, 1.5)
-	elif roll < 0.65:
+	elif roll < 0.55:
 		ai_state = "attack"
 		ai_action_duration = randf_range(0.3, 1.0)
 	else:
@@ -1162,13 +960,6 @@ func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
 	apply_torque(LEAN_TORQUE * dir * 0.8)
 	extend_amount = move_toward(extend_amount, 0.3, EXTEND_SPEED * delta)
-
-func _ai_grab_attempt(delta: float) -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
-	if not is_grabbing:
-		apply_torque(LEAN_TORQUE * dir * 0.5)
-		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
-		want_to_grab = true
 
 func _ai_charge_attack(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
