@@ -52,8 +52,15 @@ const DEATH_PHRASES := [
 	"looks like slime time is over",
 	"more like escar-GONE",
 	"you ooze, you lose",
+	"snail you later",
+]
+const DOUBLE_DEATH_PHRASES := [
+	"shellapalooza",
+	"double shell",
+	"well, one of you was supposed to stay on the stage",
 ]
 const DEATH_PHRASE_DURATION := 2.5
+const DOUBLE_DEATH_WINDOW := 0.5    # Seconds — deaths this close count as double
 
 # ── Slime Trail ─────────────────────────────────────────────────────────────
 const SLIME_LIFETIME := 4.0
@@ -86,6 +93,7 @@ var countdown_label: Label
 # ── Death Phrase Label ──────────────────────────────────────────────────────
 var death_phrase_label: Label
 var death_phrase_timer: float = 0.0
+var last_death_time: float = -999.0  # Engine time of last death (for double death detection)
 
 # ── Hit Slomo + Shards + Ripple ────────────────────────────────────────────
 const SLOMO_DURATION := 0.4         # Real-time seconds of slowdown
@@ -588,15 +596,29 @@ func _check_blast_zone(player: Bollard) -> void:
 		if player.stocks <= 0:
 			_end_game(player)
 		else:
-			_show_death_phrase()
+			# Check for double death (both died within a short window)
+			var now := Time.get_ticks_msec() / 1000.0
+			var is_double := (now - last_death_time) < DOUBLE_DEATH_WINDOW
+			last_death_time = now
+			_show_death_phrase(is_double)
 
 
 func _spawn_death_slime(player: Bollard) -> void:
-	# Big burst of slime at the death position (clamped to visible area edge)
+	# Big burst of slime at the edge of the visible screen where the player exited
+	var cam: Camera2D = $Camera2D
+	var screen_size := get_viewport().get_visible_rect().size
+	var cam_pos := cam.global_position
+	var zoom := cam.zoom
+	var half_view := screen_size / (2.0 * zoom)
+	# Visible world bounds
+	var view_left := cam_pos.x - half_view.x
+	var view_right := cam_pos.x + half_view.x
+	var view_top := cam_pos.y - half_view.y
+	var view_bottom := cam_pos.y + half_view.y
+	# Clamp death position to the visible screen edge
 	var pos := player.global_position
-	# Clamp to near-edge of blast zone so splash is visible
-	pos.x = clampf(pos.x, BLAST_ZONE.position.x + 50.0, BLAST_ZONE.end.x - 50.0)
-	pos.y = clampf(pos.y, BLAST_ZONE.position.y + 50.0, BLAST_ZONE.end.y - 50.0)
+	pos.x = clampf(pos.x, view_left + 20.0, view_right - 20.0)
+	pos.y = clampf(pos.y, view_top + 20.0, view_bottom - 20.0)
 	var splash_count := 30
 	for s_i in splash_count:
 		var offset := Vector2(randf_range(-80.0, 80.0), randf_range(-60.0, 60.0))
@@ -629,8 +651,11 @@ func _handle_respawn(player: Bollard, spawn_pos: Vector2, delta: float) -> void:
 # ║ DEATH PHRASES                                                            ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _show_death_phrase() -> void:
-	death_phrase_label.text = DEATH_PHRASES[randi() % DEATH_PHRASES.size()]
+func _show_death_phrase(is_double: bool = false) -> void:
+	if is_double:
+		death_phrase_label.text = DOUBLE_DEATH_PHRASES[randi() % DOUBLE_DEATH_PHRASES.size()]
+	else:
+		death_phrase_label.text = DEATH_PHRASES[randi() % DEATH_PHRASES.size()]
 	death_phrase_label.visible = true
 	death_phrase_timer = DEATH_PHRASE_DURATION
 
@@ -673,6 +698,7 @@ func _restart_game() -> void:
 	p2_shake_timer = 0.0
 	death_phrase_label.visible = false
 	death_phrase_timer = 0.0
+	last_death_time = -999.0
 	# Clear slime
 	slime_dots.clear()
 	queue_redraw()
@@ -686,8 +712,6 @@ func _restart_game() -> void:
 		p.is_dead = false
 		p.is_frozen = false
 		p.is_emerging = false
-		p.is_grabbing = false
-		p.want_to_grab = false
 		p.is_charging = false
 		p.charge_amount = 0.0
 		p.is_dashing = false
@@ -923,12 +947,11 @@ func _damage_color(pct: float) -> Color:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_input() -> void:
-	# P1 keyboard: WASD = directional (lean + aim), Q=charge, F=toss, E=grab
+	# P1 keyboard: WASD = directional (lean + aim), Q=charge, F=toss
 	_add_key("p1_lean_left",  KEY_A)
 	_add_key("p1_lean_right", KEY_D)
 	_add_key("p1_aim_up",     KEY_W)
 	_add_key("p1_aim_down",   KEY_S)
-	_add_key("p1_grab",       KEY_E)
 	_add_key("p1_charge",     KEY_Q)
 	_add_key("p1_toss",       KEY_F)
 	_add_key("p1_raise",      KEY_R)
@@ -941,17 +964,14 @@ func _setup_input() -> void:
 	_add_joy_axis("p1_aim_down",   JOY_AXIS_LEFT_Y,  1.0, 0)
 	_add_joy_axis("p1_raise",      JOY_AXIS_RIGHT_Y, -1.0, 0)
 	_add_joy_axis("p1_lower",      JOY_AXIS_RIGHT_Y,  1.0, 0)
-	_add_joy_button("p1_grab",     JOY_BUTTON_RIGHT_SHOULDER, 0)
-	_add_joy_button("p1_grab",     JOY_BUTTON_A, 0)
 	_add_joy_button("p1_charge",   JOY_BUTTON_X, 0)
 	_add_joy_button("p1_toss",     JOY_BUTTON_Y, 0)
 
-	# P2 keyboard: Arrows = directional, Shift=charge, .=toss, /=grab
+	# P2 keyboard: Arrows = directional, Shift=charge, .=toss
 	_add_key("p2_lean_left",  KEY_LEFT)
 	_add_key("p2_lean_right", KEY_RIGHT)
 	_add_key("p2_aim_up",     KEY_UP)
 	_add_key("p2_aim_down",   KEY_DOWN)
-	_add_key("p2_grab",       KEY_SLASH)
 	_add_key("p2_charge",     KEY_SHIFT)
 	_add_key("p2_toss",       KEY_PERIOD)
 	_add_key("p2_raise",      KEY_PAGEUP)
@@ -964,8 +984,6 @@ func _setup_input() -> void:
 	_add_joy_axis("p2_aim_down",   JOY_AXIS_LEFT_Y,  1.0, 1)
 	_add_joy_axis("p2_raise",      JOY_AXIS_RIGHT_Y, -1.0, 1)
 	_add_joy_axis("p2_lower",      JOY_AXIS_RIGHT_Y,  1.0, 1)
-	_add_joy_button("p2_grab",     JOY_BUTTON_RIGHT_SHOULDER, 1)
-	_add_joy_button("p2_grab",     JOY_BUTTON_A, 1)
 	_add_joy_button("p2_charge",   JOY_BUTTON_X, 1)
 	_add_joy_button("p2_toss",     JOY_BUTTON_Y, 1)
 
