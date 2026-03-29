@@ -86,7 +86,7 @@ var charge_cooldown: float = 0.0
 var dashes_remaining: int = CHARGE_MAX_DASHES  # Resets after cooldown
 
 # ── Hit Effect (slomo + flash) ─────────────────────────────────────────────
-signal big_hit(impact_pos: Vector2)     # Emitted on charge/toss hit for slomo
+signal big_hit(impact_pos: Vector2, is_deflect: bool)
 
 # ── Shell Toss State ──────────────────────────────────────────────────────
 var shell_missing: bool = false         # True while shell is flying
@@ -398,7 +398,7 @@ func _check_charge_hits() -> void:
 				body.apply_central_impulse(dir * impact_force)
 			# Slomo + flash
 			var hit_pos := (global_position + body.global_position) * 0.5
-			big_hit.emit(hit_pos)
+			big_hit.emit(hit_pos, false)
 			is_dashing = false
 			if dashes_remaining <= 0:
 				charge_cooldown = CHARGE_COOLDOWN
@@ -509,8 +509,8 @@ func _update_shell_toss(delta: float) -> void:
 				shell_deflected = true
 				# Reset timer so the shell doesn't vanish immediately
 				shell_toss_timer = 0.0
-				# Slomo + flash on the deflect
-				big_hit.emit(shell_toss_pos)
+				# Slomo + flash on the deflect (green shards)
+				big_hit.emit(shell_toss_pos, true)
 				break
 			var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
 			target_body.take_damage(SHELL_TOSS_DAMAGE, dir)
@@ -518,7 +518,7 @@ func _update_shell_toss(delta: float) -> void:
 			var shell_impact := shell_toss_vel.length() * 2.0
 			target_body.apply_central_impulse(dir * shell_impact)
 			# Slomo + flash
-			big_hit.emit(shell_toss_pos)
+			big_hit.emit(shell_toss_pos, false)
 			shell_toss_hit = true
 			shell_toss_vel = -shell_toss_vel * 0.3
 			break
@@ -572,7 +572,7 @@ func _on_body_entered(body: Node) -> void:
 			var impact_force := linear_velocity.length() * 3.0
 			other.apply_central_impulse(dir * impact_force)
 			var hit_pos := (global_position + other.global_position) * 0.5
-			big_hit.emit(hit_pos)
+			big_hit.emit(hit_pos, false)
 			is_dashing = false
 			if dashes_remaining <= 0:
 				charge_cooldown = CHARGE_COOLDOWN

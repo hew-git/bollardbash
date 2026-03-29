@@ -494,18 +494,22 @@ func _physics_process(delta: float) -> void:
 # ║ HIT SLOMO + IMPACT FLASH                                                 ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _on_big_hit(impact_pos: Vector2) -> void:
+func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 	# Trigger slowmo
 	slomo_timer = SLOMO_DURATION
 	Engine.time_scale = SLOMO_SCALE
 
-	# Spawn white shards shooting outward from impact point
+	# Deflect shards: neon green and 50% wider; normal: white
+	var shard_color := Color(0.2, 1.0, 0.3, 1.0) if is_deflect else Color(1.0, 1.0, 1.0, 1.0)
+	var shard_width := 3.75 if is_deflect else 2.5
+
+	# Spawn shards shooting outward from impact point
 	for s_i in SHARD_COUNT:
 		var angle := (float(s_i) / float(SHARD_COUNT)) * TAU + randf_range(-0.2, 0.2)
 		var dir := Vector2(cos(angle), sin(angle))
 		var shard := Line2D.new()
-		shard.width = 2.5
-		shard.default_color = Color(1.0, 1.0, 1.0, 1.0)
+		shard.width = shard_width
+		shard.default_color = shard_color
 		shard.z_index = 10
 		# Shard is a short line segment starting at impact
 		var start_pos := impact_pos + dir * 4.0
