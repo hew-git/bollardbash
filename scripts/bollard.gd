@@ -439,18 +439,39 @@ func _update_shell_toss(delta: float) -> void:
 
 	# Apply gravity
 	shell_toss_vel.y += SHELL_GRAVITY * delta
+	var prev_pos := shell_toss_pos
 	shell_toss_pos += shell_toss_vel * delta
 
-	# Simple ground/wall bounce using raycasting
+	# Bounce off surfaces: raycast from previous to new position (prevents tunneling)
 	var space := get_world_2d().direct_space_state
-	var query := PhysicsRayQueryParameters2D.create(
-		shell_toss_pos - shell_toss_vel.normalized() * 5.0,
-		shell_toss_pos)
+	var query := PhysicsRayQueryParameters2D.create(prev_pos, shell_toss_pos)
 	query.exclude = [get_rid()]
 	var result := space.intersect_ray(query)
 	if result:
-		shell_toss_pos = result.position + result.normal * 5.0
+		# Place shell at hit point, offset by normal so it doesn't embed
+		shell_toss_pos = result.position + result.normal * (BASE_RADIUS * 0.5)
 		shell_toss_vel = shell_toss_vel.bounce(result.normal) * SHELL_BOUNCE
+
+	# Safety: if shell is somehow inside geometry, push it out
+	var overlap_query := PhysicsShapeQueryParameters2D.new()
+	var shell_circle := CircleShape2D.new()
+	shell_circle.radius = BASE_RADIUS * 0.4
+	overlap_query.shape = shell_circle
+	overlap_query.transform = Transform2D(0.0, shell_toss_pos)
+	overlap_query.exclude = [get_rid()]
+	overlap_query.collide_with_bodies = true
+	overlap_query.collide_with_areas = false
+	var overlaps := space.intersect_shape(overlap_query, 4)
+	for overlap in overlaps:
+		var collider = overlap.collider
+		if collider is StaticBody2D:
+			# Push shell out along the direction from collider to shell
+			var push_dir: Vector2 = (shell_toss_pos - collider.global_position).normalized()
+			shell_toss_pos += push_dir * 4.0
+			# Also bounce velocity away from the surface
+			if shell_toss_vel.dot(push_dir) < 0.0:
+				shell_toss_vel = shell_toss_vel.bounce(push_dir) * SHELL_BOUNCE
+			break
 
 	# Check hit on other snails
 	if not shell_toss_hit:
