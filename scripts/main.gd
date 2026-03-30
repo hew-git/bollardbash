@@ -121,19 +121,19 @@ var select_input_cooldown: float = 0.0  # Prevent rapid-fire navigation
 
 const CHAR_NAMES := ["BLINK", "GOOPY", "ZAPPY"]
 const CHAR_COLORS := [
-	Color(0.6, 0.3, 1.0),   # Blink — purple
+	Color(0.7, 0.35, 1.0),  # Blink — purple
 	Color(0.3, 0.85, 0.3),  # Goopy — green
-	Color(0.3, 0.8, 1.0),   # Zappy — blue
+	Color(0.35, 0.7, 1.0),  # Zappy — blue
 ]
 const CHAR_ABILITY1_DESC := [
 	"Shell Toss + Teleport",
 	"Slime Tether (pull/swing)",
-	"Spark Leap (charged)",
+	"Shock Burst (aimed zap)",
 ]
 const CHAR_ABILITY2_DESC := [
 	"Phase Dash (through objects)",
 	"Goo Burst (AoE knockback)",
-	"Bolt Dash (instant, double)",
+	"Thunder Dash (charged, x2)",
 ]
 const STAGE_NAMES := ["Meadow", "Random"]
 
@@ -741,19 +741,24 @@ func _confirm_selections() -> void:
 	player2.character_type = p2_char_index
 	# Set character-themed colors
 	var char_body_colors: Array[Color] = [
-		Color("C0A0E8"),  # Blink — light purple
-		Color("A0D8A0"),  # Goopy — light green
-		Color("A0D0E8"),  # Zappy — light blue
+		Color("B080E0"),  # Blink — purple
+		Color("80D080"),  # Goopy — green
+		Color("70B8E8"),  # Zappy — blue
 	]
 	var char_accent_colors: Array[Color] = [
-		Color("7030B0"),  # Blink — deep purple
-		Color("408030"),  # Goopy — deep green
-		Color("3080B0"),  # Zappy — deep blue
+		Color("6020A0"),  # Blink — deep purple
+		Color("306828"),  # Goopy — deep green
+		Color("2060A0"),  # Zappy — deep blue
 	]
 	player1.bollard_color = char_body_colors[p1_char_index]
 	player1.accent_color = char_accent_colors[p1_char_index]
-	player2.bollard_color = char_body_colors[p2_char_index]
-	player2.accent_color = char_accent_colors[p2_char_index]
+	# If P2 picked the same character, lighten their colors so they're distinguishable
+	if p2_char_index == p1_char_index:
+		player2.bollard_color = char_body_colors[p2_char_index].lightened(0.25)
+		player2.accent_color = char_accent_colors[p2_char_index].lightened(0.25)
+	else:
+		player2.bollard_color = char_body_colors[p2_char_index]
+		player2.accent_color = char_accent_colors[p2_char_index]
 	# Hide select screen, start the game
 	select_active = false
 	select_layer.visible = false
@@ -1093,8 +1098,10 @@ func _restart_game(go_to_select: bool = true) -> void:
 		p.can_teleport_to_shell = false
 		p.tether_active = false
 		p.goo_burst_cooldown = 0.0
-		p.is_spark_charging = false
-		p.spark_charge_amount = 0.0
+		p.shock_burst_cooldown = 0.0
+		p.shock_burst_timer = 0.0
+		p.is_bolt_charging = false
+		p.bolt_charge_amount = 0.0
 		p.is_bolt_dashing = false
 		p.bolt_dash_cooldown = 0.0
 		p.bolt_dashes_remaining = p.BOLT_DASH_MAX
