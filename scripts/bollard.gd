@@ -64,15 +64,18 @@ const GOO_BURST_DAMAGE := 25.0      # AoE damage
 const GOO_BURST_KNOCKBACK := 600.0  # AoE knockback force
 const GOO_BURST_COOLDOWN := 1.5
 
-# ── Zappy: Spark Leap + Bolt Dash ──────────────────────────────────────────
-const SPARK_LEAP_CHARGE_TIME := 0.5
-const SPARK_LEAP_IMPULSE := 2200.0
-const SPARK_LEAP_DAMAGE := 30.0
-const SPARK_LEAP_HIT_RADIUS := 50.0
-const BOLT_DASH_IMPULSE := 1200.0
-const BOLT_DASH_TIME := 0.2
-const BOLT_DASH_COOLDOWN := 0.6
-const BOLT_DASH_MAX := 2            # Can double-tap
+# ── Zappy: Shock Burst + Thunder Dash ──────────────────────────────────────
+const SHOCK_BURST_RANGE := 140.0     # How far the shock reaches
+const SHOCK_BURST_RADIUS := 35.0    # Width of the shock hit area
+const SHOCK_BURST_DAMAGE := 22.0    # Damage dealt
+const SHOCK_BURST_KNOCKBACK := 500.0
+const SHOCK_BURST_COOLDOWN := 0.8
+const SHOCK_BURST_DURATION := 0.25  # Visual duration
+const BOLT_DASH_CHARGE_TIME := 0.3  # Charge time (same as old charge)
+const BOLT_DASH_IMPULSE := 1800.0   # Full charge impulse
+const BOLT_DASH_TIME := 0.35        # Dash duration
+const BOLT_DASH_COOLDOWN := 1.0     # Cooldown after all dashes used
+const BOLT_DASH_MAX := 2            # Can double-dash
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
@@ -150,8 +153,11 @@ var tether_timer: float = 0.0
 var goo_burst_cooldown: float = 0.0
 
 # ── Zappy State ─────────────────────────────────────────────────────────────
-var is_spark_charging: bool = false
-var spark_charge_amount: float = 0.0
+var shock_burst_cooldown: float = 0.0
+var shock_burst_timer: float = 0.0     # > 0 means shock visual is active
+var shock_burst_dir: Vector2 = Vector2.ZERO  # Direction of active shock
+var is_bolt_charging: bool = false
+var bolt_charge_amount: float = 0.0
 var is_bolt_dashing: bool = false
 var bolt_dash_timer: float = 0.0
 var bolt_dashes_remaining: int = BOLT_DASH_MAX
@@ -288,6 +294,7 @@ func _physics_process(delta: float) -> void:
 	_update_phase_dash(delta)
 	_update_tether(delta)
 	_update_bolt_dash(delta)
+	_update_shock_burst(delta)
 	_update_goo_burst_cooldown(delta)
 	_check_launch()
 	_update_invincibility(delta)
@@ -349,7 +356,7 @@ func _process_input(delta: float) -> void:
 			_input_zappy_ability2(delta, lean_dir)
 
 	# If currently charging something, skip normal movement
-	if is_charging or is_toss_charging or is_spark_charging:
+	if is_charging or is_toss_charging or is_bolt_charging:
 		return
 
 	# Normal movement — lean with left/right
@@ -530,34 +537,76 @@ func _update_goo_burst_cooldown(delta: float) -> void:
 # ║ ZAPPY — Spark Leap / Electric Bolt Dash                                 ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _input_zappy_ability1(delta: float, lean_dir: float) -> void:
-	# Ability1: Spark Leap — hold to charge, release for big electric dash
-	if Input.is_action_pressed(act_ability1) and charge_cooldown <= 0.0:
-		is_spark_charging = true
-		spark_charge_amount = minf(spark_charge_amount + delta / SPARK_LEAP_CHARGE_TIME, 1.0)
+func _input_zappy_ability1(_delta: float, _lean_dir: float) -> void:
+	# Ability1: Shock Burst — short-range electric zap in aimed direction
+	if Input.is_action_just_pressed(act_ability1) and shock_burst_cooldown <= 0.0:
+		_fire_shock_burst()
+
+func _input_zappy_ability2(delta: float, lean_dir: float) -> void:
+	# Ability2: Thunder Dash — hold to charge, release to dash, can double
+	if Input.is_action_pressed(act_ability2) and bolt_dash_cooldown <= 0.0 and bolt_dashes_remaining > 0:
+		is_bolt_charging = true
+		bolt_charge_amount = minf(bolt_charge_amount + delta / BOLT_DASH_CHARGE_TIME, 1.0)
 		extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.0 * delta, 0.0)
 		if lean_dir != 0.0:
 			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
-	elif is_spark_charging:
-		_start_spark_leap()
-
-func _input_zappy_ability2(_delta: float, _lean_dir: float) -> void:
-	# Ability2: Electric Bolt Dash — instant short dash, can double
-	if Input.is_action_just_pressed(act_ability2) and bolt_dash_cooldown <= 0.0 and bolt_dashes_remaining > 0:
+	elif is_bolt_charging:
 		_start_bolt_dash()
 
-func _start_spark_leap() -> void:
-	if spark_charge_amount < 0.15:
-		is_spark_charging = false
-		spark_charge_amount = 0.0
+func _fire_shock_burst() -> void:
+	shock_burst_cooldown = SHOCK_BURST_COOLDOWN
+	var burst_dir := aim_dir
+	if burst_dir.length() < 0.1:
+		burst_dir = last_aim_dir
+	shock_burst_dir = burst_dir
+	shock_burst_timer = SHOCK_BURST_DURATION
+	# Raycast-style hit detection along the shock line
+	var space := get_world_2d().direct_space_state
+	var end_pos := global_position + burst_dir * SHOCK_BURST_RANGE
+	var shape_query := PhysicsShapeQueryParameters2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = SHOCK_BURST_RADIUS
+	shape_query.shape = circle
+	shape_query.transform = Transform2D(0.0, end_pos)
+	shape_query.exclude = [get_rid()]
+	# Also check midpoint for better coverage
+	var mid_pos := global_position + burst_dir * SHOCK_BURST_RANGE * 0.5
+	var mid_query := PhysicsShapeQueryParameters2D.new()
+	mid_query.shape = circle
+	mid_query.transform = Transform2D(0.0, mid_pos)
+	mid_query.exclude = [get_rid()]
+	var hit_someone := false
+	var checked_bodies: Array = []
+	for query in [mid_query, shape_query]:
+		var hits := space.intersect_shape(query, 4)
+		for hit in hits:
+			var collider = hit.collider
+			if collider in checked_bodies:
+				continue
+			checked_bodies.append(collider)
+			if collider is RigidBody2D and collider.has_method("take_damage") and collider != self:
+				var dir: Vector2 = (collider.global_position - global_position).normalized()
+				collider.take_damage(SHOCK_BURST_DAMAGE, dir)
+				collider.apply_central_impulse(dir * SHOCK_BURST_KNOCKBACK)
+				hit_someone = true
+	if hit_someone:
+		var hit_pos := global_position + burst_dir * SHOCK_BURST_RANGE * 0.5
+		big_hit.emit(hit_pos, false)
+	queue_redraw()
+
+func _start_bolt_dash() -> void:
+	if bolt_charge_amount < 0.15:
+		is_bolt_charging = false
+		bolt_charge_amount = 0.0
 		return
-	is_spark_charging = false
-	is_dashing = true
-	dash_timer = 0.0
+	is_bolt_charging = false
+	is_bolt_dashing = true
+	bolt_dash_timer = 0.0
+	bolt_dashes_remaining -= 1
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
 		dash_dir = last_aim_dir
-	var impulse_strength := SPARK_LEAP_IMPULSE * spark_charge_amount
+	var impulse_strength := BOLT_DASH_IMPULSE * bolt_charge_amount
 	# Airborne boost
 	var on_ground := false
 	for body in get_colliding_bodies():
@@ -567,16 +616,7 @@ func _start_spark_leap() -> void:
 	if not on_ground:
 		impulse_strength *= 1.75
 	apply_central_impulse(dash_dir * impulse_strength)
-	spark_charge_amount = 0.0
-
-func _start_bolt_dash() -> void:
-	var dash_dir := aim_dir
-	if dash_dir.length() < 0.1:
-		dash_dir = last_aim_dir
-	is_bolt_dashing = true
-	bolt_dash_timer = 0.0
-	bolt_dashes_remaining -= 1
-	apply_central_impulse(dash_dir * BOLT_DASH_IMPULSE)
+	bolt_charge_amount = 0.0
 
 func _update_bolt_dash(delta: float) -> void:
 	if bolt_dash_cooldown > 0.0:
@@ -591,6 +631,15 @@ func _update_bolt_dash(delta: float) -> void:
 		is_bolt_dashing = false
 		if bolt_dashes_remaining <= 0:
 			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
+
+func _update_shock_burst(delta: float) -> void:
+	if shock_burst_cooldown > 0.0:
+		shock_burst_cooldown -= delta
+	if shock_burst_timer > 0.0:
+		shock_burst_timer -= delta
+		queue_redraw()
+		if shock_burst_timer <= 0.0:
+			queue_redraw()
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -943,8 +992,10 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	can_teleport_to_shell = false
 	tether_active = false
 	goo_burst_cooldown = 0.0
-	is_spark_charging = false
-	spark_charge_amount = 0.0
+	shock_burst_cooldown = 0.0
+	shock_burst_timer = 0.0
+	is_bolt_charging = false
+	bolt_charge_amount = 0.0
 	is_bolt_dashing = false
 	bolt_dash_cooldown = 0.0
 	bolt_dashes_remaining = BOLT_DASH_MAX
@@ -1128,8 +1179,8 @@ func _update_sprites() -> void:
 
 	# ── Invincibility flash ──────────────────────────────────────────────
 	var flash := is_invincible and fmod(invincible_timer * 10.0, 2.0) > 1.0
-	var shell_c := accent_color.lightened(0.5) if flash else accent_color
-	var body_c := bollard_color.lightened(0.5) if flash else bollard_color
+	var shell_c: Color = accent_color.lightened(0.5) if flash else accent_color
+	var body_c: Color = bollard_color.lightened(0.5) if flash else bollard_color
 
 	# ── CHARGE / ABILITY VISUALS ─────────────────────────────────────────
 	if is_charging and charge_amount > 0.1:
@@ -1141,11 +1192,11 @@ func _update_sprites() -> void:
 		var shake := toss_charge_amount * 2.0
 		spr_body.position.x += randf_range(-shake, shake)
 		shell_c = shell_c.lerp(Color(1.0, 0.8, 0.2), toss_charge_amount * 0.5)
-	if is_spark_charging and spark_charge_amount > 0.1:
-		var shake := spark_charge_amount * 3.5
+	if is_bolt_charging and bolt_charge_amount > 0.1:
+		var shake := bolt_charge_amount * 3.5
 		spr_body.position.x += randf_range(-shake, shake)
-		body_c = body_c.lerp(Color(0.3, 0.8, 1.0), spark_charge_amount * 0.6)
-		shell_c = shell_c.lerp(Color(0.5, 0.9, 1.0), spark_charge_amount * 0.5)
+		body_c = body_c.lerp(Color(0.3, 0.8, 1.0), bolt_charge_amount * 0.6)
+		shell_c = shell_c.lerp(Color(0.5, 0.9, 1.0), bolt_charge_amount * 0.5)
 	if is_dashing:
 		body_c = Color(1.0, 0.4, 0.2)
 		shell_c = Color(1.0, 0.6, 0.2)
@@ -1263,6 +1314,26 @@ func _draw() -> void:
 		draw_line(Vector2.ZERO, local_anchor, Color(0.4, 0.85, 0.3, 0.8), 3.0)
 		draw_circle(local_anchor, 5.0, Color(0.4, 0.85, 0.3, 0.9))
 
+	# Zappy shock burst — jagged electric bolt line
+	if shock_burst_timer > 0.0 and character_type == CharacterType.ZAPPY:
+		var alpha: float = clampf(shock_burst_timer / SHOCK_BURST_DURATION, 0.0, 1.0)
+		var bolt_end := shock_burst_dir * SHOCK_BURST_RANGE
+		# Draw 3 jagged segments to look like electricity
+		var prev_pt := Vector2.ZERO
+		var seg_count := 6
+		for seg_i in seg_count:
+			var t: float = float(seg_i + 1) / float(seg_count)
+			var pt := shock_burst_dir * SHOCK_BURST_RANGE * t
+			# Add perpendicular jag (except last point)
+			if seg_i < seg_count - 1:
+				var perp := Vector2(-shock_burst_dir.y, shock_burst_dir.x)
+				pt += perp * randf_range(-14.0, 14.0)
+			var width: float = lerpf(4.0, 1.5, t)
+			draw_line(prev_pt, pt, Color(0.4, 0.85, 1.0, alpha), width)
+			# Secondary thinner bright line
+			draw_line(prev_pt, pt, Color(0.8, 0.95, 1.0, alpha * 0.6), width * 0.4)
+			prev_pt = pt
+
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ AI                                                                       ║
@@ -1306,8 +1377,8 @@ func _process_ai(delta: float) -> void:
 			if ai_timer > ai_action_duration:
 				if is_charging:
 					_start_charge_dash()
-				if is_spark_charging:
-					_start_spark_leap()
+				if is_bolt_charging:
+					_start_bolt_dash()
 				_ai_pick_action()
 		"shell_toss":
 			_ai_shell_toss()
@@ -1377,8 +1448,8 @@ func _ai_charge_attack(delta: float) -> void:
 	apply_torque(LEAN_TORQUE * dir * 0.3)
 	match character_type:
 		CharacterType.ZAPPY:
-			is_spark_charging = true
-			spark_charge_amount = minf(spark_charge_amount + delta / SPARK_LEAP_CHARGE_TIME, 1.0)
+			is_bolt_charging = true
+			bolt_charge_amount = minf(bolt_charge_amount + delta / BOLT_DASH_CHARGE_TIME, 1.0)
 		_:
 			is_charging = true
 			charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
@@ -1420,5 +1491,5 @@ func _ai_ability2() -> void:
 			if goo_burst_cooldown <= 0.0:
 				_goo_burst()
 		CharacterType.ZAPPY:
-			if bolt_dash_cooldown <= 0.0 and bolt_dashes_remaining > 0:
-				_start_bolt_dash()
+			if shock_burst_cooldown <= 0.0:
+				_fire_shock_burst()

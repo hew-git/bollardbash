@@ -121,19 +121,19 @@ var select_input_cooldown: float = 0.0  # Prevent rapid-fire navigation
 
 const CHAR_NAMES := ["BLINK", "GOOPY", "ZAPPY"]
 const CHAR_COLORS := [
-	Color(0.6, 0.3, 1.0),   # Blink — purple
+	Color(0.7, 0.35, 1.0),  # Blink — purple
 	Color(0.3, 0.85, 0.3),  # Goopy — green
-	Color(0.3, 0.8, 1.0),   # Zappy — blue
+	Color(0.35, 0.7, 1.0),  # Zappy — blue
 ]
 const CHAR_ABILITY1_DESC := [
 	"Shell Toss + Teleport",
 	"Slime Tether (pull/swing)",
-	"Spark Leap (charged)",
+	"Shock Burst (aimed zap)",
 ]
 const CHAR_ABILITY2_DESC := [
 	"Phase Dash (through objects)",
 	"Goo Burst (AoE knockback)",
-	"Bolt Dash (instant, double)",
+	"Thunder Dash (charged, x2)",
 ]
 const STAGE_NAMES := ["Meadow", "Random"]
 
@@ -360,7 +360,7 @@ func _create_wall(x_pos: float, wall_name: String) -> void:
 	var is_left := x_pos < 640.0
 	var half_w := WALL_WIDTH * 0.5
 	var half_h := WALL_HEIGHT * 0.5
-	var inward := WALL_ANGLE_INWARD if is_left else -WALL_ANGLE_INWARD
+	var inward: float = WALL_ANGLE_INWARD if is_left else -WALL_ANGLE_INWARD
 	var poly_points := PackedVector2Array([
 		Vector2(-half_w, -half_h),           # Top outer
 		Vector2(half_w, -half_h),            # Top inner
@@ -586,9 +586,9 @@ func _update_select_display() -> void:
 	if select_phase == "character":
 		select_title_label.text = "CHOOSE YOUR SNAIL"
 		# P1
-		var p1_name := CHAR_NAMES[p1_char_index]
-		var p1_arrow := "< " if not p1_confirmed else "  "
-		var p1_arrow_r := " >" if not p1_confirmed else ""
+		var p1_name: String = CHAR_NAMES[p1_char_index]
+		var p1_arrow: String = "< " if not p1_confirmed else "  "
+		var p1_arrow_r: String = " >" if not p1_confirmed else ""
 		p1_select_label.text = "P1: " + p1_arrow + p1_name + p1_arrow_r
 		p1_select_label.add_theme_color_override("font_color", CHAR_COLORS[p1_char_index])
 		p1_ability_label.text = "Square: " + CHAR_ABILITY1_DESC[p1_char_index] + "\nCross: " + CHAR_ABILITY2_DESC[p1_char_index] + "\nL1: Parry (all)"
@@ -596,10 +596,10 @@ func _update_select_display() -> void:
 		p1_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p1_confirmed else Color(0.7, 0.7, 0.7))
 
 		# P2
-		var p2_label_prefix := "P2: " if not player2.is_ai else "P2 (AI): "
-		var p2_name := CHAR_NAMES[p2_char_index]
-		var p2_arrow := "< " if not p2_confirmed else "  "
-		var p2_arrow_r := " >" if not p2_confirmed else ""
+		var p2_label_prefix: String = "P2: " if not player2.is_ai else "P2 (AI): "
+		var p2_name: String = CHAR_NAMES[p2_char_index]
+		var p2_arrow: String = "< " if not p2_confirmed else "  "
+		var p2_arrow_r: String = " >" if not p2_confirmed else ""
 		p2_select_label.text = p2_label_prefix + p2_arrow + p2_name + p2_arrow_r
 		p2_select_label.add_theme_color_override("font_color", CHAR_COLORS[p2_char_index])
 		p2_ability_label.text = "Square: " + CHAR_ABILITY1_DESC[p2_char_index] + "\nCross: " + CHAR_ABILITY2_DESC[p2_char_index] + "\nL1: Parry (all)"
@@ -740,20 +740,25 @@ func _confirm_selections() -> void:
 	player1.character_type = p1_char_index
 	player2.character_type = p2_char_index
 	# Set character-themed colors
-	var char_body_colors := [
-		Color("C0A0E8"),  # Blink — light purple
-		Color("A0D8A0"),  # Goopy — light green
-		Color("A0D0E8"),  # Zappy — light blue
+	var char_body_colors: Array[Color] = [
+		Color("B080E0"),  # Blink — purple
+		Color("80D080"),  # Goopy — green
+		Color("70B8E8"),  # Zappy — blue
 	]
-	var char_accent_colors := [
-		Color("7030B0"),  # Blink — deep purple
-		Color("408030"),  # Goopy — deep green
-		Color("3080B0"),  # Zappy — deep blue
+	var char_accent_colors: Array[Color] = [
+		Color("6020A0"),  # Blink — deep purple
+		Color("306828"),  # Goopy — deep green
+		Color("2060A0"),  # Zappy — deep blue
 	]
 	player1.bollard_color = char_body_colors[p1_char_index]
 	player1.accent_color = char_accent_colors[p1_char_index]
-	player2.bollard_color = char_body_colors[p2_char_index]
-	player2.accent_color = char_accent_colors[p2_char_index]
+	# If P2 picked the same character, lighten their colors so they're distinguishable
+	if p2_char_index == p1_char_index:
+		player2.bollard_color = char_body_colors[p2_char_index].lightened(0.25)
+		player2.accent_color = char_accent_colors[p2_char_index].lightened(0.25)
+	else:
+		player2.bollard_color = char_body_colors[p2_char_index]
+		player2.accent_color = char_accent_colors[p2_char_index]
 	# Hide select screen, start the game
 	select_active = false
 	select_layer.visible = false
@@ -860,8 +865,8 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 	Engine.time_scale = SLOMO_SCALE
 
 	# Deflect shards: neon green and 50% wider; normal: white
-	var shard_color := Color(0.2, 1.0, 0.3, 1.0) if is_deflect else Color(1.0, 1.0, 1.0, 1.0)
-	var shard_width := 3.75 if is_deflect else 2.5
+	var shard_color: Color = Color(0.2, 1.0, 0.3, 1.0) if is_deflect else Color(1.0, 1.0, 1.0, 1.0)
+	var shard_width: float = 3.75 if is_deflect else 2.5
 
 	# Spawn shards shooting outward from impact point
 	for s_i in SHARD_COUNT:
@@ -1037,7 +1042,7 @@ func _update_death_phrase(delta: float) -> void:
 
 func _end_game(loser: Bollard) -> void:
 	game_active = false
-	var winner_name := "Player 1" if loser == player2 else ("Player 2 (AI)" if player2.is_ai else "Player 2")
+	var winner_name: String = "Player 1" if loser == player2 else ("Player 2 (AI)" if player2.is_ai else "Player 2")
 	game_over_label.text = winner_name + " WINS!\n\nPress T to restart"
 	game_over_label.visible = true
 
@@ -1093,8 +1098,10 @@ func _restart_game(go_to_select: bool = true) -> void:
 		p.can_teleport_to_shell = false
 		p.tether_active = false
 		p.goo_burst_cooldown = 0.0
-		p.is_spark_charging = false
-		p.spark_charge_amount = 0.0
+		p.shock_burst_cooldown = 0.0
+		p.shock_burst_timer = 0.0
+		p.is_bolt_charging = false
+		p.bolt_charge_amount = 0.0
 		p.is_bolt_dashing = false
 		p.bolt_dash_cooldown = 0.0
 		p.bolt_dashes_remaining = p.BOLT_DASH_MAX
