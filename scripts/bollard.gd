@@ -2,8 +2,11 @@ extends RigidBody2D
 class_name Bollard
 
 # ── Exported Configuration ──────────────────────────────────────────────────
+enum CharacterType { BLINK, GOOPY, ZAPPY }
+
 @export var player_id: int = 1
 @export var is_ai: bool = false
+@export var character_type: CharacterType = CharacterType.BLINK
 @export var bollard_color: Color = Color("B0A8C8")  ## Snail body color (light purple-gray)
 @export var accent_color: Color = Color("A06830")    ## Shell color (warm brown)
 
@@ -40,6 +43,36 @@ const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
 const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
+
+# ── Parry (all characters) ─────────────────────────────────────────────────
+const PARRY_DURATION := 0.25        # Invulnerability window
+const PARRY_COOLDOWN := 0.8         # Cooldown after parry ends
+const PARRY_RETRACT_SPEED := 12.0   # How fast body retracts into shell
+
+# ── Blink: Phase Dash ──────────────────────────────────────────────────────
+const PHASE_DASH_IMPULSE := 1400.0
+const PHASE_DASH_TIME := 0.3
+const PHASE_DASH_COOLDOWN := 0.8
+
+# ── Goopy: Slime Tether + Goo Burst ────────────────────────────────────────
+const TETHER_SPEED := 1600.0        # Tether projectile speed
+const TETHER_MAX_LENGTH := 300.0    # Max tether reach
+const TETHER_PULL_FORCE := 900.0    # Pull strength toward anchor
+const TETHER_DURATION := 2.0        # How long tether lasts
+const GOO_BURST_RADIUS := 120.0     # AoE radius
+const GOO_BURST_DAMAGE := 25.0      # AoE damage
+const GOO_BURST_KNOCKBACK := 600.0  # AoE knockback force
+const GOO_BURST_COOLDOWN := 1.5
+
+# ── Zappy: Spark Leap + Bolt Dash ──────────────────────────────────────────
+const SPARK_LEAP_CHARGE_TIME := 0.5
+const SPARK_LEAP_IMPULSE := 2200.0
+const SPARK_LEAP_DAMAGE := 30.0
+const SPARK_LEAP_HIT_RADIUS := 50.0
+const BOLT_DASH_IMPULSE := 1200.0
+const BOLT_DASH_TIME := 0.2
+const BOLT_DASH_COOLDOWN := 0.6
+const BOLT_DASH_MAX := 2            # Can double-tap
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
@@ -99,6 +132,31 @@ var shell_toss_cooldown: float = 0.0
 var shell_toss_hit: bool = false        # Already hit someone this throw
 var shell_deflected: bool = false       # Shell was deflected back — can hit owner
 
+# ── Parry State ─────────────────────────────────────────────────────────────
+var is_parrying: bool = false
+var parry_timer: float = 0.0
+var parry_cooldown: float = 0.0
+
+# ── Blink State ─────────────────────────────────────────────────────────────
+var can_teleport_to_shell: bool = false  # True while shell is flying (press ability1 again)
+var is_phase_dashing: bool = false
+var phase_dash_timer: float = 0.0
+var phase_dash_cooldown: float = 0.0
+
+# ── Goopy State ─────────────────────────────────────────────────────────────
+var tether_active: bool = false
+var tether_anchor: Vector2 = Vector2.ZERO  # Where tether stuck to a surface
+var tether_timer: float = 0.0
+var goo_burst_cooldown: float = 0.0
+
+# ── Zappy State ─────────────────────────────────────────────────────────────
+var is_spark_charging: bool = false
+var spark_charge_amount: float = 0.0
+var is_bolt_dashing: bool = false
+var bolt_dash_timer: float = 0.0
+var bolt_dashes_remaining: int = BOLT_DASH_MAX
+var bolt_dash_cooldown: float = 0.0
+
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
 
@@ -125,8 +183,9 @@ var act_raise: String
 var act_lower: String
 var act_aim_up: String
 var act_aim_down: String
-var act_charge: String
-var act_toss: String
+var act_ability1: String   # Square / Q — character-specific
+var act_ability2: String   # Cross / F — character-specific
+var act_parry: String      # L1 / E — universal
 
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var base_shape: CollisionShape2D = $BaseShape
@@ -162,8 +221,9 @@ func _ready() -> void:
 	act_lower = prefix + "lower"
 	act_aim_up = prefix + "aim_up"
 	act_aim_down = prefix + "aim_down"
-	act_charge = prefix + "charge"
-	act_toss = prefix + "toss"
+	act_ability1 = prefix + "ability1"
+	act_ability2 = prefix + "ability2"
+	act_parry = prefix + "parry"
 
 	contact_monitor = true
 	max_contacts_reported = 8
@@ -178,6 +238,7 @@ func _ready() -> void:
 	center_of_mass = Vector2(0, 0)
 	mass = 2.0
 	angular_damp = ANGULAR_DAMP_AMOUNT
+	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
 
 	base_shape.shape = base_shape.shape.duplicate()
 	post_shape.shape = post_shape.shape.duplicate()
@@ -221,8 +282,13 @@ func _physics_process(delta: float) -> void:
 		_process_input(delta)
 
 	_update_collision_shape()
+	_update_parry(delta)
 	_update_charge(delta)
 	_update_shell_toss(delta)
+	_update_phase_dash(delta)
+	_update_tether(delta)
+	_update_bolt_dash(delta)
+	_update_goo_burst_cooldown(delta)
 	_check_launch()
 	_update_invincibility(delta)
 	_update_blink(delta)
@@ -249,8 +315,8 @@ func _get_aim_dir() -> Vector2:
 
 
 func _process_input(delta: float) -> void:
-	# During dash, no input — you're flying
-	if is_dashing:
+	# During any dash, no input — you're flying
+	if is_dashing or is_phase_dashing or is_bolt_dashing:
 		return
 
 	# Read aim + lean
@@ -259,30 +325,31 @@ func _process_input(delta: float) -> void:
 		last_aim_dir = aim_dir
 	var lean_dir := aim_dir.x
 
-	# ── Charge Attack: hold charge to build up, aim with WASD, release to dash
-	if Input.is_action_pressed(act_charge) and charge_cooldown <= 0.0 and dashes_remaining > 0:
-		is_charging = true
-		charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
-		# Retract into shell while charging (tuck in for the dash)
-		extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.0 * delta, 0.0)
-		# Slow lean while charging
-		if lean_dir != 0.0:
-			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
-		return
-	elif is_charging:
-		_start_charge_dash()
+	# ── Parry (all characters): quick retract + invulnerability ──────────
+	if Input.is_action_just_pressed(act_parry) and parry_cooldown <= 0.0 and not is_parrying:
+		_start_parry()
 		return
 
-	# ── Shell Toss: hold toss to charge, aim with WASD, release to throw ─
-	if Input.is_action_pressed(act_toss) and not shell_missing and shell_toss_cooldown <= 0.0:
-		is_toss_charging = true
-		toss_charge_amount = minf(toss_charge_amount + delta / SHELL_TOSS_CHARGE_TIME, 1.0)
-		# Slow lean while aiming toss
-		if lean_dir != 0.0:
-			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
-		return
-	elif is_toss_charging:
-		_fire_shell_toss()
+	# ── Ability 1 (Square / Q) — character-specific ─────────────────────
+	match character_type:
+		CharacterType.BLINK:
+			_input_blink_ability1(delta, lean_dir)
+		CharacterType.GOOPY:
+			_input_goopy_ability1(delta, lean_dir)
+		CharacterType.ZAPPY:
+			_input_zappy_ability1(delta, lean_dir)
+
+	# ── Ability 2 (Cross / F) — character-specific ──────────────────────
+	match character_type:
+		CharacterType.BLINK:
+			_input_blink_ability2(delta, lean_dir)
+		CharacterType.GOOPY:
+			_input_goopy_ability2(delta, lean_dir)
+		CharacterType.ZAPPY:
+			_input_zappy_ability2(delta, lean_dir)
+
+	# If currently charging something, skip normal movement
+	if is_charging or is_toss_charging or is_spark_charging:
 		return
 
 	# Normal movement — lean with left/right
@@ -294,6 +361,236 @@ func _process_input(delta: float) -> void:
 		extend_amount = minf(extend_amount + EXTEND_SPEED * delta, 1.0)
 	if Input.is_action_pressed(act_lower):
 		extend_amount = maxf(extend_amount - EXTEND_SPEED * delta, 0.0)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ PARRY (all characters)                                                   ║
+# ║                                                                           ║
+# ║ Quick retract into shell + brief invulnerability. Deflects projectiles.  ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _start_parry() -> void:
+	is_parrying = true
+	parry_timer = 0.0
+	is_invincible = true
+	invincible_timer = 0.0
+
+func _update_parry(delta: float) -> void:
+	if parry_cooldown > 0.0:
+		parry_cooldown -= delta
+	if not is_parrying:
+		return
+	parry_timer += delta
+	# Retract body rapidly during parry
+	extend_amount = maxf(extend_amount - PARRY_RETRACT_SPEED * delta, 0.0)
+	if parry_timer >= PARRY_DURATION:
+		is_parrying = false
+		parry_cooldown = PARRY_COOLDOWN
+		# Invincibility ends with parry (unless respawn invincibility is active)
+		if invincible_timer < 0.1:
+			is_invincible = false
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ BLINK — Shell Toss + Teleport / Phase Dash                              ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _input_blink_ability1(delta: float, lean_dir: float) -> void:
+	# Ability1: Shell toss (hold to charge, release to throw)
+	# If shell is already flying, press again to teleport to it
+	if shell_missing and can_teleport_to_shell and Input.is_action_just_pressed(act_ability1):
+		_blink_teleport_to_shell()
+		return
+	if Input.is_action_pressed(act_ability1) and not shell_missing and shell_toss_cooldown <= 0.0:
+		is_toss_charging = true
+		toss_charge_amount = minf(toss_charge_amount + delta / SHELL_TOSS_CHARGE_TIME, 1.0)
+		if lean_dir != 0.0:
+			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
+	elif is_toss_charging:
+		_fire_shell_toss()
+		can_teleport_to_shell = true
+
+func _input_blink_ability2(_delta: float, _lean_dir: float) -> void:
+	# Ability2: Phase dash — short dash that passes through objects
+	if Input.is_action_just_pressed(act_ability2) and phase_dash_cooldown <= 0.0:
+		_start_phase_dash()
+
+func _blink_teleport_to_shell() -> void:
+	# Teleport snail to where the shell currently is
+	var target := shell_toss_pos
+	PhysicsServer2D.body_set_state(get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(rotation, target))
+	global_position = target
+	linear_velocity = shell_toss_vel * 0.3  # Keep some momentum from shell
+	_return_shell()
+	can_teleport_to_shell = false
+	big_hit.emit(target, false)
+
+func _start_phase_dash() -> void:
+	var dash_dir := aim_dir
+	if dash_dir.length() < 0.1:
+		dash_dir = last_aim_dir
+	is_phase_dashing = true
+	phase_dash_timer = 0.0
+	# Disable collision during phase dash
+	base_shape.disabled = true
+	post_shape.disabled = true
+	if dome_shape:
+		dome_shape.disabled = true
+	apply_central_impulse(dash_dir * PHASE_DASH_IMPULSE)
+
+func _update_phase_dash(delta: float) -> void:
+	if phase_dash_cooldown > 0.0:
+		phase_dash_cooldown -= delta
+	if not is_phase_dashing:
+		return
+	phase_dash_timer += delta
+	if phase_dash_timer >= PHASE_DASH_TIME:
+		is_phase_dashing = false
+		phase_dash_cooldown = PHASE_DASH_COOLDOWN
+		# Re-enable collision
+		_update_collision_shape()  # Restores shapes based on extend_amount
+		base_shape.disabled = false
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ GOOPY — Slime Tether / Goo Burst                                        ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _input_goopy_ability1(_delta: float, _lean_dir: float) -> void:
+	# Ability1: Fire a slime tether (sticks to surfaces, pull toward it)
+	if tether_active:
+		# While tether is active, holding ability1 pulls you toward the anchor
+		if Input.is_action_pressed(act_ability1):
+			var pull_dir: Vector2 = (tether_anchor - global_position).normalized()
+			apply_central_force(pull_dir * TETHER_PULL_FORCE)
+		return
+	if Input.is_action_just_pressed(act_ability1):
+		_fire_tether()
+
+func _input_goopy_ability2(_delta: float, _lean_dir: float) -> void:
+	# Ability2: Goo burst — AoE damage + knockback around self
+	if Input.is_action_just_pressed(act_ability2) and goo_burst_cooldown <= 0.0:
+		_goo_burst()
+
+func _fire_tether() -> void:
+	var tether_dir := aim_dir
+	if tether_dir.length() < 0.1:
+		tether_dir = last_aim_dir
+	# Raycast to find anchor point
+	var space := get_world_2d().direct_space_state
+	var end_pos := global_position + tether_dir * TETHER_MAX_LENGTH
+	var query := PhysicsRayQueryParameters2D.create(global_position, end_pos)
+	query.exclude = [get_rid()]
+	var result := space.intersect_ray(query)
+	if result:
+		tether_active = true
+		tether_anchor = result.position
+		tether_timer = 0.0
+	# If no surface hit, tether doesn't activate
+
+func _update_tether(delta: float) -> void:
+	if not tether_active:
+		return
+	tether_timer += delta
+	# Tether breaks after duration or if too far
+	var dist := global_position.distance_to(tether_anchor)
+	if tether_timer >= TETHER_DURATION or dist > TETHER_MAX_LENGTH * 1.5:
+		tether_active = false
+
+func _goo_burst() -> void:
+	goo_burst_cooldown = GOO_BURST_COOLDOWN
+	# AoE: find all nearby bodies and damage/knockback them
+	var space := get_world_2d().direct_space_state
+	var shape_query := PhysicsShapeQueryParameters2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = GOO_BURST_RADIUS
+	shape_query.shape = circle
+	shape_query.transform = Transform2D(0.0, global_position)
+	shape_query.exclude = [get_rid()]
+	var hits := space.intersect_shape(shape_query, 8)
+	var hit_any := false
+	for hit in hits:
+		var collider = hit.collider
+		if collider is RigidBody2D and collider.has_method("take_damage") and collider != self:
+			var dir: Vector2 = (collider.global_position - global_position).normalized()
+			collider.take_damage(GOO_BURST_DAMAGE, dir)
+			collider.apply_central_impulse(dir * GOO_BURST_KNOCKBACK)
+			hit_any = true
+	# Deflect any in-flight shells in range
+	# (handled by the shell toss update checking for goo burst)
+	if hit_any:
+		big_hit.emit(global_position, false)
+
+func _update_goo_burst_cooldown(delta: float) -> void:
+	if goo_burst_cooldown > 0.0:
+		goo_burst_cooldown -= delta
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ ZAPPY — Spark Leap / Electric Bolt Dash                                 ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _input_zappy_ability1(delta: float, lean_dir: float) -> void:
+	# Ability1: Spark Leap — hold to charge, release for big electric dash
+	if Input.is_action_pressed(act_ability1) and charge_cooldown <= 0.0:
+		is_spark_charging = true
+		spark_charge_amount = minf(spark_charge_amount + delta / SPARK_LEAP_CHARGE_TIME, 1.0)
+		extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.0 * delta, 0.0)
+		if lean_dir != 0.0:
+			apply_torque(LEAN_TORQUE * lean_dir * 0.3)
+	elif is_spark_charging:
+		_start_spark_leap()
+
+func _input_zappy_ability2(_delta: float, _lean_dir: float) -> void:
+	# Ability2: Electric Bolt Dash — instant short dash, can double
+	if Input.is_action_just_pressed(act_ability2) and bolt_dash_cooldown <= 0.0 and bolt_dashes_remaining > 0:
+		_start_bolt_dash()
+
+func _start_spark_leap() -> void:
+	if spark_charge_amount < 0.15:
+		is_spark_charging = false
+		spark_charge_amount = 0.0
+		return
+	is_spark_charging = false
+	is_dashing = true
+	dash_timer = 0.0
+	var dash_dir := aim_dir
+	if dash_dir.length() < 0.1:
+		dash_dir = last_aim_dir
+	var impulse_strength := SPARK_LEAP_IMPULSE * spark_charge_amount
+	# Airborne boost
+	var on_ground := false
+	for body in get_colliding_bodies():
+		if body is StaticBody2D:
+			on_ground = true
+			break
+	if not on_ground:
+		impulse_strength *= 1.75
+	apply_central_impulse(dash_dir * impulse_strength)
+	spark_charge_amount = 0.0
+
+func _start_bolt_dash() -> void:
+	var dash_dir := aim_dir
+	if dash_dir.length() < 0.1:
+		dash_dir = last_aim_dir
+	is_bolt_dashing = true
+	bolt_dash_timer = 0.0
+	bolt_dashes_remaining -= 1
+	apply_central_impulse(dash_dir * BOLT_DASH_IMPULSE)
+
+func _update_bolt_dash(delta: float) -> void:
+	if bolt_dash_cooldown > 0.0:
+		bolt_dash_cooldown -= delta
+		if bolt_dash_cooldown <= 0.0:
+			bolt_dashes_remaining = BOLT_DASH_MAX
+	if not is_bolt_dashing:
+		return
+	bolt_dash_timer += delta
+	_check_charge_hits()  # Bolt dash can hit things
+	if bolt_dash_timer >= BOLT_DASH_TIME:
+		is_bolt_dashing = false
+		if bolt_dashes_remaining <= 0:
+			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -388,8 +685,7 @@ func _check_charge_hits() -> void:
 			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
 				# Bounce off the shell
 				linear_velocity = linear_velocity.bounce(dir) * 0.5
-				is_dashing = false
-				charge_cooldown = CHARGE_COOLDOWN
+				_end_any_dash()
 				return
 			body.take_damage(CHARGE_DAMAGE, dir)
 			# Billiard-style impact: big extra knockback on target
@@ -399,10 +695,18 @@ func _check_charge_hits() -> void:
 			# Slomo + flash
 			var hit_pos := (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
-			is_dashing = false
-			if dashes_remaining <= 0:
-				charge_cooldown = CHARGE_COOLDOWN
+			_end_any_dash()
 			return
+
+func _end_any_dash() -> void:
+	if is_dashing:
+		is_dashing = false
+		if dashes_remaining <= 0:
+			charge_cooldown = CHARGE_COOLDOWN
+	if is_bolt_dashing:
+		is_bolt_dashing = false
+		if bolt_dashes_remaining <= 0:
+			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -567,15 +871,20 @@ func _on_body_entered(body: Node) -> void:
 		if other.has_method("is_shell_hit") and other.is_shell_hit(global_position):
 			return
 		# Dashing into another snail = big hit (same impact as shell toss)
-		if is_dashing:
+		if is_dashing or is_bolt_dashing:
 			dmg = maxf(dmg, CHARGE_DAMAGE)
 			var impact_force := linear_velocity.length() * 3.0
 			other.apply_central_impulse(dir * impact_force)
 			var hit_pos := (global_position + other.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
-			is_dashing = false
-			if dashes_remaining <= 0:
-				charge_cooldown = CHARGE_COOLDOWN
+			if is_dashing:
+				is_dashing = false
+				if dashes_remaining <= 0:
+					charge_cooldown = CHARGE_COOLDOWN
+			if is_bolt_dashing:
+				is_bolt_dashing = false
+				if bolt_dashes_remaining <= 0:
+					bolt_dash_cooldown = BOLT_DASH_COOLDOWN
 		other.take_damage(dmg, dir)
 
 
@@ -626,6 +935,19 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	shell_toss_cooldown = 0.0
 	is_invincible = true
 	invincible_timer = 0.0
+	# Reset character ability state
+	is_parrying = false
+	parry_cooldown = 0.0
+	is_phase_dashing = false
+	phase_dash_cooldown = 0.0
+	can_teleport_to_shell = false
+	tether_active = false
+	goo_burst_cooldown = 0.0
+	is_spark_charging = false
+	spark_charge_amount = 0.0
+	is_bolt_dashing = false
+	bolt_dash_cooldown = 0.0
+	bolt_dashes_remaining = BOLT_DASH_MAX
 
 func _update_emerge(delta: float) -> void:
 	emerge_progress = minf(emerge_progress + delta / EMERGE_DURATION, 1.0)
@@ -649,7 +971,7 @@ func _update_invincibility(delta: float) -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ BLINK                                                                    ║
+# ║ EYE BLINK (animation)                                                    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_blink(delta: float) -> void:
@@ -809,7 +1131,7 @@ func _update_sprites() -> void:
 	var shell_c := accent_color.lightened(0.5) if flash else accent_color
 	var body_c := bollard_color.lightened(0.5) if flash else bollard_color
 
-	# ── CHARGE VISUAL ────────────────────────────────────────────────────
+	# ── CHARGE / ABILITY VISUALS ─────────────────────────────────────────
 	if is_charging and charge_amount > 0.1:
 		var shake := charge_amount * 3.0
 		spr_body.position.x += randf_range(-shake, shake)
@@ -819,9 +1141,23 @@ func _update_sprites() -> void:
 		var shake := toss_charge_amount * 2.0
 		spr_body.position.x += randf_range(-shake, shake)
 		shell_c = shell_c.lerp(Color(1.0, 0.8, 0.2), toss_charge_amount * 0.5)
+	if is_spark_charging and spark_charge_amount > 0.1:
+		var shake := spark_charge_amount * 3.5
+		spr_body.position.x += randf_range(-shake, shake)
+		body_c = body_c.lerp(Color(0.3, 0.8, 1.0), spark_charge_amount * 0.6)
+		shell_c = shell_c.lerp(Color(0.5, 0.9, 1.0), spark_charge_amount * 0.5)
 	if is_dashing:
 		body_c = Color(1.0, 0.4, 0.2)
 		shell_c = Color(1.0, 0.6, 0.2)
+	if is_phase_dashing:
+		body_c = Color(0.6, 0.3, 1.0, 0.4)  # Ghostly purple, semi-transparent
+		shell_c = Color(0.7, 0.4, 1.0, 0.4)
+	if is_bolt_dashing:
+		body_c = Color(0.3, 0.9, 1.0)  # Electric blue
+		shell_c = Color(0.5, 1.0, 1.0)
+	if is_parrying:
+		shell_c = Color(1.0, 1.0, 0.6)  # Bright shield flash
+		body_c = body_c.lerp(Color(1.0, 1.0, 0.8), 0.5)
 
 	# ── BODY CIRCLE (behind shell — visible when shell is tossed) ────────
 	spr_body_circle.self_modulate = body_c
@@ -916,6 +1252,17 @@ func _update_sprites() -> void:
 		spr_eye_hl_l.position = left_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
 		spr_eye_hl_r.position = right_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
 
+	# Tether needs redraw every frame
+	if character_type == CharacterType.GOOPY:
+		queue_redraw()
+
+func _draw() -> void:
+	# Goopy tether line
+	if tether_active and character_type == CharacterType.GOOPY:
+		var local_anchor := to_local(tether_anchor)
+		draw_line(Vector2.ZERO, local_anchor, Color(0.4, 0.85, 0.3, 0.8), 3.0)
+		draw_circle(local_anchor, 5.0, Color(0.4, 0.85, 0.3, 0.9))
+
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ AI                                                                       ║
@@ -959,9 +1306,14 @@ func _process_ai(delta: float) -> void:
 			if ai_timer > ai_action_duration:
 				if is_charging:
 					_start_charge_dash()
+				if is_spark_charging:
+					_start_spark_leap()
 				_ai_pick_action()
 		"shell_toss":
 			_ai_shell_toss()
+			_ai_pick_action()
+		"ability2":
+			_ai_ability2()
 			_ai_pick_action()
 
 func _ai_pick_action() -> void:
@@ -977,12 +1329,21 @@ func _ai_pick_action() -> void:
 	elif roll < 0.08:
 		ai_state = "lower_spin"
 		ai_action_duration = randf_range(0.4, 0.8)
-	elif roll < 0.18:
-		ai_state = "charge_attack"
-		ai_action_duration = randf_range(0.8, 1.5)
 	elif roll < 0.26:
-		ai_state = "shell_toss"
-		ai_action_duration = 0.1  # Instant
+		# Use ability1 based on character type
+		match character_type:
+			CharacterType.BLINK:
+				ai_state = "shell_toss"
+				ai_action_duration = 0.1
+			CharacterType.GOOPY:
+				ai_state = "shell_toss"  # Fires tether (reuses toss slot)
+				ai_action_duration = 0.1
+			CharacterType.ZAPPY:
+				ai_state = "charge_attack"
+				ai_action_duration = randf_range(0.8, 1.5)
+	elif roll < 0.34:
+		ai_state = "ability2"
+		ai_action_duration = 0.1
 	elif roll < 0.55:
 		ai_state = "attack"
 		ai_action_duration = randf_range(0.3, 1.0)
@@ -1011,17 +1372,53 @@ func _ai_retreat(delta: float) -> void:
 
 func _ai_charge_attack(delta: float) -> void:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	is_charging = true
 	aim_dir = Vector2(dir, randf_range(-0.3, 0.0)).normalized()
 	last_aim_dir = aim_dir
-	charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
 	apply_torque(LEAN_TORQUE * dir * 0.3)
+	match character_type:
+		CharacterType.ZAPPY:
+			is_spark_charging = true
+			spark_charge_amount = minf(spark_charge_amount + delta / SPARK_LEAP_CHARGE_TIME, 1.0)
+		_:
+			is_charging = true
+			charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
 
 func _ai_shell_toss() -> void:
-	if shell_missing or shell_toss_cooldown > 0.0:
-		return
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	aim_dir = Vector2(dir, randf_range(-0.5, 0.1)).normalized()
 	last_aim_dir = aim_dir
-	toss_charge_amount = randf_range(0.4, 1.0)
-	_fire_shell_toss()
+	match character_type:
+		CharacterType.BLINK:
+			if shell_missing:
+				# Teleport to shell if it's flying
+				if can_teleport_to_shell:
+					_blink_teleport_to_shell()
+				return
+			if shell_toss_cooldown > 0.0:
+				return
+			toss_charge_amount = randf_range(0.4, 1.0)
+			_fire_shell_toss()
+			can_teleport_to_shell = true
+		CharacterType.GOOPY:
+			if not tether_active:
+				_fire_tether()
+		_:
+			if shell_missing or shell_toss_cooldown > 0.0:
+				return
+			toss_charge_amount = randf_range(0.4, 1.0)
+			_fire_shell_toss()
+
+func _ai_ability2() -> void:
+	var dir := signf(ai_target.global_position.x - global_position.x)
+	aim_dir = Vector2(dir, randf_range(-0.3, 0.1)).normalized()
+	last_aim_dir = aim_dir
+	match character_type:
+		CharacterType.BLINK:
+			if phase_dash_cooldown <= 0.0:
+				_start_phase_dash()
+		CharacterType.GOOPY:
+			if goo_burst_cooldown <= 0.0:
+				_goo_burst()
+		CharacterType.ZAPPY:
+			if bolt_dash_cooldown <= 0.0 and bolt_dashes_remaining > 0:
+				_start_bolt_dash()

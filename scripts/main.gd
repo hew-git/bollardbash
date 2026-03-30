@@ -108,6 +108,35 @@ var ripple_timer: float = 0.0
 var ripple_center: Vector2 = Vector2.ZERO
 var ripple_rect: ColorRect          # Screen-covering rect with ripple shader
 
+# ── Select Screen State ─────────────────────────────────────────────────────
+var select_active: bool = true          # Start on select screen
+var select_phase: String = "character"  # "character" or "stage"
+var p1_char_index: int = 0              # 0=Blink, 1=Goopy, 2=Zappy
+var p2_char_index: int = 0
+var p1_confirmed: bool = false
+var p2_confirmed: bool = false
+var stage_index: int = 0                # 0=current, 1=random (placeholder)
+var select_layer: CanvasLayer
+var select_input_cooldown: float = 0.0  # Prevent rapid-fire navigation
+
+const CHAR_NAMES := ["BLINK", "GOOPY", "ZAPPY"]
+const CHAR_COLORS := [
+	Color(0.6, 0.3, 1.0),   # Blink — purple
+	Color(0.3, 0.85, 0.3),  # Goopy — green
+	Color(0.3, 0.8, 1.0),   # Zappy — blue
+]
+const CHAR_ABILITY1_DESC := [
+	"Shell Toss + Teleport",
+	"Slime Tether (pull/swing)",
+	"Spark Leap (charged)",
+]
+const CHAR_ABILITY2_DESC := [
+	"Phase Dash (through objects)",
+	"Goo Burst (AoE knockback)",
+	"Bolt Dash (instant, double)",
+]
+const STAGE_NAMES := ["Meadow", "Random"]
+
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = false
 var countdown_active: bool = true
@@ -127,6 +156,8 @@ var p2_slime_timer: float = 0.0
 
 
 func _ready() -> void:
+	# Higher physics tick rate prevents tunneling through ground/structures
+	Engine.physics_ticks_per_second = 120
 	_setup_input()
 	_setup_arena()
 	_create_bar_polygons()
@@ -154,7 +185,13 @@ func _ready() -> void:
 	controls_label.visible = true
 	p1_effect.visible = false
 	p2_effect.visible = false
-	_start_countdown()
+
+	# Start on select screen instead of jumping straight to countdown
+	_create_select_screen()
+	_show_select_screen()
+	# Hide players until character select is done
+	player1.visible = false
+	player2.visible = false
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -408,6 +445,324 @@ func _create_death_phrase_label() -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ CHARACTER + STAGE SELECT SCREEN                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+var select_title_label: Label
+var p1_select_label: Label
+var p2_select_label: Label
+var p1_ability_label: Label
+var p2_ability_label: Label
+var p1_confirm_label: Label
+var p2_confirm_label: Label
+var stage_label: Label
+var select_hint_label: Label
+
+func _create_select_screen() -> void:
+	select_layer = CanvasLayer.new()
+	select_layer.layer = 50
+	add_child(select_layer)
+
+	# Background
+	var bg := ColorRect.new()
+	bg.color = Color(0.12, 0.1, 0.18, 0.95)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	select_layer.add_child(bg)
+
+	# Title
+	select_title_label = Label.new()
+	select_title_label.add_theme_font_size_override("font_size", 52)
+	select_title_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	select_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	select_title_label.offset_left = 200.0
+	select_title_label.offset_top = 30.0
+	select_title_label.offset_right = 1080.0
+	select_title_label.offset_bottom = 100.0
+	select_title_label.text = "CHOOSE YOUR SNAIL"
+	select_layer.add_child(select_title_label)
+
+	# P1 character name
+	p1_select_label = Label.new()
+	p1_select_label.add_theme_font_size_override("font_size", 38)
+	p1_select_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p1_select_label.offset_left = 80.0
+	p1_select_label.offset_top = 160.0
+	p1_select_label.offset_right = 560.0
+	p1_select_label.offset_bottom = 220.0
+	select_layer.add_child(p1_select_label)
+
+	# P1 ability descriptions
+	p1_ability_label = Label.new()
+	p1_ability_label.add_theme_font_size_override("font_size", 18)
+	p1_ability_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
+	p1_ability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p1_ability_label.offset_left = 80.0
+	p1_ability_label.offset_top = 240.0
+	p1_ability_label.offset_right = 560.0
+	p1_ability_label.offset_bottom = 370.0
+	select_layer.add_child(p1_ability_label)
+
+	# P1 confirm status
+	p1_confirm_label = Label.new()
+	p1_confirm_label.add_theme_font_size_override("font_size", 24)
+	p1_confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p1_confirm_label.offset_left = 80.0
+	p1_confirm_label.offset_top = 390.0
+	p1_confirm_label.offset_right = 560.0
+	p1_confirm_label.offset_bottom = 430.0
+	select_layer.add_child(p1_confirm_label)
+
+	# P2 character name
+	p2_select_label = Label.new()
+	p2_select_label.add_theme_font_size_override("font_size", 38)
+	p2_select_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p2_select_label.offset_left = 720.0
+	p2_select_label.offset_top = 160.0
+	p2_select_label.offset_right = 1200.0
+	p2_select_label.offset_bottom = 220.0
+	select_layer.add_child(p2_select_label)
+
+	# P2 ability descriptions
+	p2_ability_label = Label.new()
+	p2_ability_label.add_theme_font_size_override("font_size", 18)
+	p2_ability_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
+	p2_ability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p2_ability_label.offset_left = 720.0
+	p2_ability_label.offset_top = 240.0
+	p2_ability_label.offset_right = 1200.0
+	p2_ability_label.offset_bottom = 370.0
+	select_layer.add_child(p2_ability_label)
+
+	# P2 confirm status
+	p2_confirm_label = Label.new()
+	p2_confirm_label.add_theme_font_size_override("font_size", 24)
+	p2_confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p2_confirm_label.offset_left = 720.0
+	p2_confirm_label.offset_top = 390.0
+	p2_confirm_label.offset_right = 1200.0
+	p2_confirm_label.offset_bottom = 430.0
+	select_layer.add_child(p2_confirm_label)
+
+	# Stage select label (shown after both confirm)
+	stage_label = Label.new()
+	stage_label.add_theme_font_size_override("font_size", 36)
+	stage_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stage_label.offset_left = 200.0
+	stage_label.offset_top = 460.0
+	stage_label.offset_right = 1080.0
+	stage_label.offset_bottom = 530.0
+	stage_label.visible = false
+	select_layer.add_child(stage_label)
+
+	# Hint label at bottom
+	select_hint_label = Label.new()
+	select_hint_label.add_theme_font_size_override("font_size", 16)
+	select_hint_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	select_hint_label.offset_left = 100.0
+	select_hint_label.offset_top = 640.0
+	select_hint_label.offset_right = 1180.0
+	select_hint_label.offset_bottom = 680.0
+	select_hint_label.text = "D-Pad / Arrows to choose  |  Square/Q or Cross/A to confirm  |  L1/E to go back"
+	select_layer.add_child(select_hint_label)
+
+
+func _show_select_screen() -> void:
+	select_active = true
+	select_phase = "character"
+	p1_confirmed = false
+	p2_confirmed = false
+	p1_char_index = 0
+	p2_char_index = randi() % 3 if player2.is_ai else 0
+	stage_index = 0
+	select_input_cooldown = 0.0
+	select_layer.visible = true
+	stage_label.visible = false
+	_update_select_display()
+
+
+func _update_select_display() -> void:
+	if select_phase == "character":
+		select_title_label.text = "CHOOSE YOUR SNAIL"
+		# P1
+		var p1_name := CHAR_NAMES[p1_char_index]
+		var p1_arrow := "< " if not p1_confirmed else "  "
+		var p1_arrow_r := " >" if not p1_confirmed else ""
+		p1_select_label.text = "P1: " + p1_arrow + p1_name + p1_arrow_r
+		p1_select_label.add_theme_color_override("font_color", CHAR_COLORS[p1_char_index])
+		p1_ability_label.text = "Square: " + CHAR_ABILITY1_DESC[p1_char_index] + "\nCross: " + CHAR_ABILITY2_DESC[p1_char_index] + "\nL1: Parry (all)"
+		p1_confirm_label.text = "READY!" if p1_confirmed else "(Press Q/Square to lock in)"
+		p1_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p1_confirmed else Color(0.7, 0.7, 0.7))
+
+		# P2
+		var p2_label_prefix := "P2: " if not player2.is_ai else "P2 (AI): "
+		var p2_name := CHAR_NAMES[p2_char_index]
+		var p2_arrow := "< " if not p2_confirmed else "  "
+		var p2_arrow_r := " >" if not p2_confirmed else ""
+		p2_select_label.text = p2_label_prefix + p2_arrow + p2_name + p2_arrow_r
+		p2_select_label.add_theme_color_override("font_color", CHAR_COLORS[p2_char_index])
+		p2_ability_label.text = "Square: " + CHAR_ABILITY1_DESC[p2_char_index] + "\nCross: " + CHAR_ABILITY2_DESC[p2_char_index] + "\nL1: Parry (all)"
+		if player2.is_ai:
+			p2_confirm_label.text = "READY!" if p2_confirmed else "(P1: press F/Cross to lock AI)"
+		else:
+			p2_confirm_label.text = "READY!" if p2_confirmed else "(Press Shift/Square to lock in)"
+		p2_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p2_confirmed else Color(0.7, 0.7, 0.7))
+
+	elif select_phase == "stage":
+		select_title_label.text = "CHOOSE YOUR STAGE"
+		stage_label.visible = true
+		stage_label.text = "< " + STAGE_NAMES[stage_index] + " >"
+
+
+func _update_select_screen(delta: float) -> void:
+	if not select_active:
+		return
+
+	select_input_cooldown -= delta
+	if select_input_cooldown > 0.0:
+		return
+
+	if select_phase == "character":
+		_handle_char_select_input()
+	elif select_phase == "stage":
+		_handle_stage_select_input()
+
+
+func _handle_char_select_input() -> void:
+	var parry_pressed := Input.is_action_just_pressed("p1_parry")
+
+	# P1 navigation (WASD / D-Pad device 0)
+	if not p1_confirmed:
+		if Input.is_action_just_pressed("p1_lean_left"):
+			p1_char_index = (p1_char_index - 1 + 3) % 3
+			select_input_cooldown = 0.15
+			_update_select_display()
+			return
+		if Input.is_action_just_pressed("p1_lean_right"):
+			p1_char_index = (p1_char_index + 1) % 3
+			select_input_cooldown = 0.15
+			_update_select_display()
+			return
+		if Input.is_action_just_pressed("p1_ability1"):
+			p1_confirmed = true
+			select_input_cooldown = 0.2
+			_update_select_display()
+			return
+
+	# P2 navigation — if AI, P1 controls P2's pick with W/S + ability2
+	if player2.is_ai:
+		if not p2_confirmed:
+			if Input.is_action_just_pressed("p1_aim_up"):
+				p2_char_index = (p2_char_index - 1 + 3) % 3
+				select_input_cooldown = 0.15
+				_update_select_display()
+				return
+			if Input.is_action_just_pressed("p1_aim_down"):
+				p2_char_index = (p2_char_index + 1) % 3
+				select_input_cooldown = 0.15
+				_update_select_display()
+				return
+			if Input.is_action_just_pressed("p1_ability2"):
+				p2_confirmed = true
+				select_input_cooldown = 0.2
+				_update_select_display()
+				return
+		elif parry_pressed:
+			# Undo P2 AI pick first
+			p2_confirmed = false
+			select_input_cooldown = 0.2
+			_update_select_display()
+			return
+	else:
+		# P2 is human
+		if not p2_confirmed:
+			if Input.is_action_just_pressed("p2_lean_left"):
+				p2_char_index = (p2_char_index - 1 + 3) % 3
+				select_input_cooldown = 0.15
+				_update_select_display()
+				return
+			if Input.is_action_just_pressed("p2_lean_right"):
+				p2_char_index = (p2_char_index + 1) % 3
+				select_input_cooldown = 0.15
+				_update_select_display()
+				return
+			if Input.is_action_just_pressed("p2_ability1"):
+				p2_confirmed = true
+				select_input_cooldown = 0.2
+				_update_select_display()
+				return
+		else:
+			if Input.is_action_just_pressed("p2_parry"):
+				p2_confirmed = false
+				select_input_cooldown = 0.2
+				_update_select_display()
+				return
+
+	# P1 undo (only if P2 AI isn't the one being undone)
+	if p1_confirmed and parry_pressed:
+		p1_confirmed = false
+		select_input_cooldown = 0.2
+		_update_select_display()
+		return
+
+	# Both confirmed → move to stage select
+	if p1_confirmed and p2_confirmed:
+		select_phase = "stage"
+		select_input_cooldown = 0.3
+		_update_select_display()
+
+
+func _handle_stage_select_input() -> void:
+	if Input.is_action_just_pressed("p1_lean_left"):
+		stage_index = (stage_index - 1 + STAGE_NAMES.size()) % STAGE_NAMES.size()
+		select_input_cooldown = 0.15
+		_update_select_display()
+	elif Input.is_action_just_pressed("p1_lean_right"):
+		stage_index = (stage_index + 1) % STAGE_NAMES.size()
+		select_input_cooldown = 0.15
+		_update_select_display()
+	# Confirm stage with ability1 or ability2
+	if Input.is_action_just_pressed("p1_ability1") or Input.is_action_just_pressed("p1_ability2"):
+		_confirm_selections()
+	# Go back with parry
+	if Input.is_action_just_pressed("p1_parry"):
+		select_phase = "character"
+		p1_confirmed = false
+		p2_confirmed = false
+		stage_label.visible = false
+		select_input_cooldown = 0.2
+		_update_select_display()
+
+
+func _confirm_selections() -> void:
+	# Apply character types
+	player1.character_type = p1_char_index
+	player2.character_type = p2_char_index
+	# Set character-themed colors
+	var char_body_colors := [
+		Color("C0A0E8"),  # Blink — light purple
+		Color("A0D8A0"),  # Goopy — light green
+		Color("A0D0E8"),  # Zappy — light blue
+	]
+	var char_accent_colors := [
+		Color("7030B0"),  # Blink — deep purple
+		Color("408030"),  # Goopy — deep green
+		Color("3080B0"),  # Zappy — deep blue
+	]
+	player1.bollard_color = char_body_colors[p1_char_index]
+	player1.accent_color = char_accent_colors[p1_char_index]
+	player2.bollard_color = char_body_colors[p2_char_index]
+	player2.accent_color = char_accent_colors[p2_char_index]
+	# Hide select screen, start the game
+	select_active = false
+	select_layer.visible = false
+	player1.visible = true
+	player2.visible = true
+	_start_countdown()
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ COUNTDOWN — "escarGO!" syllable reveal                                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -461,6 +816,11 @@ func _update_countdown(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _physics_process(delta: float) -> void:
+	# Select screen runs its own update
+	if select_active:
+		_update_select_screen(delta)
+		return
+
 	# Slomo + impact effects always update regardless of game state
 	_update_slomo_and_flashes(delta)
 
@@ -677,11 +1037,11 @@ func _update_death_phrase(delta: float) -> void:
 
 func _end_game(loser: Bollard) -> void:
 	game_active = false
-	var winner_name := "Player 1" if loser == player2 else "Player 2 (AI)"
+	var winner_name := "Player 1" if loser == player2 else ("Player 2 (AI)" if player2.is_ai else "Player 2")
 	game_over_label.text = winner_name + " WINS!\n\nPress T to restart"
 	game_over_label.visible = true
 
-func _restart_game() -> void:
+func _restart_game(go_to_select: bool = true) -> void:
 	Engine.time_scale = 1.0
 	slomo_timer = 0.0
 	ripple_timer = 0.0
@@ -726,6 +1086,18 @@ func _restart_game() -> void:
 		p.shell_missing = false
 		p.shell_deflected = false
 		p.shell_toss_cooldown = 0.0
+		p.is_parrying = false
+		p.parry_cooldown = 0.0
+		p.is_phase_dashing = false
+		p.phase_dash_cooldown = 0.0
+		p.can_teleport_to_shell = false
+		p.tether_active = false
+		p.goo_burst_cooldown = 0.0
+		p.is_spark_charging = false
+		p.spark_charge_amount = 0.0
+		p.is_bolt_dashing = false
+		p.bolt_dash_cooldown = 0.0
+		p.bolt_dashes_remaining = p.BOLT_DASH_MAX
 		p.damage_percent = 0.0
 		p.extend_amount = 0.5
 		p.linear_velocity = Vector2.ZERO
@@ -734,15 +1106,21 @@ func _restart_game() -> void:
 		PhysicsServer2D.body_set_state(p.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(0.0, spawns[i]))
 		p.global_position = spawns[i]
 		p.rotation = 0.0
-		p.visible = true
 		p.is_invincible = false
 		if p.has_meta("respawn_timer"):
 			p.remove_meta("respawn_timer")
-	_start_countdown()
+	if go_to_select:
+		player1.visible = false
+		player2.visible = false
+		_show_select_screen()
+	else:
+		player1.visible = true
+		player2.visible = true
+		_start_countdown()
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_T and not countdown_active:
+		if event.keycode == KEY_T and not countdown_active and not select_active:
 			_restart_game()
 		if event.keycode == KEY_ESCAPE:
 			get_tree().quit()
@@ -751,12 +1129,14 @@ func _input(event: InputEvent) -> void:
 			_toggle_p2_ai()
 	# Controller: Select/Back button to restart
 	if event is InputEventJoypadButton and event.pressed:
-		if event.button_index == JOY_BUTTON_BACK and not countdown_active:
+		if event.button_index == JOY_BUTTON_BACK and not countdown_active and not select_active:
 			_restart_game()
 	# If P2 is AI and we get any input from controller device 1, switch to human
 	if player2.is_ai and event.device == 1:
 		if event is InputEventJoypadButton or event is InputEventJoypadMotion:
 			_toggle_p2_ai()
+			if select_active:
+				_update_select_display()
 
 
 func _toggle_p2_ai() -> void:
@@ -952,33 +1332,37 @@ func _damage_color(pct: float) -> Color:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_input() -> void:
-	# P1 keyboard: WASD = directional (lean + aim), Q=charge, F=toss
+	# P1 keyboard: WASD = directional (lean + aim), Q=ability1, F=ability2, E=parry
 	_add_key("p1_lean_left",  KEY_A)
 	_add_key("p1_lean_right", KEY_D)
 	_add_key("p1_aim_up",     KEY_W)
 	_add_key("p1_aim_down",   KEY_S)
-	_add_key("p1_charge",     KEY_Q)
-	_add_key("p1_toss",       KEY_F)
+	_add_key("p1_ability1",   KEY_Q)
+	_add_key("p1_ability2",   KEY_F)
+	_add_key("p1_parry",      KEY_E)
 	_add_key("p1_raise",      KEY_R)
 	_add_key("p1_lower",      KEY_C)
 
-	# P1 controller: left stick = lean/aim, right stick = raise/lower body
+	# P1 controller: L-Stick = lean/aim, R-Stick = raise/lower
+	# Square/X = ability1, Cross/A = ability2, L1/LB = parry
 	_add_joy_axis("p1_lean_left",  JOY_AXIS_LEFT_X, -1.0, 0)
 	_add_joy_axis("p1_lean_right", JOY_AXIS_LEFT_X,  1.0, 0)
 	_add_joy_axis("p1_aim_up",     JOY_AXIS_LEFT_Y, -1.0, 0)
 	_add_joy_axis("p1_aim_down",   JOY_AXIS_LEFT_Y,  1.0, 0)
 	_add_joy_axis("p1_raise",      JOY_AXIS_RIGHT_Y, -1.0, 0)
 	_add_joy_axis("p1_lower",      JOY_AXIS_RIGHT_Y,  1.0, 0)
-	_add_joy_button("p1_charge",   JOY_BUTTON_X, 0)
-	_add_joy_button("p1_toss",     JOY_BUTTON_Y, 0)
+	_add_joy_button("p1_ability1", JOY_BUTTON_X, 0)       # Square / X
+	_add_joy_button("p1_ability2", JOY_BUTTON_A, 0)       # Cross / A
+	_add_joy_button("p1_parry",    JOY_BUTTON_LEFT_SHOULDER, 0)  # L1 / LB
 
-	# P2 keyboard: Arrows = directional, Shift=charge, .=toss
+	# P2 keyboard: Arrows = directional, Shift=ability1, .=ability2, /=parry
 	_add_key("p2_lean_left",  KEY_LEFT)
 	_add_key("p2_lean_right", KEY_RIGHT)
 	_add_key("p2_aim_up",     KEY_UP)
 	_add_key("p2_aim_down",   KEY_DOWN)
-	_add_key("p2_charge",     KEY_SHIFT)
-	_add_key("p2_toss",       KEY_PERIOD)
+	_add_key("p2_ability1",   KEY_SHIFT)
+	_add_key("p2_ability2",   KEY_PERIOD)
+	_add_key("p2_parry",      KEY_SLASH)
 	_add_key("p2_raise",      KEY_PAGEUP)
 	_add_key("p2_lower",      KEY_PAGEDOWN)
 
@@ -989,8 +1373,9 @@ func _setup_input() -> void:
 	_add_joy_axis("p2_aim_down",   JOY_AXIS_LEFT_Y,  1.0, 1)
 	_add_joy_axis("p2_raise",      JOY_AXIS_RIGHT_Y, -1.0, 1)
 	_add_joy_axis("p2_lower",      JOY_AXIS_RIGHT_Y,  1.0, 1)
-	_add_joy_button("p2_charge",   JOY_BUTTON_X, 1)
-	_add_joy_button("p2_toss",     JOY_BUTTON_Y, 1)
+	_add_joy_button("p2_ability1", JOY_BUTTON_X, 1)       # Square / X
+	_add_joy_button("p2_ability2", JOY_BUTTON_A, 1)       # Cross / A
+	_add_joy_button("p2_parry",    JOY_BUTTON_LEFT_SHOULDER, 1)  # L1 / LB
 
 	for action in ["p1_lean_left", "p1_lean_right", "p1_aim_up", "p1_aim_down",
 					"p2_lean_left", "p2_lean_right", "p2_aim_up", "p2_aim_down",
