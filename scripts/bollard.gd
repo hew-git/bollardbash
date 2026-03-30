@@ -1128,8 +1128,8 @@ func _update_sprites() -> void:
 
 	# ── Invincibility flash ──────────────────────────────────────────────
 	var flash := is_invincible and fmod(invincible_timer * 10.0, 2.0) > 1.0
-	var shell_c := accent_color.lightened(0.5) if flash else accent_color
-	var body_c := bollard_color.lightened(0.5) if flash else bollard_color
+	var shell_c: Color = accent_color.lightened(0.5) if flash else accent_color
+	var body_c: Color = bollard_color.lightened(0.5) if flash else bollard_color
 
 	# ── CHARGE / ABILITY VISUALS ─────────────────────────────────────────
 	if is_charging and charge_amount > 0.1:
