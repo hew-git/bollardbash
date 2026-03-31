@@ -830,16 +830,19 @@ func _handle_p1_pick_input() -> void:
 		p1_char_index = (p1_char_index - 1 + 4) % 4
 		select_input_cooldown = 0.15
 		_update_select_display()
+		SFX.play_sfx("menu_move")
 		return
 	if Input.is_action_just_pressed("p1_lean_right"):
 		p1_char_index = (p1_char_index + 1) % 4
 		select_input_cooldown = 0.15
 		_update_select_display()
+		SFX.play_sfx("menu_move")
 		return
 	if Input.is_action_just_pressed("p1_ability1"):
 		select_phase = "p2_pick"
 		select_input_cooldown = 0.2
 		_update_select_display()
+		SFX.play_sfx("menu_confirm")
 
 
 func _handle_p2_pick_input() -> void:
@@ -855,22 +858,26 @@ func _handle_p2_pick_input() -> void:
 		p2_char_index = (p2_char_index - 1 + 4) % 4
 		select_input_cooldown = 0.15
 		_update_select_display()
+		SFX.play_sfx("menu_move")
 		return
 	if Input.is_action_just_pressed(right_action):
 		p2_char_index = (p2_char_index + 1) % 4
 		select_input_cooldown = 0.15
 		_update_select_display()
+		SFX.play_sfx("menu_move")
 		return
 	if Input.is_action_just_pressed(confirm_action):
 		select_phase = "stage"
 		select_input_cooldown = 0.2
 		_update_select_display()
+		SFX.play_sfx("menu_confirm")
 		return
 	# Back to P1 pick
 	if Input.is_action_just_pressed(back_action):
 		select_phase = "p1_pick"
 		select_input_cooldown = 0.2
 		_update_select_display()
+		SFX.play_sfx("menu_back")
 
 
 func _handle_stage_select_input() -> void:
@@ -878,12 +885,15 @@ func _handle_stage_select_input() -> void:
 		stage_index = (stage_index - 1 + STAGE_NAMES.size()) % STAGE_NAMES.size()
 		select_input_cooldown = 0.15
 		_update_select_display()
+		SFX.play_sfx("menu_move")
 	elif Input.is_action_just_pressed("p1_lean_right"):
 		stage_index = (stage_index + 1) % STAGE_NAMES.size()
 		select_input_cooldown = 0.15
 		_update_select_display()
+		SFX.play_sfx("menu_move")
 	# Confirm stage with ability1 or ability2
 	if Input.is_action_just_pressed("p1_ability1") or Input.is_action_just_pressed("p1_ability2"):
+		SFX.play_sfx("menu_confirm")
 		_confirm_selections()
 	# Go back with parry
 	if Input.is_action_just_pressed("p1_parry"):
@@ -891,6 +901,7 @@ func _handle_stage_select_input() -> void:
 		stage_label.visible = false
 		select_input_cooldown = 0.2
 		_update_select_display()
+		SFX.play_sfx("menu_back")
 
 
 func _confirm_selections() -> void:
@@ -968,10 +979,14 @@ func _update_countdown(delta: float) -> void:
 		countdown_label.text = "es.."
 		countdown_label.add_theme_font_size_override("font_size", 40)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
+		if countdown_timer - delta < 1.0:
+			SFX.play_sfx("countdown_tick")
 	elif countdown_timer < 3.0:
 		countdown_label.text = "escar.."
 		countdown_label.add_theme_font_size_override("font_size", 40)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
+		if countdown_timer - delta < 2.0:
+			SFX.play_sfx("countdown_tick")
 	elif countdown_timer < 3.0 + GO_LINGER:
 		countdown_label.text = "escarGO!"
 		countdown_label.add_theme_font_size_override("font_size", 40)
@@ -981,6 +996,7 @@ func _update_countdown(delta: float) -> void:
 			player1.is_frozen = false
 			player2.is_frozen = false
 			game_active = true
+			SFX.play_sfx("countdown_go")
 	else:
 		countdown_active = false
 		countdown_label.visible = false
@@ -1033,6 +1049,10 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 	# Don't trigger effects during select screen or countdown
 	if select_active or not game_active:
 		return
+	if is_deflect:
+		SFX.play_sfx("big_hit_deflect")
+	else:
+		SFX.play_sfx("big_hit")
 	# Trigger slowmo
 	slomo_timer = SLOMO_DURATION
 	Engine.time_scale = SLOMO_SCALE
@@ -1245,6 +1265,7 @@ func _end_game(loser: Bollard) -> void:
 	var winner_name: String = "Player 1" if loser == player2 else ("Player 2 (AI)" if player2.is_ai else "Player 2")
 	game_over_label.text = winner_name + " WINS!\n\nPress T to restart"
 	game_over_label.visible = true
+	SFX.play_sfx("game_over")
 
 func _restart_game(go_to_select: bool = true) -> void:
 	Engine.time_scale = 1.0

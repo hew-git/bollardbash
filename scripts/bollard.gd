@@ -415,6 +415,7 @@ func _start_parry() -> void:
 	parry_timer = 0.0
 	is_invincible = true
 	invincible_timer = 0.0
+	SFX.play_sfx("parry")
 
 func _update_parry(delta: float) -> void:
 	if parry_cooldown > 0.0:
@@ -515,6 +516,7 @@ func _blink_teleport_to_shell() -> void:
 	PhysicsServer2D.body_set_state(get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(rotation, target))
 	global_position = target
 	linear_velocity = shell_toss_vel * 0.3  # Keep some momentum from shell
+	SFX.play_sfx("blink_teleport")
 	_return_shell()
 	can_teleport_to_shell = false
 	blink_teleport_used = true
@@ -526,6 +528,7 @@ func _start_phase_dash() -> void:
 		dash_dir = last_aim_dir
 	is_phase_dashing = true
 	phase_dash_timer = 0.0
+	SFX.play_sfx("dash_phase")
 	# Add collision exceptions for non-ground structures (platforms, center rock, etc.)
 	# Ground is NOT excluded — you can't phase through the ground
 	_phase_set_exceptions(true)
@@ -617,6 +620,7 @@ func _goopy_zip_to_shell() -> void:
 	var dir: Vector2 = (shell_toss_pos - global_position).normalized()
 	apply_central_impulse(dir * GOOPY_ZIP_IMPULSE)
 	is_goopy_zipping = true
+	SFX.play_sfx("goopy_zip")
 	# Tether stays visible — separate from the 6s tether timer
 	# Zip ends when goopy reaches shell or touches a surface/player
 
@@ -690,6 +694,7 @@ func _start_goo_dash() -> void:
 		return
 	goo_dash_was_full_charge = goo_charge_amount >= 0.85
 	is_goo_charging = false
+	SFX.play_sfx("dash_goo")
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
 		dash_dir = last_aim_dir
@@ -832,6 +837,7 @@ func _start_bolt_dash() -> void:
 	is_bolt_charging = false
 	is_bolt_dashing = true
 	bolt_dash_timer = 0.0
+	SFX.play_sfx("dash_bolt")
 	bolt_dashes_remaining -= 1
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
@@ -902,6 +908,7 @@ func _start_charge_dash() -> void:
 	is_dashing = true
 	dash_timer = 0.0
 	dashes_remaining -= 1
+	SFX.play_sfx("dash")
 	# Dash in aimed direction; fallback to last aimed direction
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
@@ -1009,6 +1016,7 @@ func _fire_shell_toss() -> void:
 	var speed := lerpf(SHELL_TOSS_MIN_SPEED, SHELL_TOSS_SPEED, toss_charge_amount)
 	shell_toss_vel = toss_dir * speed
 	toss_charge_amount = 0.0
+	SFX.play_sfx("shell_toss")
 
 
 func _update_shell_toss(delta: float) -> void:
@@ -1052,6 +1060,7 @@ func _update_shell_toss(delta: float) -> void:
 				# Ensure minimum bounce speed to prevent getting stuck
 				if shell_toss_vel.length() < 80.0 and character_type != CharacterType.GOOPY:
 					shell_toss_vel = shell_toss_vel.normalized() * 80.0
+				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
 					shell_toss_vel = Vector2.ZERO
@@ -1151,6 +1160,7 @@ func _update_shell_toss(delta: float) -> void:
 func _return_shell() -> void:
 	shell_missing = false
 	shell_deflected = false
+	SFX.play_sfx("shell_pickup")
 	if character_type == CharacterType.GOOPY:
 		goopy_tether_active = false
 		is_goopy_zipping = false
@@ -1180,6 +1190,7 @@ func take_damage(amount: float, knockback_dir: Vector2) -> void:
 	damage_percent += amount
 	var knockback_mult := 1.0 + damage_percent / 50.0
 	apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult)
+	SFX.play_sfx_varied("hit")
 
 func _is_in_any_dash() -> bool:
 	return is_dashing or is_phase_dashing or is_bolt_dashing or is_goo_dashing
@@ -1215,6 +1226,7 @@ func _on_body_entered(body: Node) -> void:
 			apply_central_impulse(reverse_dir * KNOCKBACK_BASE * 2.0)
 			var hit_pos := (global_position + other.global_position) * 0.5
 			big_hit.emit(hit_pos, true)
+			SFX.play_sfx("parry_deflect")
 			_end_any_dash()
 			return
 		# Dashing into another snail = big hit (same impact as shell toss)
@@ -1253,6 +1265,7 @@ func is_shell_hit(attacker_pos: Vector2) -> bool:
 func die() -> void:
 	stocks -= 1
 	is_dead = true
+	SFX.play_sfx("ko")
 
 func start_emerge(spawn_pos: Vector2) -> void:
 	is_dead = false
