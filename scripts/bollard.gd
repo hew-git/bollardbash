@@ -51,8 +51,8 @@ const PARRY_COOLDOWN := 0.8         # Cooldown after parry ends
 const PARRY_RETRACT_SPEED := 12.0   # How fast body retracts into shell
 
 # ── Blink: Phase Dash ──────────────────────────────────────────────────────
-const PHASE_DASH_IMPULSE := 1400.0
-const PHASE_DASH_TIME := 0.315       # 5% longer
+const PHASE_DASH_IMPULSE := 1190.0   # 15% shorter
+const PHASE_DASH_TIME := 0.27        # 15% shorter
 const PHASE_DASH_COOLDOWN := 0.8
 
 # ── Goopy: Slime Shell Toss + Tether Swing + Goo Dash ──────────────────────
@@ -73,7 +73,7 @@ const GOO_TRAIL_DURATION := 3.0      # How long goo puddles last
 # ── Zappy: Electric Shell Toss + 3x Bolt Dash ─────────────────────────────
 const ZAPPY_TOSS_SPEED := 1200.0     # Fixed speed (unchargeable, 33% less range)
 const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage (nerfed 40%)
-const ZAPPY_TOSS_KNOCKBACK := 120.0  # Light knockback (nerfed 40%)
+const ZAPPY_TOSS_KNOCKBACK := 108.0  # Light knockback (nerfed 40%, then 10% weaker)
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
 const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
@@ -84,7 +84,6 @@ const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
 # ── Visual Constants ────────────────────────────────────────────────────────
-const EYE_RADIUS := 5.5
 const STALK_LENGTH := 22.0
 const STALK_SPREAD := 7.0
 
@@ -187,6 +186,9 @@ var bolt_dash_origin: Vector2 = Vector2.ZERO
 
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
+
+# ── Anti-tunneling (floor glitch prevention) ────────────────────────────────
+var _prev_global_pos: Vector2 = Vector2.ZERO
 
 # ── Eye Blink Animation ─────────────────────────────────────────────────────
 var is_blinking: bool = false
@@ -291,8 +293,18 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
+	# Anti-tunneling: detect if snail teleported through floor since last frame
+	if _prev_global_pos.y > 0.0:
+		var dy := global_position.y - _prev_global_pos.y
+		var expected_dy := maxf(linear_velocity.y * delta, 0.0)
+		# If snail jumped downward much further than velocity explains, snap back
+		if dy > expected_dy + 80.0 and dy > 60.0:
+			global_position.y = _prev_global_pos.y
+			linear_velocity.y = 0.0
+
 	if is_emerging:
 		_update_emerge(delta)
+		_prev_global_pos = global_position
 		return
 
 	if is_frozen:
@@ -300,6 +312,7 @@ func _physics_process(delta: float) -> void:
 		_update_blink(delta)
 		_update_eye_look(delta)
 		_update_sprites()
+		_prev_global_pos = global_position
 		return
 
 	prev_extend = extend_amount
@@ -333,6 +346,7 @@ func _physics_process(delta: float) -> void:
 	_update_blink(delta)
 	_update_eye_look(delta)
 	_update_sprites()
+	_prev_global_pos = global_position
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -533,6 +547,7 @@ func _start_phase_dash() -> void:
 		dash_dir = last_aim_dir
 	is_phase_dashing = true
 	phase_dash_timer = 0.0
+	extend_amount = 0.0
 	SFX.play_sfx("dash_phase")
 	# Add collision exceptions for non-ground structures (platforms, center rock, etc.)
 	# Ground is NOT excluded — you can't phase through the ground
@@ -575,10 +590,9 @@ func _update_phase_dash(delta: float) -> void:
 	if not is_phase_dashing:
 		return
 	phase_dash_timer += delta
-	if phase_dash_timer >= PHASE_DASH_TIME:
+	if phase_dash_timer >= PHASE_DASH_TIME or _is_dash_blocked():
 		is_phase_dashing = false
 		phase_dash_cooldown = PHASE_DASH_COOLDOWN
-		# Remove collision exceptions
 		_phase_set_exceptions(false)
 
 
@@ -705,6 +719,7 @@ func _start_goo_dash() -> void:
 		dash_dir = last_aim_dir
 	is_goo_dashing = true
 	goo_dash_timer = 0.0
+	extend_amount = 0.0
 	var impulse := lerpf(GOO_DASH_MIN_IMPULSE, GOO_DASH_IMPULSE, goo_charge_amount)
 	linear_velocity = Vector2.ZERO
 	apply_central_impulse(dash_dir * impulse)
@@ -720,7 +735,7 @@ func _update_goo_dash(delta: float) -> void:
 	goo_trails.append({"pos": global_position, "timer": GOO_TRAIL_DURATION})
 	# Check for dash hits
 	_check_goo_dash_hits()
-	if goo_dash_timer >= GOO_DASH_TIME:
+	if goo_dash_timer >= GOO_DASH_TIME or _is_dash_blocked():
 		is_goo_dashing = false
 		goo_dash_cooldown = GOO_DASH_COOLDOWN
 
@@ -843,6 +858,7 @@ func _start_bolt_dash() -> void:
 	is_bolt_charging = false
 	is_bolt_dashing = true
 	bolt_dash_timer = 0.0
+	extend_amount = 0.0
 	SFX.play_sfx("dash_bolt")
 	bolt_dashes_remaining -= 1
 	bolt_dash_dir = aim_dir
@@ -866,14 +882,13 @@ func _update_bolt_dash(delta: float) -> void:
 	linear_velocity = bolt_dash_dir * BOLT_DASH_SPEED
 	# Check for hits — ends dash on contact
 	_check_charge_hits()
-	# Stop after fixed distance or if dash was ended by hit
+	# Stop after fixed distance, hitting something, or dash ended by player hit
 	var traveled := bolt_dash_origin.distance_to(global_position)
-	if not is_bolt_dashing or traveled >= BOLT_DASH_DISTANCE:
+	if not is_bolt_dashing or traveled >= BOLT_DASH_DISTANCE or _is_dash_blocked():
 		is_bolt_dashing = false
 		linear_velocity = bolt_dash_dir * BOLT_DASH_SPEED * 0.15  # Small residual
 		if bolt_dashes_remaining <= 0:
 			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
-
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -922,6 +937,7 @@ func _start_charge_dash() -> void:
 	is_dashing = true
 	dash_timer = 0.0
 	dashes_remaining -= 1
+	extend_amount = 0.0
 	SFX.play_sfx("dash")
 	# Dash in aimed direction; fallback to last aimed direction
 	var dash_dir := aim_dir
@@ -950,9 +966,8 @@ func _update_charge(delta: float) -> void:
 	if is_dashing:
 		dash_timer += delta
 		_check_charge_hits()
-		if dash_timer >= CHARGE_DASH_TIME:
+		if dash_timer >= CHARGE_DASH_TIME or _is_dash_blocked():
 			is_dashing = false
-			# Only start cooldown when all dashes used
 			if dashes_remaining <= 0:
 				charge_cooldown = CHARGE_COOLDOWN
 
@@ -988,16 +1003,23 @@ func _check_charge_hits() -> void:
 			return
 		var dash_dmg := CHARGE_DAMAGE
 		var impact_force := linear_velocity.length() * 3.0
-		# Zappy bolt dash: 40% less impact
+		# Zappy bolt dash: 40% less impact + 10% weaker knockback
 		if character_type == CharacterType.ZAPPY and is_bolt_dashing:
 			dash_dmg *= 0.6
-			impact_force *= 0.6
+			impact_force *= 0.54
 		body.take_damage(dash_dmg, dir)
 		body.apply_central_impulse(dir * impact_force)
 		var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 		big_hit.emit(hit_pos, false)
 		_end_any_dash()
 		return
+
+func _is_dash_blocked() -> bool:
+	# Check if dashing into a wall, ground, or platform — end dash if so
+	for body in get_colliding_bodies():
+		if body is StaticBody2D:
+			return true
+	return false
 
 func _end_any_dash() -> void:
 	if is_dashing:
@@ -1074,12 +1096,12 @@ func _update_shell_toss(delta: float) -> void:
 							skip_bounce = true
 						break
 			if not skip_bounce:
-				shell_toss_pos = result.position + result.normal * (BASE_RADIUS * 0.8)
+				shell_toss_pos = result.position + result.normal * BASE_RADIUS
 				# Proper bounce: reflect velocity off the surface normal
 				shell_toss_vel = shell_toss_vel.reflect(result.normal) * SHELL_BOUNCE
 				# Ensure minimum bounce speed to prevent getting stuck
-				if shell_toss_vel.length() < 80.0 and character_type != CharacterType.GOOPY:
-					shell_toss_vel = shell_toss_vel.normalized() * 80.0
+				if shell_toss_vel.length() < 120.0 and character_type != CharacterType.GOOPY:
+					shell_toss_vel = shell_toss_vel.normalized() * 120.0
 				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
@@ -1147,8 +1169,8 @@ func _update_shell_toss(delta: float) -> void:
 					dmg = SHELL_TOSS_DAMAGE * 0.9  # 10% softer
 					kb_mult = 0.9
 				CharacterType.GOOPY:
-					dmg = SHELL_TOSS_DAMAGE * 0.3  # 30% of Blink
-					kb_mult = 0.3
+					dmg = SHELL_TOSS_DAMAGE * GOOPY_TOSS_KNOCKBACK_MULT
+					kb_mult = GOOPY_TOSS_KNOCKBACK_MULT
 				CharacterType.ZAPPY:
 					dmg = ZAPPY_TOSS_DAMAGE
 					kb_mult = 0.0  # Use fixed knockback below
@@ -1258,10 +1280,10 @@ func _on_body_entered(body: Node) -> void:
 		if is_dashing or is_bolt_dashing:
 			dmg = maxf(dmg, CHARGE_DAMAGE)
 			var impact_force := linear_velocity.length() * 3.0
-			# Zappy bolt dash: 40% less impact
+			# Zappy bolt dash: 40% less impact + 10% weaker knockback
 			if is_bolt_dashing and character_type == CharacterType.ZAPPY:
 				dmg *= 0.6
-				impact_force *= 0.6
+				impact_force *= 0.54
 			other.apply_central_impulse(dir * impact_force)
 			var hit_pos := (global_position + other.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
@@ -1350,6 +1372,7 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	bolt_dashes_remaining = BOLT_DASH_MAX
 	bolt_dash_dir = Vector2.ZERO
 	bolt_dash_origin = Vector2.ZERO
+	_prev_global_pos = spawn_pos
 	# Clear drop-through exceptions
 	for dt in drop_through_bodies:
 		if is_instance_valid(dt.body):

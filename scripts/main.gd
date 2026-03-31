@@ -411,12 +411,12 @@ func _create_corner_platforms() -> void:
 	# Four corner platforms angled toward center circle, 1.5x central platform width
 	var plat_width := 270.0  # 1.5x the 180px central platforms
 	var plat_height := 14.0
-	# Pushed far toward screen edges, solid collision (not one-way)
+	# Nearly touching screen edges, solid collision (not one-way)
 	var corners := [
-		{"x": 60.0, "y": 100.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
-		{"x": 1220.0, "y": 100.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
-		{"x": 60.0, "y": 490.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
-		{"x": 1220.0, "y": 490.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
+		{"x": 25.0, "y": 70.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
+		{"x": 1255.0, "y": 70.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
+		{"x": 25.0, "y": 500.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
+		{"x": 1255.0, "y": 500.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
 	]
 	for info in corners:
 		var plat := StaticBody2D.new()
@@ -1347,6 +1347,7 @@ func _restart_game(go_to_select: bool = true) -> void:
 		p.global_position = spawns[i]
 		p.rotation = 0.0
 		p.is_invincible = false
+		p._prev_global_pos = spawns[i]
 		if p.has_meta("respawn_timer"):
 			p.remove_meta("respawn_timer")
 	if go_to_select:
