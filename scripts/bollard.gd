@@ -60,8 +60,8 @@ const GOOPY_TOSS_KNOCKBACK_MULT := 0.3  # 30% of Blink's shell knockback
 const GOOPY_ZIP_IMPULSE := 2200.0    # Impulse when zipping to shell
 const GOOPY_SWING_PULL := 1200.0     # Looser swing force (lower = looser)
 const GOOPY_TETHER_DURATION := 6.0   # Max tether swing time (long for strategic use)
-const GOO_DASH_IMPULSE := 2100.0     # Max dash impulse (1.5x for longer travel)
-const GOO_DASH_MIN_IMPULSE := 750.0  # Min dash impulse (1.5x for longer travel)
+const GOO_DASH_IMPULSE := 1785.0     # Max dash impulse (15% shorter)
+const GOO_DASH_MIN_IMPULSE := 637.0  # Min dash impulse (15% shorter)
 const GOO_DASH_CHARGE_TIME := 0.5    # Charge time for full dash
 const GOO_DASH_TIME := 0.4           # Dash duration
 const GOO_DASH_COOLDOWN := 0.8       # Cooldown
@@ -76,9 +76,9 @@ const ZAPPY_TOSS_DAMAGE := 12.0      # Light damage
 const ZAPPY_TOSS_KNOCKBACK := 200.0  # Light knockback
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
-const ZAPPY_TOSS_MAX_RANGE := 280.0  # Max distance before shell stops
+const ZAPPY_TOSS_MAX_RANGE := 168.0  # Max distance before shell stops (40% shorter)
 const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
-const BOLT_DASH_IMPULSE := 1800.0    # Stronger impulse for quicker burst
+const BOLT_DASH_IMPULSE := 1350.0    # 25% shorter than before (was 1800)
 const BOLT_DASH_TIME := 0.15         # Very short dash duration
 const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
@@ -611,35 +611,39 @@ func _input_goopy_ability2(delta: float, lean_dir: float) -> void:
 		_start_goo_dash()
 
 var is_goopy_zipping: bool = false     # True while zipping to shell (big hit)
-var goopy_zip_timer: float = 0.0
-const GOOPY_ZIP_DURATION := 0.3        # Window to land a big hit while zipping
 
 func _goopy_zip_to_shell() -> void:
 	var dir: Vector2 = (shell_toss_pos - global_position).normalized()
 	apply_central_impulse(dir * GOOPY_ZIP_IMPULSE)
 	is_goopy_zipping = true
-	goopy_zip_timer = GOOPY_ZIP_DURATION
-	_goopy_release_tether()
+	# Tether stays visible — separate from the 6s tether timer
+	# Zip ends when goopy reaches shell or touches a surface/player
 
 func _goopy_release_tether() -> void:
 	goopy_tether_active = false
 	goopy_tether_timer = 0.0
 
-func _update_goopy_zip(delta: float) -> void:
+func _update_goopy_zip(_delta: float) -> void:
 	if not is_goopy_zipping:
 		return
-	goopy_zip_timer -= delta
-	if goopy_zip_timer <= 0.0:
+	queue_redraw()  # Keep tether line drawing
+	# End zip when reaching shell
+	var dist_to_shell := global_position.distance_to(shell_toss_pos)
+	if dist_to_shell < SHELL_PICKUP_RADIUS:
 		is_goopy_zipping = false
+		_goopy_release_tether()
 		return
-	# Check for hits while zipping — counts as big hit
+	# End zip on contact with surface or player — check colliding bodies
 	for body in get_colliding_bodies():
-		if body == self or not (body is RigidBody2D):
+		if body == self:
 			continue
-		if not body.has_method("take_damage"):
-			continue
-		var dist := global_position.distance_to(body.global_position)
-		if dist < CHARGE_HIT_RADIUS:
+		if body is StaticBody2D:
+			# Hit a surface — end zip and release tether
+			is_goopy_zipping = false
+			_goopy_release_tether()
+			return
+		if body is RigidBody2D and body.has_method("take_damage"):
+			# Hit a player — big hit!
 			var dir := (body.global_position - global_position).normalized()
 			body.take_damage(GOO_DASH_DAMAGE * 1.5, dir)
 			var impact_force := linear_velocity.length() * 2.5
@@ -647,11 +651,15 @@ func _update_goopy_zip(delta: float) -> void:
 			var hit_pos := (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
 			is_goopy_zipping = false
+			_goopy_release_tether()
 			return
 
 func _update_goopy_tether(delta: float) -> void:
 	if not goopy_tether_active or not shell_missing:
 		goopy_tether_active = false
+		return
+	# During zip, the tether stays but we don't count toward the 6s timer
+	if is_goopy_zipping:
 		return
 	goopy_tether_timer += delta
 	queue_redraw()
@@ -672,7 +680,7 @@ func _start_goo_dash() -> void:
 		is_goo_charging = false
 		goo_charge_amount = 0.0
 		return
-	goo_dash_was_full_charge = goo_charge_amount >= 0.95
+	goo_dash_was_full_charge = goo_charge_amount >= 0.85
 	is_goo_charging = false
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
@@ -804,14 +812,6 @@ func _start_bolt_dash() -> void:
 	if dash_dir.length() < 0.1:
 		dash_dir = last_aim_dir
 	var impulse_strength := BOLT_DASH_IMPULSE * bolt_charge_amount
-	# Airborne boost
-	var on_ground := false
-	for body in get_colliding_bodies():
-		if body is StaticBody2D:
-			on_ground = true
-			break
-	if not on_ground:
-		impulse_strength *= 1.75
 	apply_central_impulse(dash_dir * impulse_strength)
 	bolt_charge_amount = 0.0
 
@@ -1259,7 +1259,6 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	goo_dash_was_full_charge = false
 	goo_dash_cooldown = 0.0
 	is_goopy_zipping = false
-	goopy_zip_timer = 0.0
 	goo_trails.clear()
 	is_bolt_charging = false
 	bolt_charge_amount = 0.0
