@@ -1078,6 +1078,8 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 
 
 func _on_shards_only(impact_pos: Vector2) -> void:
+	if select_active or not game_active:
+		return
 	# Spawn shards (purple for Blink teleport) but NO slomo and NO ripple
 	var shard_color := Color(0.7, 0.3, 1.0, 1.0)
 	for s_i in SHARD_COUNT:
@@ -1108,18 +1110,17 @@ func _update_slomo_and_flashes(delta: float) -> void:
 	# Update impact shards (fly outward + fade)
 	var i := impact_shards.size() - 1
 	while i >= 0:
-		var sh = impact_shards[i]
 		var real_dt := delta / maxf(Engine.time_scale, 0.01)
-		var sh_time: float = sh.timer
+		var sh_time: float = impact_shards[i].timer
 		sh_time -= real_dt
-		sh.timer = sh_time
+		impact_shards[i].timer = sh_time
 		if sh_time <= 0.0:
-			sh.node.queue_free()
+			impact_shards[i].node.queue_free()
 			impact_shards.remove_at(i)
 		else:
 			# Move shard outward
-			var vel: Vector2 = sh.vel
-			var n: Line2D = sh.node
+			var vel: Vector2 = impact_shards[i].vel
+			var n: Line2D = impact_shards[i].node
 			for p_i in n.get_point_count():
 				n.set_point_position(p_i, n.get_point_position(p_i) + vel * real_dt)
 			# Fade out
@@ -1128,8 +1129,7 @@ func _update_slomo_and_flashes(delta: float) -> void:
 			c.a = lerpf(1.0, 0.0, progress)
 			n.default_color = c
 			# Shards slow down over time
-			var slow_vel: Vector2 = sh.vel
-			sh.vel = slow_vel * 0.95
+			impact_shards[i].vel = vel * 0.95
 		i -= 1
 
 	# Update screen ripple shader

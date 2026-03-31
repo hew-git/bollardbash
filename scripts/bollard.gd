@@ -983,10 +983,10 @@ func _update_shell_toss(delta: float) -> void:
 
 	shell_toss_timer += delta
 
-	# Goopy shell sticks on contact (no bounce after hit)
-	var goopy_stuck := (character_type == CharacterType.GOOPY and shell_toss_hit)
+	# Shell sticks on contact for Goopy, or after max range for Zappy
+	var shell_stuck := (shell_toss_hit and (character_type == CharacterType.GOOPY or character_type == CharacterType.ZAPPY))
 
-	if not goopy_stuck:
+	if not shell_stuck:
 		# Apply gravity
 		shell_toss_vel.y += SHELL_GRAVITY * delta
 		var prev_pos := shell_toss_pos
@@ -1110,6 +1110,7 @@ func _return_shell() -> void:
 	shell_deflected = false
 	if character_type == CharacterType.GOOPY:
 		goopy_tether_active = false
+		is_goopy_zipping = false
 	var cd := SHELL_TOSS_COOLDOWN
 	if character_type == CharacterType.ZAPPY:
 		cd = ZAPPY_TOSS_COOLDOWN
