@@ -91,8 +91,10 @@ const STALK_SPREAD := 7.0
 # ── Sprite Textures (preloaded — swap these PNGs for custom art) ──────────
 const TEX_SHELL := preload("res://sprites/snail/shell.png")
 const TEX_SPIRAL := preload("res://sprites/snail/shell_spiral.png")
-const TEX_BODY := preload("res://sprites/snail/body.png")
+const TEX_BODY := preload("res://sprites/snail/body.png")   # Body tile segment (tiles vertically)
 const TEX_DOME := preload("res://sprites/snail/dome.png")
+const BODY_TILE_HEIGHT := 8.0    # Display height of each body tile (pixels)
+const BODY_MAX_TILES := 12       # Max tiles needed (MAX_HEIGHT / BODY_TILE_HEIGHT, rounded up)
 const TEX_EYE := preload("res://sprites/snail/eye.png")
 const TEX_PUPIL := preload("res://sprites/snail/pupil.png")
 const TEX_EYE_HL := preload("res://sprites/snail/eye_highlight.png")
@@ -119,6 +121,7 @@ var emerge_progress: float = 0.0
 # ── Aim Direction (shared by charge + toss) ────────────────────────────────
 var aim_dir: Vector2 = Vector2.ZERO     # Current aim from WASD/stick
 var last_aim_dir: Vector2 = Vector2(1.0, 0.0)  # Last non-zero aim (fallback for release)
+var facing_right: bool = true           # Which way the snail is visually facing
 
 # ── Charge Attack State ────────────────────────────────────────────────────
 var is_charging: bool = false
@@ -220,7 +223,7 @@ var dome_shape: CollisionShape2D  # Created at runtime for dome cap
 # ── Sprite Node References (created in _ready) ────────────────────────────
 var spr_shell: Sprite2D
 var spr_spiral: Sprite2D
-var spr_body: Sprite2D
+var spr_body_tiles: Array[Sprite2D] = []  # Tiling body segments
 var spr_dome: Sprite2D
 var spr_stalk_l: Sprite2D
 var spr_stalk_r: Sprite2D
@@ -1428,7 +1431,7 @@ func _update_eye_look(delta: float) -> void:
 # ║ PARTS AND FILES:                                                          ║
 # ║   shell.png          48x48  — shell sphere                               ║
 # ║   shell_spiral.png   48x48  — spiral overlay (drawn on top of shell)     ║
-# ║   body.png           32x90  — body cylinder (stretched vertically)       ║
+# ║   body.png           32x90  — body tile segment (tiles vertically)       ║
 # ║   dome.png           32x18  — dome cap on top of body                    ║
 # ║   stalk.png           4x16  — eye stalk (used twice)                     ║
 # ║   eye.png            12x12  — eyeball (used twice)                       ║
@@ -1455,9 +1458,12 @@ func _setup_sprites() -> void:
 	spr_body_circle.self_modulate = bollard_color
 	spr_body_circle.scale = Vector2(body_circle_scale, body_circle_scale)
 
-	# Body (stretches vertically)
-	spr_body = _make_sprite(TEX_BODY, Vector2.ZERO, 0)
-	spr_body.self_modulate = bollard_color
+	# Body tiles (stack vertically instead of stretching)
+	for i in BODY_MAX_TILES:
+		var tile := _make_sprite(TEX_BODY, Vector2.ZERO, 0)
+		tile.self_modulate = bollard_color
+		tile.visible = false
+		spr_body_tiles.append(tile)
 
 	# Dome (on top of body)
 	spr_dome = _make_sprite(TEX_DOME, Vector2.ZERO, 0)
@@ -1543,23 +1549,20 @@ func _update_sprites() -> void:
 	var body_c: Color = bollard_color.lightened(0.5) if flash else bollard_color
 
 	# ── CHARGE / ABILITY VISUALS ─────────────────────────────────────────
+	var body_shake_x := 0.0
 	if is_charging and charge_amount > 0.1:
-		var shake := charge_amount * 3.0
-		spr_body.position.x += randf_range(-shake, shake)
+		body_shake_x = randf_range(-charge_amount * 3.0, charge_amount * 3.0)
 		body_c = body_c.lerp(Color(1.0, 0.3, 0.2), charge_amount * 0.5)
 		shell_c = shell_c.lerp(Color(1.0, 0.5, 0.2), charge_amount * 0.4)
 	if is_toss_charging and toss_charge_amount > 0.1:
-		var shake := toss_charge_amount * 2.0
-		spr_body.position.x += randf_range(-shake, shake)
+		body_shake_x = randf_range(-toss_charge_amount * 2.0, toss_charge_amount * 2.0)
 		shell_c = shell_c.lerp(Color(1.0, 0.8, 0.2), toss_charge_amount * 0.5)
 	if is_goo_charging and goo_charge_amount > 0.1:
-		var shake := goo_charge_amount * 2.5
-		spr_body.position.x += randf_range(-shake, shake)
+		body_shake_x = randf_range(-goo_charge_amount * 2.5, goo_charge_amount * 2.5)
 		body_c = body_c.lerp(Color(0.2, 0.9, 0.3), goo_charge_amount * 0.5)
 		shell_c = shell_c.lerp(Color(0.3, 1.0, 0.4), goo_charge_amount * 0.4)
 	if is_bolt_charging and bolt_charge_amount > 0.1:
-		var shake := bolt_charge_amount * 3.5
-		spr_body.position.x += randf_range(-shake, shake)
+		body_shake_x = randf_range(-bolt_charge_amount * 3.5, bolt_charge_amount * 3.5)
 		body_c = body_c.lerp(Color(0.3, 0.8, 1.0), bolt_charge_amount * 0.6)
 		shell_c = shell_c.lerp(Color(0.5, 0.9, 1.0), bolt_charge_amount * 0.5)
 	if is_dashing:
@@ -1586,6 +1589,9 @@ func _update_sprites() -> void:
 	spr_spiral.visible = not shell_missing
 	spr_shell.self_modulate = shell_c
 	spr_spiral.self_modulate = shell_c.darkened(0.15)
+	var shell_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
+	spr_shell.scale = Vector2(shell_scale * face_sign, shell_scale)
+	spr_spiral.scale = Vector2(shell_scale * face_sign, shell_scale)
 
 	# ── THROWN SHELL (world-space projectile) ─────────────────────────────
 	spr_thrown_shell.visible = shell_missing
@@ -1605,39 +1611,62 @@ func _update_sprites() -> void:
 		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
 		spr_thrown_spiral.rotation = spr_thrown_shell.rotation
 
-	# ── BODY (stretch vertically) ────────────────────────────────────────
-	spr_body.visible = post_h > 3.0
-	if post_h > 3.0:
-		var body_sx: float = (hw * 2.0) / TEX_BODY.get_width()
-		var body_sy: float = post_h / TEX_BODY.get_height()
-		spr_body.scale = Vector2(body_sx, body_sy)
-		# Anchor at bottom, extend upward: offset so bottom edge is at y=0
-		spr_body.position = Vector2(0, -post_h * 0.5)
-		spr_body.self_modulate = body_c
+	# ── FACING DIRECTION ─────────────────────────────────────────────────
+	if last_aim_dir.x > 0.1:
+		facing_right = true
+	elif last_aim_dir.x < -0.1:
+		facing_right = false
+	var face_sign: float = 1.0 if facing_right else -1.0
+
+	# ── BODY (tiling segments) ───────────────────────────────────────────
+	var tile_sx: float = (hw * 2.0) / TEX_BODY.get_width()
+	var tile_sy: float = BODY_TILE_HEIGHT / TEX_BODY.get_height()
+	var tiles_needed: int = ceili(post_h / BODY_TILE_HEIGHT) if post_h > 3.0 else 0
+	tiles_needed = mini(tiles_needed, BODY_MAX_TILES)
+	for i in BODY_MAX_TILES:
+		if i < tiles_needed:
+			var tile := spr_body_tiles[i]
+			tile.visible = true
+			# Stack from bottom (y=0) upward; each tile's center is offset
+			var tile_bottom_y: float = -float(i) * BODY_TILE_HEIGHT
+			tile.position = Vector2(body_shake_x, tile_bottom_y - BODY_TILE_HEIGHT * 0.5)
+			tile.scale = Vector2(tile_sx * face_sign, tile_sy)
+			tile.self_modulate = body_c
+		else:
+			spr_body_tiles[i].visible = false
+	# Clip the topmost tile if body height isn't a perfect multiple
+	if tiles_needed > 0:
+		var remainder := fmod(post_h, BODY_TILE_HEIGHT)
+		if remainder > 0.01:
+			var top_tile := spr_body_tiles[tiles_needed - 1]
+			var clip_sy: float = remainder / TEX_BODY.get_height()
+			top_tile.scale = Vector2(tile_sx * face_sign, clip_sy)
+			var tile_bottom_y: float = -float(tiles_needed - 1) * BODY_TILE_HEIGHT
+			top_tile.position = Vector2(body_shake_x, tile_bottom_y - remainder * 0.5)
 
 	# ── DOME ─────────────────────────────────────────────────────────────
 	# Dome sits on top of body: flat bottom on body top, curve faces up
 	var tip_y := -post_h
 	var dome_sx: float = (hw * 2.0) / TEX_DOME.get_width()
 	var dome_sy: float = (hw) / TEX_DOME.get_height()
-	spr_dome.scale = Vector2(dome_sx, dome_sy)
+	spr_dome.scale = Vector2(dome_sx * face_sign, dome_sy)
 	# Position: dome center is half its scaled height above the body top
 	var dome_h: float = TEX_DOME.get_height() * dome_sy
-	spr_dome.position = Vector2(0, tip_y - dome_h * 0.5)
+	spr_dome.position = Vector2(body_shake_x, tip_y - dome_h * 0.5)
 	spr_dome.self_modulate = body_c
 
 	# ── STALKS ───────────────────────────────────────────────────────────
 	# Stalks extend from dome top to eye positions — no gap
 	var dome_top_y: float = tip_y - dome_h
-	var left_eye_pos := Vector2(-STALK_SPREAD, dome_top_y - STALK_LENGTH)
-	var right_eye_pos := Vector2(STALK_SPREAD, dome_top_y - STALK_LENGTH)
+	var left_eye_pos := Vector2(-STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
+	var right_eye_pos := Vector2(STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
 
 	# Stalk base starts inside the dome (2px overlap) so there's no gap
 	var stalk_base_y := dome_top_y + 2.0
 	var stalk_total_l := stalk_base_y - left_eye_pos.y
 	var stalk_total_r := stalk_base_y - right_eye_pos.y
-	spr_stalk_l.position = Vector2(-STALK_SPREAD, (stalk_base_y + left_eye_pos.y) * 0.5)
-	spr_stalk_r.position = Vector2(STALK_SPREAD, (stalk_base_y + right_eye_pos.y) * 0.5)
+	spr_stalk_l.position = Vector2(-STALK_SPREAD + body_shake_x, (stalk_base_y + left_eye_pos.y) * 0.5)
+	spr_stalk_r.position = Vector2(STALK_SPREAD + body_shake_x, (stalk_base_y + right_eye_pos.y) * 0.5)
 	spr_stalk_l.self_modulate = body_c
 	spr_stalk_r.self_modulate = body_c
 	spr_stalk_l.scale = Vector2(1.0, stalk_total_l / TEX_STALK.get_height())
