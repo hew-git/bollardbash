@@ -9,11 +9,14 @@ PALETTE KEY COLORS (used by the palette_swap shader):
   Shell: #00FFFF (highlight)  #00CCCC (midtone)  #009999 (shadow)
 Paint recolorable areas with these exact colors. Everything else stays as-is.
 
-SPRITE STRUCTURE:
-  sprites/snail/shared/    — shared by all characters (eyes, stalks)
+SPRITE STRUCTURE (new snail shape — side-view with spiral shell):
   sprites/snail/blink/     — Blink character sprites
   sprites/snail/goopy/     — Goopy character sprites
   sprites/snail/zappy/     — Zappy character sprites
+  Each folder contains:
+    shell.png   22x22  — spiral shell (rendered at 2x = 44px)
+    neck.png    10x4   — neck tile segment (rendered at 2x = 20x8)
+    head.png    12x10  — head with eye stalks baked in (rendered at 2x = 24x20)
   sprites/arena/           — arena elements
 """
 
@@ -78,36 +81,148 @@ def make_flat_dome(width, height, r, g, b):
     return _png(width, height, raw)
 
 
+# Key palette colors
+BODY_HI  = (255, 0, 255)    # #FF00FF
+BODY_MID = (204, 0, 204)    # #CC00CC
+BODY_SHA = (153, 0, 153)    # #990099
+SHELL_HI  = (0, 255, 255)   # #00FFFF
+SHELL_MID = (0, 204, 204)   # #00CCCC
+SHELL_SHA = (0, 153, 153)   # #009999
+EYE_WHITE = (255, 255, 255)
+PUPIL_BLACK = (20, 15, 15)
+OUTLINE = (40, 30, 40)
+
+
+def make_snail_shell(size=22):
+    """22x22 spiral shell using shell key colors with shading."""
+    cx, cy = size / 2.0, size / 2.0
+    radius = size / 2.0 - 1
+    raw = b""
+    import math
+    for y in range(size):
+        raw += b"\x00"
+        for x in range(size):
+            dx = x - cx + 0.5
+            dy = y - cy + 0.5
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist <= radius:
+                # Outline ring
+                if dist > radius - 1.2:
+                    raw += bytes([*OUTLINE, 255])
+                else:
+                    # Spiral pattern using angle + distance
+                    angle = math.atan2(dy, dx)
+                    spiral = (angle / math.pi + dist / radius * 3.0) % 1.0
+                    # Shading based on position (top-left = highlight, bottom-right = shadow)
+                    shade = (dx + dy) / (radius * 2.0)  # -0.5 to 0.5
+                    if spiral < 0.15:
+                        # Spiral line (darker)
+                        raw += bytes([*SHELL_SHA, 255])
+                    elif shade < -0.15:
+                        raw += bytes([*SHELL_HI, 255])
+                    elif shade > 0.15:
+                        raw += bytes([*SHELL_SHA, 255])
+                    else:
+                        raw += bytes([*SHELL_MID, 255])
+            else:
+                raw += bytes([0, 0, 0, 0])
+    return _png(size, size, raw)
+
+
+def make_snail_neck(width=10, height=4):
+    """10x4 neck tile segment using body key colors."""
+    raw = b""
+    for y in range(height):
+        raw += b"\x00"
+        for x in range(width):
+            if y == 0 or y == height - 1:
+                # Top/bottom outline
+                raw += bytes([*OUTLINE, 255])
+            elif x == 0 or x == width - 1:
+                # Side outline
+                raw += bytes([*OUTLINE, 255])
+            else:
+                # Body fill with vertical shading
+                if y == 1:
+                    raw += bytes([*BODY_HI, 255])
+                elif y == height - 2:
+                    raw += bytes([*BODY_SHA, 255])
+                else:
+                    raw += bytes([*BODY_MID, 255])
+    return _png(width, height, raw)
+
+
+def make_snail_head(width=12, height=10):
+    """12x10 head with eye stalks baked in, using body key colors."""
+    raw = b""
+    # Head is a rounded blob (bottom portion) with two eye stalks (top portion)
+    # Layout: stalks in rows 0-3, head blob in rows 3-9
+    cx = width / 2.0
+    head_cy = 7.0  # Center of head blob
+    head_rx = 5.0  # Head horizontal radius
+    head_ry = 3.5  # Head vertical radius
+
+    # Stalk positions
+    stalk_l_x = 3
+    stalk_r_x = 8
+    eye_l_x = 3
+    eye_r_x = 8
+
+    for y in range(height):
+        raw += b"\x00"
+        for x in range(width):
+            dx = x - cx + 0.5
+            # Check if in head blob (ellipse)
+            hdy = y - head_cy
+            in_head = (dx / head_rx) ** 2 + (hdy / head_ry) ** 2 <= 1.0
+            in_head_outline = (dx / (head_rx + 0.8)) ** 2 + (hdy / (head_ry + 0.8)) ** 2 <= 1.0
+
+            # Eye stalks (thin vertical lines at stalk positions, rows 1-5)
+            in_stalk = y >= 1 and y <= 5 and (x == stalk_l_x or x == stalk_r_x)
+            # Eye balls (2x2 at top of stalks)
+            in_eye = y >= 0 and y <= 1 and (abs(x - eye_l_x) <= 1 or abs(x - eye_r_x) <= 1)
+            # Pupils (1px at center of eyes)
+            is_pupil = y == 0 and (x == eye_l_x or x == eye_r_x)
+
+            if is_pupil:
+                raw += bytes([*PUPIL_BLACK, 255])
+            elif in_eye:
+                raw += bytes([*EYE_WHITE, 255])
+            elif in_stalk:
+                raw += bytes([*BODY_MID, 255])
+            elif in_head and not in_head_outline:
+                # Shading
+                shade = (dx + hdy) / (head_rx * 2.0)
+                if shade < -0.15:
+                    raw += bytes([*BODY_HI, 255])
+                elif shade > 0.15:
+                    raw += bytes([*BODY_SHA, 255])
+                else:
+                    raw += bytes([*BODY_MID, 255])
+            elif in_head_outline and not in_head:
+                raw += bytes([*OUTLINE, 255])
+            else:
+                raw += bytes([0, 0, 0, 0])
+    return _png(width, height, raw)
+
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPRITES = os.path.join(ROOT, "sprites")
 
-# Key palette midtone colors for placeholders
-BODY_MID = (204, 0, 204)   # #CC00CC
-SHELL_MID = (0, 204, 204)  # #00CCCC
-
 sprites = {
-    # ── SHARED SNAIL PARTS ──
-    "snail/shared/eye.png":            lambda: make_flat_circle(12, 230, 200, 48),
-    "snail/shared/pupil.png":          lambda: make_flat_circle(8, 20, 15, 15),
-    "snail/shared/eye_highlight.png":  lambda: make_flat_circle(6, 255, 255, 255),
-    "snail/shared/stalk.png":          lambda: make_flat_rect(4, 24, *BODY_MID),
-
     # ── PER-CHARACTER SPRITES (use key colors for recoloring) ──
     # Blink
-    "snail/blink/shell.png":          lambda: make_flat_circle(44, *SHELL_MID),
-    "snail/blink/shell_spiral.png":   lambda: make_flat_circle(44, *SHELL_MID, 100),
-    "snail/blink/body.png":           lambda: make_flat_rect(32, 8, *BODY_MID),
-    "snail/blink/dome.png":           lambda: make_flat_dome(32, 16, *BODY_MID),
+    "snail/blink/shell.png":    lambda: make_snail_shell(22),
+    "snail/blink/neck.png":     lambda: make_snail_neck(10, 4),
+    "snail/blink/head.png":     lambda: make_snail_head(12, 10),
     # Goopy
-    "snail/goopy/shell.png":          lambda: make_flat_circle(44, *SHELL_MID),
-    "snail/goopy/shell_spiral.png":   lambda: make_flat_circle(44, *SHELL_MID, 100),
-    "snail/goopy/body.png":           lambda: make_flat_rect(32, 8, *BODY_MID),
-    "snail/goopy/dome.png":           lambda: make_flat_dome(32, 16, *BODY_MID),
+    "snail/goopy/shell.png":    lambda: make_snail_shell(22),
+    "snail/goopy/neck.png":     lambda: make_snail_neck(10, 4),
+    "snail/goopy/head.png":     lambda: make_snail_head(12, 10),
     # Zappy
-    "snail/zappy/shell.png":          lambda: make_flat_circle(44, *SHELL_MID),
-    "snail/zappy/shell_spiral.png":   lambda: make_flat_circle(44, *SHELL_MID, 100),
-    "snail/zappy/body.png":           lambda: make_flat_rect(32, 8, *BODY_MID),
-    "snail/zappy/dome.png":           lambda: make_flat_dome(32, 16, *BODY_MID),
+    "snail/zappy/shell.png":    lambda: make_snail_shell(22),
+    "snail/zappy/neck.png":     lambda: make_snail_neck(10, 4),
+    "snail/zappy/head.png":     lambda: make_snail_head(12, 10),
 
     # ── ARENA PARTS (full color, not tinted) ──
     "arena/ground_dirt.png":    lambda: make_flat_rect(200, 50, 107, 77, 56),

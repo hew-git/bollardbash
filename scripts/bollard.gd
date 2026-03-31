@@ -84,22 +84,15 @@ const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
 # ── Visual Constants ────────────────────────────────────────────────────────
-const STALK_LENGTH := 22.0
-const STALK_SPREAD := 7.0
+const SPRITE_SCALE := 2.0       # Art drawn at half res, rendered at 2x for pixel-perfect look
+const NECK_TILE_HEIGHT := 8.0   # Display height of each neck tile (4px art * 2x scale)
+const NECK_MAX_TILES := 12      # Max tiles needed (MAX_HEIGHT / NECK_TILE_HEIGHT, rounded up)
 
 # ── Sprite Textures ─────────────────────────────────────────────────────────
 # Per-character textures (loaded dynamically in _ready based on character_type)
 var TEX_SHELL: Texture2D
-var TEX_SPIRAL: Texture2D
-var TEX_BODY: Texture2D
-var TEX_DOME: Texture2D
-# Shared textures (same for all characters)
-const TEX_EYE := preload("res://sprites/snail/shared/eye.png")
-const TEX_PUPIL := preload("res://sprites/snail/shared/pupil.png")
-const TEX_EYE_HL := preload("res://sprites/snail/shared/eye_highlight.png")
-const TEX_STALK := preload("res://sprites/snail/shared/stalk.png")
-const BODY_TILE_HEIGHT := 8.0    # Display height of each body tile (pixels)
-const BODY_MAX_TILES := 12       # Max tiles needed (MAX_HEIGHT / BODY_TILE_HEIGHT, rounded up)
+var TEX_NECK: Texture2D
+var TEX_HEAD: Texture2D
 # Palette-swap shader (replaces self_modulate for key-color recoloring)
 const PALETTE_SHADER := preload("res://shaders/palette_swap.gdshader")
 # ── Emerge Constants ────────────────────────────────────────────────────────
@@ -194,15 +187,6 @@ var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
 # ── Anti-tunneling (floor glitch prevention) ────────────────────────────────
 var _prev_global_pos: Vector2 = Vector2.ZERO
 
-# ── Eye Blink Animation ─────────────────────────────────────────────────────
-var is_blinking: bool = false
-var blink_timer: float = 0.0
-var next_blink_time: float = 3.0
-
-# ── Eye Look State (replaces sine-wave nervous eyes) ──────────────────────
-var eye_look_target: float = 0.0     # Where pupil wants to be (-1..1)
-var eye_look_current: float = 0.0    # Smoothed current offset
-var eye_look_hold_timer: float = 2.0 # Time left holding current gaze
 
 # ── AI State ────────────────────────────────────────────────────────────────
 var ai_target: Bollard = null
@@ -228,23 +212,10 @@ var dome_shape: CollisionShape2D  # Created at runtime for dome cap
 
 # ── Sprite Node References (created in _ready) ────────────────────────────
 var spr_shell: Sprite2D
-var spr_spiral: Sprite2D
-var spr_body_tiles: Array[Sprite2D] = []  # Tiling body segments
-var spr_dome: Sprite2D
-var spr_stalk_l: Sprite2D
-var spr_stalk_r: Sprite2D
-var spr_eye_l: Sprite2D
-var spr_eye_r: Sprite2D
-var spr_pupil_l: Sprite2D
-var spr_pupil_r: Sprite2D
-var spr_eye_hl_l: Sprite2D
-var spr_eye_hl_r: Sprite2D
+var spr_neck_tiles: Array[Sprite2D] = []  # Tiling neck segments
+var spr_head: Sprite2D
 var spr_body_circle: Sprite2D    # Body-colored circle behind shell (visible when shell tossed)
 var spr_thrown_shell: Sprite2D   # The shell projectile when tossed
-var spr_thrown_spiral: Sprite2D  # Spiral overlay on thrown shell
-# Blink lines drawn over eyes (Line2D since there's no blink sprite)
-var blink_line_l: Line2D
-var blink_line_r: Line2D
 
 
 func _load_character_sprites() -> void:
@@ -255,9 +226,8 @@ func _load_character_sprites() -> void:
 		CharacterType.ZAPPY: folder = "zappy"
 	var base_path := "res://sprites/snail/%s/" % folder
 	TEX_SHELL = load(base_path + "shell.png")
-	TEX_SPIRAL = load(base_path + "shell_spiral.png")
-	TEX_BODY = load(base_path + "body.png")
-	TEX_DOME = load(base_path + "dome.png")
+	TEX_NECK = load(base_path + "neck.png")
+	TEX_HEAD = load(base_path + "head.png")
 
 
 func _ready() -> void:
@@ -302,7 +272,6 @@ func _ready() -> void:
 	$GrabArea.monitoring = false
 	$GrabArea.monitorable = false
 
-	next_blink_time = randf_range(1.5, 5.0)
 	_load_character_sprites()
 	_setup_sprites()
 
@@ -327,8 +296,6 @@ func _physics_process(delta: float) -> void:
 
 	if is_frozen:
 		_update_collision_shape()
-		_update_blink(delta)
-		_update_eye_look(delta)
 		_update_sprites()
 		_prev_global_pos = global_position
 		return
@@ -361,8 +328,6 @@ func _physics_process(delta: float) -> void:
 	_update_bolt_dash(delta)
 	_check_launch()
 	_update_invincibility(delta)
-	_update_blink(delta)
-	_update_eye_look(delta)
 	_update_sprites()
 	_prev_global_pos = global_position
 
@@ -1422,45 +1387,10 @@ func _update_invincibility(delta: float) -> void:
 # ║ EYE BLINK (animation)                                                    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _update_blink(delta: float) -> void:
-	blink_timer += delta
-	if is_blinking:
-		if blink_timer > 0.15:
-			is_blinking = false
-			blink_timer = 0.0
-			next_blink_time = randf_range(2.0, 6.0)
-	else:
-		if blink_timer > next_blink_time:
-			is_blinking = true
-			blink_timer = 0.0
-
-
-func _update_eye_look(delta: float) -> void:
-	eye_look_hold_timer -= delta
-	if eye_look_hold_timer <= 0.0:
-		# Pick new gaze direction: left, center, or right
-		var roll := randf()
-		if roll < 0.25:
-			eye_look_target = 0.0
-		elif roll < 0.625:
-			eye_look_target = 1.0
-		else:
-			eye_look_target = -1.0
-		# Hold duration: shorter when more damaged (more nervous)
-		var nervousness := clampf(damage_percent / 100.0, 0.0, 1.5)
-		var min_hold := lerpf(1.5, 0.15, nervousness)
-		var max_hold := lerpf(3.5, 0.5, nervousness)
-		eye_look_hold_timer = randf_range(min_hold, max_hold)
-	# Smoothly move pupils toward target — faster when more damaged
-	var nervousness := clampf(damage_percent / 100.0, 0.0, 1.5)
-	var move_speed := 4.0 + nervousness * 10.0
-	eye_look_current = move_toward(eye_look_current, eye_look_target, move_speed * delta)
-
-
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ SPRITE SYSTEM                                                            ║
 # ║                                                                           ║
-# ║ PALETTE-SWAP SPRITE SYSTEM                                               ║
+# ║ PALETTE-SWAP SPRITE SYSTEM (side-view snail shape)                       ║
 # ║                                                                           ║
 # ║ Sprites use key colors that the palette_swap shader remaps at runtime:   ║
 # ║   Body:  #FF00FF (highlight)  #CC00CC (midtone)  #990099 (shadow)       ║
@@ -1468,89 +1398,40 @@ func _update_eye_look(delta: float) -> void:
 # ║ All other pixel colors pass through unchanged (outlines, eyes, etc.)     ║
 # ║                                                                           ║
 # ║ Per-character sprites in sprites/snail/<blink|goopy|zappy>/:             ║
-# ║   shell.png          44x44  — shell sphere                               ║
-# ║   shell_spiral.png   44x44  — spiral overlay (drawn on top of shell)     ║
-# ║   body.png           32x8   — body tile segment (tiles vertically)       ║
-# ║   dome.png           32x16  — dome cap on top of body                    ║
-# ║ Shared sprites in sprites/snail/shared/:                                 ║
-# ║   stalk.png           4x24  — eye stalk (used twice)                     ║
-# ║   eye.png            12x12  — eyeball (used twice)                       ║
-# ║   pupil.png           8x8   — pupil (used twice)                        ║
-# ║   eye_highlight.png   6x6   — white reflection dot (used twice)         ║
+# ║   shell.png   22x22  — spiral shell (rendered at 2x = 44px)             ║
+# ║   neck.png    10x4   — neck tile segment (rendered at 2x = 20x8)        ║
+# ║   head.png    12x10  — head with eye stalks (rendered at 2x = 24x20)    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_sprites() -> void:
-	# Shell (bottom layer, behind body)
+	# Shell (rendered at 2x scale to match BASE_RADIUS * 2 = 44px)
 	spr_shell = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -1)
-	var shell_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
-	spr_shell.scale = Vector2(shell_scale, shell_scale)
-
-	spr_spiral = _make_recolorable_sprite(TEX_SPIRAL, Vector2.ZERO, -1)
-	spr_spiral.scale = Vector2(shell_scale, shell_scale)
+	spr_shell.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
 	# Body circle — behind shell, visible when shell is tossed
-	var body_circle_scale := (BASE_RADIUS * 1.7) / TEX_SHELL.get_width()
+	var body_circle_scale := SPRITE_SCALE * 0.85
 	spr_body_circle = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -2)
 	spr_body_circle.scale = Vector2(body_circle_scale, body_circle_scale)
 
-	# Body tiles (stack vertically instead of stretching)
-	for i in BODY_MAX_TILES:
-		var tile := _make_recolorable_sprite(TEX_BODY, Vector2.ZERO, 0)
+	# Neck tiles (stack vertically from shell upward, offset toward facing direction)
+	for i in NECK_MAX_TILES:
+		var tile := _make_recolorable_sprite(TEX_NECK, Vector2.ZERO, 0)
 		tile.visible = false
-		spr_body_tiles.append(tile)
+		spr_neck_tiles.append(tile)
 
-	# Dome (on top of body)
-	spr_dome = _make_recolorable_sprite(TEX_DOME, Vector2.ZERO, 0)
-
-	# Stalks
-	spr_stalk_l = _make_recolorable_sprite(TEX_STALK, Vector2.ZERO, 1)
-	spr_stalk_r = _make_recolorable_sprite(TEX_STALK, Vector2.ZERO, 1)
-
-	# Eyes (no shader — fixed white color)
-	spr_eye_l = _make_sprite(TEX_EYE, Vector2.ZERO, 2)
-	spr_eye_r = _make_sprite(TEX_EYE, Vector2.ZERO, 2)
-
-	# Pupils (no shader — fixed dark color)
-	spr_pupil_l = _make_sprite(TEX_PUPIL, Vector2.ZERO, 3)
-	spr_pupil_r = _make_sprite(TEX_PUPIL, Vector2.ZERO, 3)
-
-	# Eye highlights (no shader — fixed white)
-	spr_eye_hl_l = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
-	spr_eye_hl_r = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
+	# Head (caps the neck at the top, with baked-in eye stalks)
+	spr_head = _make_recolorable_sprite(TEX_HEAD, Vector2.ZERO, 1)
+	spr_head.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
 	# Thrown shell (global coords — not attached to snail body)
 	spr_thrown_shell = Sprite2D.new()
 	spr_thrown_shell.texture = TEX_SHELL
 	spr_thrown_shell.material = _make_palette_material()
-	spr_thrown_shell.scale = Vector2(shell_scale, shell_scale)
+	spr_thrown_shell.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 	spr_thrown_shell.z_index = 5
 	spr_thrown_shell.top_level = true
 	spr_thrown_shell.visible = false
 	add_child(spr_thrown_shell)
-
-	spr_thrown_spiral = Sprite2D.new()
-	spr_thrown_spiral.texture = TEX_SPIRAL
-	spr_thrown_spiral.material = _make_palette_material()
-	spr_thrown_spiral.scale = Vector2(shell_scale, shell_scale)
-	spr_thrown_spiral.z_index = 5
-	spr_thrown_spiral.top_level = true
-	spr_thrown_spiral.visible = false
-	add_child(spr_thrown_spiral)
-
-	# Blink lines (Line2D since they're just flat lines)
-	blink_line_l = Line2D.new()
-	blink_line_l.width = 2.5
-	blink_line_l.default_color = Color.BLACK
-	blink_line_l.z_index = 3
-	blink_line_l.visible = false
-	add_child(blink_line_l)
-
-	blink_line_r = Line2D.new()
-	blink_line_r.width = 2.5
-	blink_line_r.default_color = Color.BLACK
-	blink_line_r.z_index = 3
-	blink_line_r.visible = false
-	add_child(blink_line_r)
 
 
 func _make_palette_material() -> ShaderMaterial:
@@ -1571,15 +1452,6 @@ func _make_recolorable_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
 	return s
 
 
-func _make_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
-	var s := Sprite2D.new()
-	s.texture = tex
-	s.position = pos
-	s.z_index = z
-	add_child(s)
-	return s
-
-
 func _set_sprite_colors(sprite: Sprite2D, body_c: Color, shell_c: Color) -> void:
 	if sprite.material is ShaderMaterial:
 		var mat: ShaderMaterial = sprite.material
@@ -1588,14 +1460,13 @@ func _set_sprite_colors(sprite: Sprite2D, body_c: Color, shell_c: Color) -> void
 
 
 func update_shell_colors() -> void:
-	# Call after changing accent_color/bollard_color to update all shader params
 	_load_character_sprites()
-	# Rebuild all sprites with new textures and colors
 	for child in get_children():
-		if child is Sprite2D or child is Line2D:
+		if child is Sprite2D:
 			child.queue_free()
-	spr_body_tiles.clear()
+	spr_neck_tiles.clear()
 	_setup_sprites()
+
 
 func _update_sprites() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
@@ -1627,16 +1498,16 @@ func _update_sprites() -> void:
 		body_c = Color(1.0, 0.4, 0.2)
 		shell_c = Color(1.0, 0.6, 0.2)
 	if is_phase_dashing:
-		body_c = Color(0.6, 0.3, 1.0, 0.4)  # Ghostly purple, semi-transparent
+		body_c = Color(0.6, 0.3, 1.0, 0.4)
 		shell_c = Color(0.7, 0.4, 1.0, 0.4)
 	if is_bolt_dashing:
-		body_c = Color(0.3, 0.9, 1.0)  # Electric blue
+		body_c = Color(0.3, 0.9, 1.0)
 		shell_c = Color(0.5, 1.0, 1.0)
 	if is_goo_dashing:
-		body_c = Color(0.3, 0.9, 0.2)  # Bright green
+		body_c = Color(0.3, 0.9, 0.2)
 		shell_c = Color(0.4, 1.0, 0.3)
 	if is_parrying:
-		shell_c = Color(1.0, 1.0, 0.6)  # Bright shield flash
+		shell_c = Color(1.0, 1.0, 0.6)
 		body_c = body_c.lerp(Color(1.0, 1.0, 0.8), 0.5)
 
 	# ── FACING DIRECTION ─────────────────────────────────────────────────
@@ -1651,138 +1522,73 @@ func _update_sprites() -> void:
 
 	# ── SHELL ────────────────────────────────────────────────────────────
 	spr_shell.visible = not shell_missing
-	spr_spiral.visible = not shell_missing
 	_set_sprite_colors(spr_shell, body_c, shell_c)
-	_set_sprite_colors(spr_spiral, body_c, shell_c)
-	var shell_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
-	spr_shell.scale = Vector2(shell_scale * face_sign, shell_scale)
-	spr_spiral.scale = Vector2(shell_scale * face_sign, shell_scale)
-	# Phase dash transparency
+	spr_shell.scale = Vector2(SPRITE_SCALE * face_sign, SPRITE_SCALE)
 	if is_phase_dashing:
 		spr_shell.self_modulate.a = 0.4
-		spr_spiral.self_modulate.a = 0.4
 	else:
 		spr_shell.self_modulate.a = 1.0
-		spr_spiral.self_modulate.a = 1.0
 
 	# ── THROWN SHELL (world-space projectile) ─────────────────────────────
 	spr_thrown_shell.visible = shell_missing
-	spr_thrown_spiral.visible = shell_missing
 	if shell_missing:
 		spr_thrown_shell.global_position = shell_toss_pos
-		spr_thrown_spiral.global_position = shell_toss_pos
-		# Zappy electrified shell: pulsing blue glow when stuck in place
 		if character_type == CharacterType.ZAPPY and shell_toss_hit:
 			var pulse := (sin(shell_toss_timer * 12.0) + 1.0) * 0.5
 			var pulse_shell: Color = accent_color.lerp(Color(0.4, 0.85, 1.0), pulse * 0.7)
 			_set_sprite_colors(spr_thrown_shell, body_c, pulse_shell)
-			_set_sprite_colors(spr_thrown_spiral, body_c, pulse_shell)
 		else:
 			_set_sprite_colors(spr_thrown_shell, body_c, accent_color)
-			_set_sprite_colors(spr_thrown_spiral, body_c, accent_color)
-		# Spin the thrown shell
 		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
-		spr_thrown_spiral.rotation = spr_thrown_shell.rotation
 
-	# ── BODY (tiling segments) ───────────────────────────────────────────
-	var tile_sx: float = (hw * 2.0) / TEX_BODY.get_width()
-	var tile_sy: float = BODY_TILE_HEIGHT / TEX_BODY.get_height()
-	var tiles_needed: int = ceili(post_h / BODY_TILE_HEIGHT) if post_h > 3.0 else 0
-	tiles_needed = mini(tiles_needed, BODY_MAX_TILES)
-	for i in BODY_MAX_TILES:
+	# ── NECK (tiling segments — offset toward facing direction) ──────────
+	# Neck extends from shell center upward, offset slightly in facing direction
+	var neck_offset_x: float = face_sign * BASE_RADIUS * 0.35 + body_shake_x
+	var tile_sx: float = SPRITE_SCALE * face_sign
+	var tile_sy: float = SPRITE_SCALE
+	var tiles_needed: int = ceili(post_h / NECK_TILE_HEIGHT) if post_h > 3.0 else 0
+	tiles_needed = mini(tiles_needed, NECK_MAX_TILES)
+	for i in NECK_MAX_TILES:
 		if i < tiles_needed:
-			var tile := spr_body_tiles[i]
+			var tile := spr_neck_tiles[i]
 			tile.visible = true
-			var tile_bottom_y: float = -float(i) * BODY_TILE_HEIGHT
-			tile.position = Vector2(body_shake_x, tile_bottom_y - BODY_TILE_HEIGHT * 0.5)
-			tile.scale = Vector2(tile_sx * face_sign, tile_sy)
+			var tile_bottom_y: float = -float(i) * NECK_TILE_HEIGHT
+			tile.position = Vector2(neck_offset_x, tile_bottom_y - NECK_TILE_HEIGHT * 0.5)
+			tile.scale = Vector2(tile_sx, tile_sy)
 			_set_sprite_colors(tile, body_c, shell_c)
-			# Phase dash transparency
 			if is_phase_dashing:
 				tile.self_modulate.a = 0.4
 			else:
 				tile.self_modulate.a = 1.0
 		else:
-			spr_body_tiles[i].visible = false
-	# Clip the topmost tile if body height isn't a perfect multiple
+			spr_neck_tiles[i].visible = false
+	# Clip the topmost tile if neck height isn't a perfect multiple
 	if tiles_needed > 0:
-		var remainder := fmod(post_h, BODY_TILE_HEIGHT)
+		var remainder := fmod(post_h, NECK_TILE_HEIGHT)
 		if remainder > 0.01:
-			var top_tile := spr_body_tiles[tiles_needed - 1]
-			var clip_sy: float = remainder / TEX_BODY.get_height()
-			top_tile.scale = Vector2(tile_sx * face_sign, clip_sy)
-			var tile_bottom_y: float = -float(tiles_needed - 1) * BODY_TILE_HEIGHT
-			top_tile.position = Vector2(body_shake_x, tile_bottom_y - remainder * 0.5)
+			var top_tile := spr_neck_tiles[tiles_needed - 1]
+			var clip_sy: float = (remainder / NECK_TILE_HEIGHT) * SPRITE_SCALE
+			top_tile.scale = Vector2(tile_sx, clip_sy)
+			var tile_bottom_y: float = -float(tiles_needed - 1) * NECK_TILE_HEIGHT
+			top_tile.position = Vector2(neck_offset_x, tile_bottom_y - remainder * 0.5)
 
-	# ── DOME ─────────────────────────────────────────────────────────────
+	# ── HEAD (caps the neck at the top) ──────────────────────────────────
 	var tip_y := -post_h
-	var dome_sx: float = (hw * 2.0) / TEX_DOME.get_width()
-	var dome_sy: float = (hw) / TEX_DOME.get_height()
-	spr_dome.scale = Vector2(dome_sx * face_sign, dome_sy)
-	var dome_h: float = TEX_DOME.get_height() * dome_sy
-	spr_dome.position = Vector2(body_shake_x, tip_y - dome_h * 0.5)
-	_set_sprite_colors(spr_dome, body_c, shell_c)
+	var head_h: float = TEX_HEAD.get_height() * SPRITE_SCALE
+	spr_head.scale = Vector2(SPRITE_SCALE * face_sign, SPRITE_SCALE)
+	spr_head.position = Vector2(neck_offset_x, tip_y - head_h * 0.5)
+	_set_sprite_colors(spr_head, body_c, shell_c)
 	if is_phase_dashing:
-		spr_dome.self_modulate.a = 0.4
+		spr_head.self_modulate.a = 0.4
 	else:
-		spr_dome.self_modulate.a = 1.0
-
-	# ── STALKS ───────────────────────────────────────────────────────────
-	var dome_top_y: float = tip_y - dome_h
-	var left_eye_pos := Vector2(-STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
-	var right_eye_pos := Vector2(STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
-
-	var stalk_base_y := dome_top_y + 2.0
-	var stalk_total_l := stalk_base_y - left_eye_pos.y
-	var stalk_total_r := stalk_base_y - right_eye_pos.y
-	spr_stalk_l.position = Vector2(-STALK_SPREAD + body_shake_x, (stalk_base_y + left_eye_pos.y) * 0.5)
-	spr_stalk_r.position = Vector2(STALK_SPREAD + body_shake_x, (stalk_base_y + right_eye_pos.y) * 0.5)
-	_set_sprite_colors(spr_stalk_l, body_c, shell_c)
-	_set_sprite_colors(spr_stalk_r, body_c, shell_c)
-	spr_stalk_l.scale = Vector2(1.0, stalk_total_l / TEX_STALK.get_height())
-	spr_stalk_r.scale = Vector2(1.0, stalk_total_r / TEX_STALK.get_height())
-
-	# ── EYES + PUPILS ────────────────────────────────────────────────────
-	var eye_shift_amount: float = 2.0 + clampf(damage_percent / 100.0, 0.0, 1.5) * 2.5
-	var pupil_offset_x: float = eye_look_current * eye_shift_amount
-
-	if is_blinking:
-		spr_eye_l.visible = false
-		spr_eye_r.visible = false
-		spr_pupil_l.visible = false
-		spr_pupil_r.visible = false
-		spr_eye_hl_l.visible = false
-		spr_eye_hl_r.visible = false
-		blink_line_l.visible = true
-		blink_line_r.visible = true
-		blink_line_l.points = PackedVector2Array([
-			left_eye_pos + Vector2(-5, 0), left_eye_pos + Vector2(5, 0)])
-		blink_line_r.points = PackedVector2Array([
-			right_eye_pos + Vector2(-5, 0), right_eye_pos + Vector2(5, 0)])
-	else:
-		spr_eye_l.visible = true
-		spr_eye_r.visible = true
-		spr_pupil_l.visible = true
-		spr_pupil_r.visible = true
-		spr_eye_hl_l.visible = true
-		spr_eye_hl_r.visible = true
-		blink_line_l.visible = false
-		blink_line_r.visible = false
-
-		spr_eye_l.position = left_eye_pos
-		spr_eye_r.position = right_eye_pos
-
-		spr_pupil_l.position = left_eye_pos + Vector2(pupil_offset_x, 0)
-		spr_pupil_r.position = right_eye_pos + Vector2(pupil_offset_x, 0)
-
-		spr_eye_hl_l.position = left_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
-		spr_eye_hl_r.position = right_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
+		spr_head.self_modulate.a = 1.0
 
 	# Character ability visuals need redraw
 	if character_type == CharacterType.GOOPY:
 		queue_redraw()
 	if character_type == CharacterType.ZAPPY and (is_bolt_dashing or shell_missing):
 		queue_redraw()
+
 
 func _draw() -> void:
 	# Goopy tether line (shell to body while shell is flying)
@@ -1806,7 +1612,6 @@ func _draw() -> void:
 	# Zappy electric beam between body and shell
 	if shell_missing and character_type == CharacterType.ZAPPY:
 		var shell_local := to_local(shell_toss_pos)
-		# Jagged electric beam
 		var beam_segs := 6
 		var prev_pt := Vector2.ZERO
 		for seg_i in beam_segs:
