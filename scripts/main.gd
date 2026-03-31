@@ -50,11 +50,19 @@ const DEATH_PHRASES := [
 	"more like escar-GONE",
 	"you ooze, you lose",
 	"snail you later",
+	"out-snail'd",
 ]
 const DOUBLE_DEATH_PHRASES := [
 	"shellapalooza",
 	"double shell",
 	"well, one of you was supposed to stay on the stage",
+	"double slime down",
+	"un-snail-ievable",
+]
+const SHELL_KILL_PHRASES := [
+	"shell happens",
+	"incoming!",
+	"shelled into oblivion",
 ]
 const DEATH_PHRASE_DURATION := 2.5
 const DOUBLE_DEATH_WINDOW := 0.5    # Seconds — deaths this close count as double
@@ -192,6 +200,11 @@ func _ready() -> void:
 	if pixel_font:
 		for lbl in [game_over_label, controls_label, p1_stock_label, p2_stock_label, p1_effect, p2_effect]:
 			lbl.add_theme_font_override("font", pixel_font)
+		# Apply pixel font to scene-based "dmg." labels
+		var p1_dmg_lbl: Label = $HUD/P1Group/P1DmgLabel
+		var p2_dmg_lbl: Label = $HUD/P2Group/P2DmgLabel
+		p1_dmg_lbl.add_theme_font_override("font", pixel_font)
+		p2_dmg_lbl.add_theme_font_override("font", pixel_font)
 		game_over_label.add_theme_font_size_override("font_size", 16)
 		controls_label.add_theme_font_size_override("font_size", 8)
 		p1_stock_label.add_theme_font_size_override("font_size", 10)
@@ -564,17 +577,16 @@ func _create_countdown_label() -> void:
 	countdown_label = Label.new()
 	if pixel_font:
 		countdown_label.add_theme_font_override("font", pixel_font)
-	countdown_label.add_theme_font_size_override("font_size", 32)
+	countdown_label.add_theme_font_size_override("font_size", 40)
 	countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	countdown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	countdown_label.add_theme_constant_override("outline_size", 4)
-	# Left-aligned so letters stay in place as text grows
-	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	countdown_label.add_theme_constant_override("outline_size", 5)
+	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	countdown_label.offset_left = 440.0
+	countdown_label.offset_left = 0.0
 	countdown_label.offset_top = 200.0
-	countdown_label.offset_right = 900.0
-	countdown_label.offset_bottom = 320.0
+	countdown_label.offset_right = 1280.0
+	countdown_label.offset_bottom = 340.0
 	countdown_label.visible = false
 	$HUD.add_child(countdown_label)
 
@@ -933,15 +945,15 @@ func _update_countdown(delta: float) -> void:
 		countdown_label.text = ""
 	elif countdown_timer < 2.0:
 		countdown_label.text = "es.."
-		countdown_label.add_theme_font_size_override("font_size", 32)
+		countdown_label.add_theme_font_size_override("font_size", 40)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	elif countdown_timer < 3.0:
 		countdown_label.text = "escar.."
-		countdown_label.add_theme_font_size_override("font_size", 32)
+		countdown_label.add_theme_font_size_override("font_size", 40)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	elif countdown_timer < 3.0 + GO_LINGER:
 		countdown_label.text = "escarGO!"
-		countdown_label.add_theme_font_size_override("font_size", 32)
+		countdown_label.add_theme_font_size_override("font_size", 40)
 		countdown_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.3))
 		# Unfreeze players the moment escarGO! appears
 		if player1.is_frozen:
@@ -1126,7 +1138,8 @@ func _check_blast_zone(player: Bollard) -> void:
 			var now := Time.get_ticks_msec() / 1000.0
 			var is_double := (now - last_death_time) < DOUBLE_DEATH_WINDOW
 			last_death_time = now
-			_show_death_phrase(is_double)
+			_show_death_phrase(is_double, player.was_hit_by_shell)
+			player.was_hit_by_shell = false
 
 
 func _spawn_death_slime(player: Bollard) -> void:
@@ -1177,9 +1190,13 @@ func _handle_respawn(player: Bollard, spawn_pos: Vector2, delta: float) -> void:
 # ║ DEATH PHRASES                                                            ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _show_death_phrase(is_double: bool = false) -> void:
+func _show_death_phrase(is_double: bool = false, shell_kill: bool = false) -> void:
 	if is_double:
 		death_phrase_label.text = DOUBLE_DEATH_PHRASES[randi() % DOUBLE_DEATH_PHRASES.size()]
+	elif shell_kill:
+		# Shell kills can pull from normal phrases OR shell-specific phrases
+		var combined: Array = DEATH_PHRASES + SHELL_KILL_PHRASES
+		death_phrase_label.text = combined[randi() % combined.size()]
 	else:
 		death_phrase_label.text = DEATH_PHRASES[randi() % DEATH_PHRASES.size()]
 	death_phrase_label.visible = true

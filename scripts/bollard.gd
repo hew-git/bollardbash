@@ -104,6 +104,7 @@ var extend_amount: float = 0.5
 var damage_percent: float = 0.0
 var stocks: int = 3
 var is_dead: bool = false
+var was_hit_by_shell: bool = false  # Set when hit by a shell toss (for death phrases)
 var is_frozen: bool = false
 var prev_extend: float = 0.5
 var is_invincible: bool = false
@@ -1022,6 +1023,8 @@ func _update_shell_toss(delta: float) -> void:
 					dmg = ZAPPY_TOSS_DAMAGE
 					kb_mult = 0.0  # Use fixed knockback below
 			target_body.take_damage(dmg, dir)
+			if target_body is Bollard:
+				(target_body as Bollard).was_hit_by_shell = true
 			if character_type == CharacterType.ZAPPY:
 				target_body.apply_central_impulse(dir * ZAPPY_TOSS_KNOCKBACK)
 			else:
@@ -1168,6 +1171,7 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	rotation = 0.0
 	extend_amount = 0.0
 	damage_percent = 0.0
+	was_hit_by_shell = false
 	is_charging = false
 	charge_amount = 0.0
 	is_dashing = false
@@ -1575,8 +1579,14 @@ func _draw() -> void:
 func _process_ai(delta: float) -> void:
 	if ai_target == null or not is_instance_valid(ai_target) or ai_target.is_dead:
 		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.5 * delta)
+		ai_state = "idle"
+		ai_timer = 0.0
+		ai_action_duration = 0.0  # Immediately pick action when target returns
 		return
 	ai_timer += delta
+	# Keep AI from fully retracting and laying down during idle
+	if ai_state == "idle":
+		extend_amount = move_toward(extend_amount, 0.5, EXTEND_SPEED * 0.5 * delta)
 	match ai_state:
 		"idle":
 			if ai_timer > ai_action_duration:
@@ -1590,7 +1600,7 @@ func _process_ai(delta: float) -> void:
 			if ai_timer > ai_action_duration:
 				ai_state = "idle"
 				ai_timer = 0.0
-				ai_action_duration = randf_range(0.3, 0.8)
+				ai_action_duration = randf_range(0.15, 0.4)
 		"lower_spin":
 			_ai_lower_spin(delta)
 			if ai_timer > ai_action_duration:
@@ -1655,13 +1665,26 @@ func _ai_pick_action() -> void:
 		ai_state = "approach"
 		ai_action_duration = randf_range(0.3, 0.8)
 
-func _ai_approach(delta: float) -> void:
+func _ai_near_edge() -> bool:
+	# Returns true if AI is close to the left or right edge of the arena
+	return global_position.x < 80.0 or global_position.x > 1200.0
+
+func _ai_edge_safe_dir() -> float:
+	# Direction toward center to avoid rolling off edges
 	var dir := signf(ai_target.global_position.x - global_position.x)
+	if global_position.x < 80.0 and dir < 0.0:
+		return 1.0  # Don't roll further left
+	if global_position.x > 1200.0 and dir > 0.0:
+		return -1.0  # Don't roll further right
+	return dir
+
+func _ai_approach(delta: float) -> void:
+	var dir := _ai_edge_safe_dir()
 	apply_torque(LEAN_TORQUE * dir)
 	extend_amount = move_toward(extend_amount, 0.6, EXTEND_SPEED * 0.5 * delta)
 
 func _ai_attack(delta: float) -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
+	var dir := _ai_edge_safe_dir()
 	apply_torque(LEAN_TORQUE * 1.5 * dir)
 	extend_amount = minf(extend_amount + EXTEND_SPEED * 1.5 * delta, 1.0)
 
@@ -1671,6 +1694,11 @@ func _ai_lower_spin(delta: float) -> void:
 
 func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
+	# Don't retreat off the edge
+	if global_position.x < 80.0 and dir < 0.0:
+		dir = 1.0
+	elif global_position.x > 1200.0 and dir > 0.0:
+		dir = -1.0
 	apply_torque(LEAN_TORQUE * dir * 0.8)
 	extend_amount = move_toward(extend_amount, 0.3, EXTEND_SPEED * delta)
 
