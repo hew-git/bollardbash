@@ -889,8 +889,8 @@ func _confirm_selections() -> void:
 	var p1_final: int = p1_char_index if p1_char_index < 3 else randi() % 3
 	var p2_final: int = p2_char_index if p2_char_index < 3 else randi() % 3
 	# Apply character types
-	player1.character_type = p1_final
-	player2.character_type = p2_final
+	player1.character_type = p1_final as Bollard.CharacterType
+	player2.character_type = p2_final as Bollard.CharacterType
 	# Set character-themed colors
 	var char_body_colors: Array[Color] = [
 		Color("B080E0"),  # Blink — purple
