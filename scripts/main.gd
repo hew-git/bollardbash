@@ -411,12 +411,12 @@ func _create_corner_platforms() -> void:
 	# Four corner platforms angled toward center circle, 1.5x central platform width
 	var plat_width := 270.0  # 1.5x the 180px central platforms
 	var plat_height := 14.0
-	# 45° angles, flat side facing center, endpoints near screen edges
+	# 45° + 90° rotation, pushed further toward screen edges
 	var corners := [
-		{"x": 145.0, "y": 155.0, "rot": PI / 4.0, "name": "CornerTopLeft"},
-		{"x": 1135.0, "y": 155.0, "rot": -PI / 4.0, "name": "CornerTopRight"},
-		{"x": 145.0, "y": 435.0, "rot": -PI / 4.0, "name": "CornerBottomLeft"},
-		{"x": 1135.0, "y": 435.0, "rot": PI / 4.0, "name": "CornerBottomRight"},
+		{"x": 100.0, "y": 120.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
+		{"x": 1180.0, "y": 120.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
+		{"x": 100.0, "y": 470.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
+		{"x": 1180.0, "y": 470.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
 	]
 	for info in corners:
 		var plat := StaticBody2D.new()
