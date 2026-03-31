@@ -741,7 +741,7 @@ func _update_select_display() -> void:
 			var panel = char_panels[ci]
 			panel.bg.color = CHAR_COLORS[ci].darkened(0.5) if ci == cur else CHAR_COLORS[ci].darkened(0.8)
 		# Position cursor below selected panel
-		var p := char_panels[cur]
+		var p = char_panels[cur]
 		select_cursor_label.offset_left = p.x
 		select_cursor_label.offset_right = p.x + p.w
 		select_cursor_label.offset_top = p.y + p.h + 5
@@ -766,7 +766,7 @@ func _update_select_display() -> void:
 				panel.bg.color = CHAR_COLORS[ci].darkened(0.5)
 			else:
 				panel.bg.color = CHAR_COLORS[ci].darkened(0.8)
-		var p := char_panels[cur]
+		var p = char_panels[cur]
 		select_cursor_label.offset_left = p.x
 		select_cursor_label.offset_right = p.x + p.w
 		select_cursor_label.offset_top = p.y + p.h + 5
@@ -877,8 +877,8 @@ func _handle_stage_select_input() -> void:
 
 func _confirm_selections() -> void:
 	# Resolve RANDOM picks (index 3 → random 0..2)
-	var p1_final := p1_char_index if p1_char_index < 3 else randi() % 3
-	var p2_final := p2_char_index if p2_char_index < 3 else randi() % 3
+	var p1_final: int = p1_char_index if p1_char_index < 3 else randi() % 3
+	var p2_final: int = p2_char_index if p2_char_index < 3 else randi() % 3
 	# Apply character types
 	player1.character_type = p1_final
 	player2.character_type = p2_final

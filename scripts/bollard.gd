@@ -872,7 +872,7 @@ func _check_charge_hits() -> void:
 			# Shell blocks charge too
 			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
 				# Bounce off the shell
-				linear_velocity = linear_velocity.bounce(dir) * 0.5
+				linear_velocity = linear_velocity.reflect(dir) * 0.5
 				_end_any_dash()
 				return
 			body.take_damage(CHARGE_DAMAGE, dir)
