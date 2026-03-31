@@ -411,12 +411,12 @@ func _create_corner_platforms() -> void:
 	# Four corner platforms angled toward center circle, 1.5x central platform width
 	var plat_width := 270.0  # 1.5x the 180px central platforms
 	var plat_height := 14.0
-	# 45° + 90° rotation, pushed further toward screen edges
+	# Pushed far toward screen edges, solid collision (not one-way)
 	var corners := [
-		{"x": 100.0, "y": 120.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
-		{"x": 1180.0, "y": 120.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
-		{"x": 100.0, "y": 470.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
-		{"x": 1180.0, "y": 470.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
+		{"x": 60.0, "y": 100.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
+		{"x": 1220.0, "y": 100.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
+		{"x": 60.0, "y": 490.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
+		{"x": 1220.0, "y": 490.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
 	]
 	for info in corners:
 		var plat := StaticBody2D.new()
@@ -428,7 +428,7 @@ func _create_corner_platforms() -> void:
 		var rect := RectangleShape2D.new()
 		rect.size = Vector2(plat_width, plat_height)
 		shape.shape = rect
-		shape.one_way_collision = true
+		shape.one_way_collision = false  # Solid — angled platforms collide from both sides
 		plat.add_child(shape)
 		var plat_spr := Sprite2D.new()
 		plat_spr.texture = TEX_PLATFORM

@@ -72,8 +72,8 @@ const GOO_TRAIL_DURATION := 3.0      # How long goo puddles last
 
 # ── Zappy: Electric Shell Toss + 3x Bolt Dash ─────────────────────────────
 const ZAPPY_TOSS_SPEED := 1200.0     # Fixed speed (unchargeable, 33% less range)
-const ZAPPY_TOSS_DAMAGE := 12.0      # Light damage
-const ZAPPY_TOSS_KNOCKBACK := 200.0  # Light knockback
+const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage (nerfed 40%)
+const ZAPPY_TOSS_KNOCKBACK := 120.0  # Light knockback (nerfed 40%)
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
 const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
@@ -703,6 +703,7 @@ func _start_goo_dash() -> void:
 	is_goo_dashing = true
 	goo_dash_timer = 0.0
 	var impulse := lerpf(GOO_DASH_MIN_IMPULSE, GOO_DASH_IMPULSE, goo_charge_amount)
+	linear_velocity = Vector2.ZERO
 	apply_central_impulse(dash_dir * impulse)
 	goo_charge_amount = 0.0
 
@@ -932,6 +933,7 @@ func _start_charge_dash() -> void:
 			break
 	if not on_ground:
 		impulse_strength *= 1.75
+	linear_velocity = Vector2.ZERO
 	apply_central_impulse(dash_dir * impulse_strength)
 	charge_amount = 0.0
 
@@ -981,8 +983,13 @@ func _check_charge_hits() -> void:
 			linear_velocity = linear_velocity.reflect(dir) * 0.5
 			_end_any_dash()
 			return
-		body.take_damage(CHARGE_DAMAGE, dir)
+		var dash_dmg := CHARGE_DAMAGE
 		var impact_force := linear_velocity.length() * 3.0
+		# Zappy bolt dash: 40% less impact
+		if character_type == CharacterType.ZAPPY and is_bolt_dashing:
+			dash_dmg *= 0.6
+			impact_force *= 0.6
+		body.take_damage(dash_dmg, dir)
 		body.apply_central_impulse(dir * impact_force)
 		var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 		big_hit.emit(hit_pos, false)
@@ -1248,6 +1255,10 @@ func _on_body_entered(body: Node) -> void:
 		if is_dashing or is_bolt_dashing:
 			dmg = maxf(dmg, CHARGE_DAMAGE)
 			var impact_force := linear_velocity.length() * 3.0
+			# Zappy bolt dash: 40% less impact
+			if is_bolt_dashing and character_type == CharacterType.ZAPPY:
+				dmg *= 0.6
+				impact_force *= 0.6
 			other.apply_central_impulse(dir * impact_force)
 			var hit_pos := (global_position + other.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
