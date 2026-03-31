@@ -1581,6 +1581,13 @@ func _update_sprites() -> void:
 		shell_c = Color(1.0, 1.0, 0.6)  # Bright shield flash
 		body_c = body_c.lerp(Color(1.0, 1.0, 0.8), 0.5)
 
+	# ── FACING DIRECTION ─────────────────────────────────────────────────
+	if last_aim_dir.x > 0.1:
+		facing_right = true
+	elif last_aim_dir.x < -0.1:
+		facing_right = false
+	var face_sign: float = 1.0 if facing_right else -1.0
+
 	# ── BODY CIRCLE (behind shell — visible when shell is tossed) ────────
 	spr_body_circle.self_modulate = body_c
 
@@ -1610,13 +1617,6 @@ func _update_sprites() -> void:
 		# Spin the thrown shell
 		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
 		spr_thrown_spiral.rotation = spr_thrown_shell.rotation
-
-	# ── FACING DIRECTION ─────────────────────────────────────────────────
-	if last_aim_dir.x > 0.1:
-		facing_right = true
-	elif last_aim_dir.x < -0.1:
-		facing_right = false
-	var face_sign: float = 1.0 if facing_right else -1.0
 
 	# ── BODY (tiling segments) ───────────────────────────────────────────
 	var tile_sx: float = (hw * 2.0) / TEX_BODY.get_width()
