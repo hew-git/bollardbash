@@ -740,7 +740,7 @@ func _check_goo_dash_hits() -> void:
 			if not targets.has(col):
 				targets.append(col)
 	for body in targets:
-		var dir := (body.global_position - global_position).normalized()
+		var dir: Vector2 = (body.global_position - global_position).normalized()
 		# Shell blocks goo dash
 		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
 			continue
@@ -965,7 +965,7 @@ func _check_charge_hits() -> void:
 			if not targets.has(col):
 				targets.append(col)
 	for body in targets:
-		var dir := (body.global_position - global_position).normalized()
+		var dir: Vector2 = (body.global_position - global_position).normalized()
 		# Shell blocks charge too
 		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
 			linear_velocity = linear_velocity.reflect(dir) * 0.5
