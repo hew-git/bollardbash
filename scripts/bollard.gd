@@ -72,14 +72,14 @@ const GOO_TRAIL_DURATION := 3.0      # How long goo puddles last
 
 # ── Zappy: Electric Shell Toss + 3x Bolt Dash ─────────────────────────────
 const ZAPPY_TOSS_SPEED := 1200.0     # Fixed speed (unchargeable, 33% less range)
-const ZAPPY_TOSS_DAMAGE := 12.0      # Light damage
-const ZAPPY_TOSS_KNOCKBACK := 200.0  # Light knockback
+const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage (nerfed 40%)
+const ZAPPY_TOSS_KNOCKBACK := 120.0  # Light knockback (nerfed 40%)
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
-const ZAPPY_TOSS_MAX_RANGE := 168.0  # Max distance before shell stops (40% shorter)
+const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
 const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
-const BOLT_DASH_IMPULSE := 1350.0    # 25% shorter than before (was 1800)
-const BOLT_DASH_TIME := 0.15         # Very short dash duration
+const BOLT_DASH_SPEED := 1800.0      # Fixed dash speed (pixels/sec)
+const BOLT_DASH_DISTANCE := 200.0    # Fixed dash distance (pixels)
 const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
@@ -179,6 +179,8 @@ var is_bolt_dashing: bool = false
 var bolt_dash_timer: float = 0.0
 var bolt_dashes_remaining: int = BOLT_DASH_MAX
 var bolt_dash_cooldown: float = 0.0
+var bolt_dash_dir: Vector2 = Vector2.ZERO
+var bolt_dash_origin: Vector2 = Vector2.ZERO
 
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
@@ -701,6 +703,7 @@ func _start_goo_dash() -> void:
 	is_goo_dashing = true
 	goo_dash_timer = 0.0
 	var impulse := lerpf(GOO_DASH_MIN_IMPULSE, GOO_DASH_IMPULSE, goo_charge_amount)
+	linear_velocity = Vector2.ZERO
 	apply_central_impulse(dash_dir * impulse)
 	goo_charge_amount = 0.0
 
@@ -839,11 +842,13 @@ func _start_bolt_dash() -> void:
 	bolt_dash_timer = 0.0
 	SFX.play_sfx("dash_bolt")
 	bolt_dashes_remaining -= 1
-	var dash_dir := aim_dir
-	if dash_dir.length() < 0.1:
-		dash_dir = last_aim_dir
-	var impulse_strength := BOLT_DASH_IMPULSE * bolt_charge_amount
-	apply_central_impulse(dash_dir * impulse_strength)
+	bolt_dash_dir = aim_dir
+	if bolt_dash_dir.length() < 0.1:
+		bolt_dash_dir = last_aim_dir
+	bolt_dash_dir = bolt_dash_dir.normalized()
+	bolt_dash_origin = global_position
+	# Zero current momentum and set fixed velocity
+	linear_velocity = bolt_dash_dir * BOLT_DASH_SPEED
 	bolt_charge_amount = 0.0
 
 func _update_bolt_dash(delta: float) -> void:
@@ -854,9 +859,15 @@ func _update_bolt_dash(delta: float) -> void:
 	if not is_bolt_dashing:
 		return
 	bolt_dash_timer += delta
-	_check_charge_hits()  # Bolt dash can hit things
-	if bolt_dash_timer >= BOLT_DASH_TIME:
+	# Maintain fixed velocity (override physics)
+	linear_velocity = bolt_dash_dir * BOLT_DASH_SPEED
+	# Check for hits — ends dash on contact
+	_check_charge_hits()
+	# Stop after fixed distance or if dash was ended by hit
+	var traveled := bolt_dash_origin.distance_to(global_position)
+	if not is_bolt_dashing or traveled >= BOLT_DASH_DISTANCE:
 		is_bolt_dashing = false
+		linear_velocity = bolt_dash_dir * BOLT_DASH_SPEED * 0.15  # Small residual
 		if bolt_dashes_remaining <= 0:
 			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
 
@@ -922,6 +933,7 @@ func _start_charge_dash() -> void:
 			break
 	if not on_ground:
 		impulse_strength *= 1.75
+	linear_velocity = Vector2.ZERO
 	apply_central_impulse(dash_dir * impulse_strength)
 	charge_amount = 0.0
 
@@ -971,8 +983,13 @@ func _check_charge_hits() -> void:
 			linear_velocity = linear_velocity.reflect(dir) * 0.5
 			_end_any_dash()
 			return
-		body.take_damage(CHARGE_DAMAGE, dir)
+		var dash_dmg := CHARGE_DAMAGE
 		var impact_force := linear_velocity.length() * 3.0
+		# Zappy bolt dash: 40% less impact
+		if character_type == CharacterType.ZAPPY and is_bolt_dashing:
+			dash_dmg *= 0.6
+			impact_force *= 0.6
+		body.take_damage(dash_dmg, dir)
 		body.apply_central_impulse(dir * impact_force)
 		var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 		big_hit.emit(hit_pos, false)
@@ -1141,11 +1158,16 @@ func _update_shell_toss(delta: float) -> void:
 				var shell_impact := shell_toss_vel.length() * 2.0 * kb_mult
 				target_body.apply_central_impulse(dir * shell_impact)
 			big_hit.emit(shell_toss_pos, false)
-			shell_toss_hit = true
-			# Goopy shell sticks where it hit
 			if character_type == CharacterType.GOOPY:
+				# Goopy shell sticks where it hit
 				shell_toss_vel = Vector2.ZERO
+				shell_toss_hit = true
+			elif character_type == CharacterType.ZAPPY:
+				# Zappy shell reflects off players and keeps going
+				shell_toss_vel = shell_toss_vel.reflect(dir) * 0.85
+				shell_toss_origin = shell_toss_pos  # Reset range tracking
 			else:
+				shell_toss_hit = true
 				shell_toss_vel = -shell_toss_vel * 0.3
 			break
 
@@ -1233,6 +1255,10 @@ func _on_body_entered(body: Node) -> void:
 		if is_dashing or is_bolt_dashing:
 			dmg = maxf(dmg, CHARGE_DAMAGE)
 			var impact_force := linear_velocity.length() * 3.0
+			# Zappy bolt dash: 40% less impact
+			if is_bolt_dashing and character_type == CharacterType.ZAPPY:
+				dmg *= 0.6
+				impact_force *= 0.6
 			other.apply_central_impulse(dir * impact_force)
 			var hit_pos := (global_position + other.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
@@ -1319,6 +1345,8 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	is_bolt_dashing = false
 	bolt_dash_cooldown = 0.0
 	bolt_dashes_remaining = BOLT_DASH_MAX
+	bolt_dash_dir = Vector2.ZERO
+	bolt_dash_origin = Vector2.ZERO
 	# Clear drop-through exceptions
 	for dt in drop_through_bodies:
 		if is_instance_valid(dt.body):
@@ -1565,6 +1593,14 @@ func _update_sprites() -> void:
 	if shell_missing:
 		spr_thrown_shell.global_position = shell_toss_pos
 		spr_thrown_spiral.global_position = shell_toss_pos
+		# Zappy electrified shell: pulsing blue glow when stuck in place
+		if character_type == CharacterType.ZAPPY and shell_toss_hit:
+			var pulse := (sin(shell_toss_timer * 12.0) + 1.0) * 0.5
+			spr_thrown_shell.self_modulate = accent_color.lerp(Color(0.4, 0.85, 1.0), pulse * 0.7)
+			spr_thrown_spiral.self_modulate = accent_color.darkened(0.15).lerp(Color(0.3, 0.7, 1.0), pulse * 0.7)
+		else:
+			spr_thrown_shell.self_modulate = accent_color
+			spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
 		# Spin the thrown shell
 		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
 		spr_thrown_spiral.rotation = spr_thrown_shell.rotation
