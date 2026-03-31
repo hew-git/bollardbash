@@ -128,7 +128,7 @@ const CHAR_COLORS := [
 const CHAR_ABILITY1_DESC := [
 	"Shell Toss + Teleport",
 	"Slime Tether (pull to surface/player)",
-	"Shock Burst (electric AoE)",
+	"Electric Pellet (aimed zap)",
 ]
 const CHAR_ABILITY2_DESC := [
 	"Phase Dash (through platforms)",
@@ -158,6 +158,7 @@ var p2_slime_timer: float = 0.0
 func _ready() -> void:
 	# Higher physics tick rate prevents tunneling through ground/structures
 	Engine.physics_ticks_per_second = 120
+	pixel_font = load("res://fonts/PressStart2P-Regular.ttf")
 	_setup_input()
 	_setup_arena()
 	_create_bar_polygons()
@@ -187,6 +188,16 @@ func _ready() -> void:
 	controls_label.visible = true
 	p1_effect.visible = false
 	p2_effect.visible = false
+	# Apply pixel font to all scene-based labels
+	if pixel_font:
+		for lbl in [game_over_label, controls_label, p1_stock_label, p2_stock_label, p1_effect, p2_effect]:
+			lbl.add_theme_font_override("font", pixel_font)
+		game_over_label.add_theme_font_size_override("font_size", 16)
+		controls_label.add_theme_font_size_override("font_size", 8)
+		p1_stock_label.add_theme_font_size_override("font_size", 10)
+		p2_stock_label.add_theme_font_size_override("font_size", 10)
+		p1_effect.add_theme_font_size_override("font_size", 14)
+		p2_effect.add_theme_font_size_override("font_size", 14)
 
 	# Start on select screen instead of jumping straight to countdown
 	_create_select_screen()
@@ -415,7 +426,9 @@ func _create_bar_polygons() -> void:
 
 func _create_countdown_label() -> void:
 	countdown_label = Label.new()
-	countdown_label.add_theme_font_size_override("font_size", 80)
+	if pixel_font:
+		countdown_label.add_theme_font_override("font", pixel_font)
+	countdown_label.add_theme_font_size_override("font_size", 32)
 	countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	countdown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	countdown_label.add_theme_constant_override("outline_size", 4)
@@ -432,7 +445,9 @@ func _create_countdown_label() -> void:
 
 func _create_death_phrase_label() -> void:
 	death_phrase_label = Label.new()
-	death_phrase_label.add_theme_font_size_override("font_size", 46)
+	if pixel_font:
+		death_phrase_label.add_theme_font_override("font", pixel_font)
+	death_phrase_label.add_theme_font_size_override("font_size", 18)
 	death_phrase_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 	death_phrase_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	death_phrase_label.add_theme_constant_override("outline_size", 4)
@@ -451,14 +466,14 @@ func _create_death_phrase_label() -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 var select_title_label: Label
-var p1_select_label: Label
-var p2_select_label: Label
-var p1_ability_label: Label
-var p2_ability_label: Label
+var char_panels: Array = []          # [{bg: ColorRect, name_label: Label, desc_label: Label}]
+var p1_token_label: Label
+var p2_token_label: Label
 var p1_confirm_label: Label
 var p2_confirm_label: Label
 var stage_label: Label
 var select_hint_label: Label
+var pixel_font: Font
 
 func _create_select_screen() -> void:
 	select_layer = CanvasLayer.new()
@@ -467,107 +482,119 @@ func _create_select_screen() -> void:
 
 	# Background
 	var bg := ColorRect.new()
-	bg.color = Color(0.12, 0.1, 0.18, 0.95)
+	bg.color = Color(0.08, 0.06, 0.14, 0.97)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	select_layer.add_child(bg)
 
 	# Title
-	select_title_label = Label.new()
-	select_title_label.add_theme_font_size_override("font_size", 52)
-	select_title_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	select_title_label = _make_select_label("CHOOSE YOUR SNAIL", 20, Color(1.0, 0.9, 0.3))
 	select_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	select_title_label.offset_left = 200.0
-	select_title_label.offset_top = 30.0
-	select_title_label.offset_right = 1080.0
-	select_title_label.offset_bottom = 100.0
-	select_title_label.text = "CHOOSE YOUR SNAIL"
+	select_title_label.offset_left = 0.0
+	select_title_label.offset_top = 20.0
+	select_title_label.offset_right = 1280.0
+	select_title_label.offset_bottom = 60.0
 	select_layer.add_child(select_title_label)
 
-	# P1 character name
-	p1_select_label = Label.new()
-	p1_select_label.add_theme_font_size_override("font_size", 38)
-	p1_select_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p1_select_label.offset_left = 80.0
-	p1_select_label.offset_top = 160.0
-	p1_select_label.offset_right = 560.0
-	p1_select_label.offset_bottom = 220.0
-	select_layer.add_child(p1_select_label)
+	# Character panels — 3 panels side by side (Smash Bros style)
+	var panel_w := 340.0
+	var panel_h := 360.0
+	var panel_gap := 30.0
+	var total_w := panel_w * 3.0 + panel_gap * 2.0
+	var start_x := (1280.0 - total_w) / 2.0
+	var panel_y := 80.0
 
-	# P1 ability descriptions
-	p1_ability_label = Label.new()
-	p1_ability_label.add_theme_font_size_override("font_size", 18)
-	p1_ability_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
-	p1_ability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p1_ability_label.offset_left = 80.0
-	p1_ability_label.offset_top = 240.0
-	p1_ability_label.offset_right = 560.0
-	p1_ability_label.offset_bottom = 370.0
-	select_layer.add_child(p1_ability_label)
+	for ci in 3:
+		var px := start_x + float(ci) * (panel_w + panel_gap)
+		# Panel background
+		var panel_bg := ColorRect.new()
+		panel_bg.color = CHAR_COLORS[ci].darkened(0.7)
+		panel_bg.offset_left = px
+		panel_bg.offset_top = panel_y
+		panel_bg.offset_right = px + panel_w
+		panel_bg.offset_bottom = panel_y + panel_h
+		select_layer.add_child(panel_bg)
+
+		# Character name at top of panel
+		var name_lbl := _make_select_label(CHAR_NAMES[ci], 16, CHAR_COLORS[ci])
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.offset_left = px
+		name_lbl.offset_top = panel_y + 15.0
+		name_lbl.offset_right = px + panel_w
+		name_lbl.offset_bottom = panel_y + 50.0
+		select_layer.add_child(name_lbl)
+
+		# Ability descriptions
+		var desc_text := "SQ: " + CHAR_ABILITY1_DESC[ci] + "\nX: " + CHAR_ABILITY2_DESC[ci] + "\nL1: Parry"
+		var desc_lbl := _make_select_label(desc_text, 8, Color(0.75, 0.75, 0.75))
+		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		desc_lbl.offset_left = px + 10.0
+		desc_lbl.offset_top = panel_y + 200.0
+		desc_lbl.offset_right = px + panel_w - 10.0
+		desc_lbl.offset_bottom = panel_y + panel_h - 10.0
+		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
+		select_layer.add_child(desc_lbl)
+
+		char_panels.append({"bg": panel_bg, "name": name_lbl, "desc": desc_lbl, "x": px, "w": panel_w, "y": panel_y, "h": panel_h})
+
+	# P1 token — sits below the selected panel
+	p1_token_label = _make_select_label("P1", 12, Color(1.0, 0.4, 0.4))
+	p1_token_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p1_token_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	p1_token_label.add_theme_constant_override("outline_size", 3)
+	select_layer.add_child(p1_token_label)
+
+	# P2 token
+	p2_token_label = _make_select_label("P2", 12, Color(0.4, 0.6, 1.0))
+	p2_token_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	p2_token_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	p2_token_label.add_theme_constant_override("outline_size", 3)
+	select_layer.add_child(p2_token_label)
 
 	# P1 confirm status
-	p1_confirm_label = Label.new()
-	p1_confirm_label.add_theme_font_size_override("font_size", 24)
+	p1_confirm_label = _make_select_label("", 10, Color(0.7, 0.7, 0.7))
 	p1_confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p1_confirm_label.offset_left = 80.0
-	p1_confirm_label.offset_top = 390.0
-	p1_confirm_label.offset_right = 560.0
-	p1_confirm_label.offset_bottom = 430.0
+	p1_confirm_label.offset_left = 0.0
+	p1_confirm_label.offset_top = 470.0
+	p1_confirm_label.offset_right = 640.0
+	p1_confirm_label.offset_bottom = 500.0
 	select_layer.add_child(p1_confirm_label)
 
-	# P2 character name
-	p2_select_label = Label.new()
-	p2_select_label.add_theme_font_size_override("font_size", 38)
-	p2_select_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p2_select_label.offset_left = 720.0
-	p2_select_label.offset_top = 160.0
-	p2_select_label.offset_right = 1200.0
-	p2_select_label.offset_bottom = 220.0
-	select_layer.add_child(p2_select_label)
-
-	# P2 ability descriptions
-	p2_ability_label = Label.new()
-	p2_ability_label.add_theme_font_size_override("font_size", 18)
-	p2_ability_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.8))
-	p2_ability_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p2_ability_label.offset_left = 720.0
-	p2_ability_label.offset_top = 240.0
-	p2_ability_label.offset_right = 1200.0
-	p2_ability_label.offset_bottom = 370.0
-	select_layer.add_child(p2_ability_label)
-
 	# P2 confirm status
-	p2_confirm_label = Label.new()
-	p2_confirm_label.add_theme_font_size_override("font_size", 24)
+	p2_confirm_label = _make_select_label("", 10, Color(0.7, 0.7, 0.7))
 	p2_confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p2_confirm_label.offset_left = 720.0
-	p2_confirm_label.offset_top = 390.0
-	p2_confirm_label.offset_right = 1200.0
-	p2_confirm_label.offset_bottom = 430.0
+	p2_confirm_label.offset_left = 640.0
+	p2_confirm_label.offset_top = 470.0
+	p2_confirm_label.offset_right = 1280.0
+	p2_confirm_label.offset_bottom = 500.0
 	select_layer.add_child(p2_confirm_label)
 
 	# Stage select label (shown after both confirm)
-	stage_label = Label.new()
-	stage_label.add_theme_font_size_override("font_size", 36)
-	stage_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
+	stage_label = _make_select_label("", 14, Color(1.0, 0.9, 0.3))
 	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stage_label.offset_left = 200.0
-	stage_label.offset_top = 460.0
+	stage_label.offset_top = 530.0
 	stage_label.offset_right = 1080.0
-	stage_label.offset_bottom = 530.0
+	stage_label.offset_bottom = 570.0
 	stage_label.visible = false
 	select_layer.add_child(stage_label)
 
 	# Hint label at bottom
-	select_hint_label = Label.new()
-	select_hint_label.add_theme_font_size_override("font_size", 16)
-	select_hint_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 8, Color(0.45, 0.45, 0.45))
 	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_hint_label.offset_left = 100.0
-	select_hint_label.offset_top = 640.0
+	select_hint_label.offset_top = 650.0
 	select_hint_label.offset_right = 1180.0
 	select_hint_label.offset_bottom = 680.0
-	select_hint_label.text = "D-Pad / Arrows to choose  |  Square/Q or Cross/A to confirm  |  L1/E to go back"
 	select_layer.add_child(select_hint_label)
+
+func _make_select_label(text: String, size: int, color: Color) -> Label:
+	var lbl := Label.new()
+	lbl.text = text
+	if pixel_font:
+		lbl.add_theme_font_override("font", pixel_font)
+	lbl.add_theme_font_size_override("font_size", size)
+	lbl.add_theme_color_override("font_color", color)
+	return lbl
 
 
 func _show_select_screen() -> void:
@@ -587,32 +614,43 @@ func _show_select_screen() -> void:
 func _update_select_display() -> void:
 	if select_phase == "character":
 		select_title_label.text = "CHOOSE YOUR SNAIL"
-		# P1
-		var p1_name: String = CHAR_NAMES[p1_char_index]
-		var p1_arrow: String = "< " if not p1_confirmed else "  "
-		var p1_arrow_r: String = " >" if not p1_confirmed else ""
-		p1_select_label.text = "P1: " + p1_arrow + p1_name + p1_arrow_r
-		p1_select_label.add_theme_color_override("font_color", CHAR_COLORS[p1_char_index])
-		p1_ability_label.text = "Square: " + CHAR_ABILITY1_DESC[p1_char_index] + "\nCross: " + CHAR_ABILITY2_DESC[p1_char_index] + "\nL1: Parry (all)"
-		p1_confirm_label.text = "READY!" if p1_confirmed else "(Press Q/Square to lock in)"
-		p1_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p1_confirmed else Color(0.7, 0.7, 0.7))
+		stage_label.visible = false
 
-		# P2
-		var p2_label_prefix: String = "P2: " if not player2.is_ai else "P2 (AI): "
-		var p2_name: String = CHAR_NAMES[p2_char_index]
-		var p2_arrow: String = "< " if not p2_confirmed else "  "
-		var p2_arrow_r: String = " >" if not p2_confirmed else ""
-		p2_select_label.text = p2_label_prefix + p2_arrow + p2_name + p2_arrow_r
-		p2_select_label.add_theme_color_override("font_color", CHAR_COLORS[p2_char_index])
-		p2_ability_label.text = "Square: " + CHAR_ABILITY1_DESC[p2_char_index] + "\nCross: " + CHAR_ABILITY2_DESC[p2_char_index] + "\nL1: Parry (all)"
+		# Highlight selected panels, dim others
+		for ci in 3:
+			var panel = char_panels[ci]
+			var is_p1 := (ci == p1_char_index)
+			var is_p2 := (ci == p2_char_index)
+			if is_p1 or is_p2:
+				panel.bg.color = CHAR_COLORS[ci].darkened(0.5)
+			else:
+				panel.bg.color = CHAR_COLORS[ci].darkened(0.8)
+
+		# Position P1 token below selected panel
+		var p1_panel = char_panels[p1_char_index]
+		p1_token_label.offset_left = p1_panel.x
+		p1_token_label.offset_right = p1_panel.x + p1_panel.w * 0.5
+		p1_token_label.offset_top = p1_panel.y + p1_panel.h + 5.0
+		p1_token_label.offset_bottom = p1_panel.y + p1_panel.h + 30.0
+
+		# Position P2 token below selected panel
+		var p2_panel = char_panels[p2_char_index]
+		p2_token_label.offset_left = p2_panel.x + p2_panel.w * 0.5
+		p2_token_label.offset_right = p2_panel.x + p2_panel.w
+		p2_token_label.offset_top = p2_panel.y + p2_panel.h + 5.0
+		p2_token_label.offset_bottom = p2_panel.y + p2_panel.h + 30.0
+
+		# Confirm labels
+		p1_confirm_label.text = "P1 READY!" if p1_confirmed else "P1: Q to lock"
+		p1_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p1_confirmed else Color(0.7, 0.7, 0.7))
 		if player2.is_ai:
-			p2_confirm_label.text = "READY!" if p2_confirmed else "(P1: press F/Cross to lock AI)"
+			p2_confirm_label.text = "P2 READY!" if p2_confirmed else "P2(AI): F to lock"
 		else:
-			p2_confirm_label.text = "READY!" if p2_confirmed else "(Press Shift/Square to lock in)"
+			p2_confirm_label.text = "P2 READY!" if p2_confirmed else "P2: Shift to lock"
 		p2_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p2_confirmed else Color(0.7, 0.7, 0.7))
 
 	elif select_phase == "stage":
-		select_title_label.text = "CHOOSE YOUR STAGE"
+		select_title_label.text = "CHOOSE STAGE"
 		stage_label.visible = true
 		stage_label.text = "< " + STAGE_NAMES[stage_index] + " >"
 
@@ -798,15 +836,15 @@ func _update_countdown(delta: float) -> void:
 		countdown_label.text = ""
 	elif countdown_timer < 2.0:
 		countdown_label.text = "es.."
-		countdown_label.add_theme_font_size_override("font_size", 80)
+		countdown_label.add_theme_font_size_override("font_size", 32)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	elif countdown_timer < 3.0:
 		countdown_label.text = "escar.."
-		countdown_label.add_theme_font_size_override("font_size", 80)
+		countdown_label.add_theme_font_size_override("font_size", 32)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	elif countdown_timer < 3.0 + GO_LINGER:
 		countdown_label.text = "escarGO!"
-		countdown_label.add_theme_font_size_override("font_size", 80)
+		countdown_label.add_theme_font_size_override("font_size", 32)
 		countdown_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.3))
 		# Unfreeze players the moment escarGO! appears
 		if player1.is_frozen:
@@ -1118,15 +1156,20 @@ func _restart_game(go_to_select: bool = true) -> void:
 		p.is_phase_dashing = false
 		p.phase_dash_cooldown = 0.0
 		p.can_teleport_to_shell = false
-		p.teleport_used_airborne = false
+		p.blink_toss_used = false
+		p.blink_teleport_used = false
+		p.blink_phase_used = false
 		p.tether_active = false
 		p.tether_target = null
+		p.tether_attached = false
 		p.tether_cooldown = 0.0
 		p.is_goo_dashing = false
 		p.goo_dash_cooldown = 0.0
 		p.goo_trails.clear()
-		p.shock_burst_cooldown = 0.0
-		p.shock_burst_timer = 0.0
+		p.pellet_cooldown = 0.0
+		p.pellet_active = false
+		p.pellet_timer = 0.0
+		p.pellet_hit = false
 		p.is_bolt_charging = false
 		p.bolt_charge_amount = 0.0
 		p.is_bolt_dashing = false
