@@ -95,9 +95,9 @@ accent_color = Color(0.314, 0.502, 0.314, 1)
 [node name="P1Group" type="Control" parent="HUD"]
 
 [node name="P1DmgLabel" type="Label" parent="HUD/P1Group"]
-offset_left = 190.0
+offset_left = 126.0
 offset_top = 636.0
-offset_right = 240.0
+offset_right = 172.0
 offset_bottom = 660.0
 theme_override_font_sizes/font_size = 14
 text = "dmg."
@@ -128,9 +128,9 @@ horizontal_alignment = 1
 [node name="P2Group" type="Control" parent="HUD"]
 
 [node name="P2DmgLabel" type="Label" parent="HUD/P2Group"]
-offset_left = 1040.0
+offset_left = 1108.0
 offset_top = 636.0
-offset_right = 1090.0
+offset_right = 1158.0
 offset_bottom = 660.0
 theme_override_font_sizes/font_size = 14
 text = "dmg."

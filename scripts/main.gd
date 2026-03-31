@@ -26,11 +26,11 @@ const WALL_Y := 340.0
 const WALL_ANGLE_INWARD := 30.0     # Bottom edge angled inward by this many pixels
 
 # ── HUD Constants ───────────────────────────────────────────────────────────
-const P1_BAR_LEFT := 240.0
+const P1_BAR_LEFT := 180.0
 const P1_BAR_RIGHT := 540.0
 const P2_BAR_LEFT := 740.0
-const P2_BAR_RIGHT := 1040.0
-const BAR_MAX_WIDTH := 300.0
+const P2_BAR_RIGHT := 1100.0
+const BAR_MAX_WIDTH := 360.0
 const BAR_INNER_TOP := 638.0
 const BAR_OUTER_TOP := 622.0
 const BAR_BOTTOM := 660.0
@@ -408,14 +408,14 @@ func _create_wall(x_pos: float, wall_name: String) -> void:
 
 
 func _create_corner_platforms() -> void:
-	# Angled platforms in each corner of the arena
-	var plat_width := 130.0
+	# Four corner platforms angled toward center circle, 1.5x central platform width
+	var plat_width := 270.0  # 1.5x the 180px central platforms
 	var plat_height := 14.0
 	var corners := [
-		{"x": 160.0, "y": 180.0, "rot": -0.4, "name": "CornerTopLeft"},
-		{"x": 1120.0, "y": 180.0, "rot": 0.4, "name": "CornerTopRight"},
-		{"x": 130.0, "y": 440.0, "rot": -0.35, "name": "CornerBottomLeft"},
-		{"x": 1150.0, "y": 440.0, "rot": 0.35, "name": "CornerBottomRight"},
+		{"x": 180.0, "y": 190.0, "rot": 0.3, "name": "CornerTopLeft"},
+		{"x": 1100.0, "y": 190.0, "rot": -0.3, "name": "CornerTopRight"},
+		{"x": 150.0, "y": 430.0, "rot": -0.3, "name": "CornerBottomLeft"},
+		{"x": 1130.0, "y": 430.0, "rot": 0.3, "name": "CornerBottomRight"},
 	]
 	for info in corners:
 		var plat := StaticBody2D.new()
@@ -463,10 +463,12 @@ func _setup_meadow_stage() -> void:
 	for child in ground.get_children():
 		if child is CollisionPolygon2D:
 			child.disabled = false
+		if child is Polygon2D or child is ColorRect:
+			child.visible = true
 	for child in center_circle.get_children():
 		if child is CollisionShape2D:
 			child.disabled = false
-	# Move mid-platforms inward for tighter arena
+	# Central platforms — keep same positions
 	$PlatformLeft.position = Vector2(350, 330)
 	$PlatformRight.position = Vector2(930, 330)
 	$PlatformLeft.visible = true
@@ -477,11 +479,17 @@ func _setup_meadow_stage() -> void:
 	for child in $PlatformRight.get_children():
 		if child is CollisionShape2D:
 			child.disabled = false
-	# Show walls and corner platforms
-	var meadow_nodes := ["WallLeft", "WallRight",
-		"CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]
-	for name_str in meadow_nodes:
-		var node: Node = get_node_or_null(name_str)
+	# Hide walls (meadow has no walls)
+	for wall_name in ["WallLeft", "WallRight"]:
+		var node: Node = get_node_or_null(wall_name)
+		if node:
+			node.visible = false
+			for child in node.get_children():
+				if child is CollisionShape2D or child is CollisionPolygon2D:
+					child.disabled = true
+	# Show corner platforms
+	for corner_name in ["CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]:
+		var node: Node = get_node_or_null(corner_name)
 		if node:
 			node.visible = true
 			for child in node.get_children():
@@ -528,7 +536,7 @@ func _setup_slab_stage() -> void:
 	add_child(slab)
 	stage_extra_nodes.append(slab)
 
-	var slab_width := 800.0
+	var slab_width := 1000.0  # 25% wider than 800
 	var slab_height := 24.0
 	var col := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
@@ -543,11 +551,11 @@ func _setup_slab_stage() -> void:
 	slab_visual.polygon = PackedVector2Array([
 		Vector2(-hw, -hh), Vector2(hw, -hh),
 		Vector2(hw, hh), Vector2(-hw, hh)])
-	slab_visual.color = Color(0.7, 0.7, 0.72)
+	slab_visual.color = Color(0.18, 0.18, 0.2)  # Dark platform
 	slab.add_child(slab_visual)
 
-	# Dark gray background
-	$Background.color = Color(0.18, 0.18, 0.2)
+	# Light gray background (swapped with platform)
+	$Background.color = Color(0.7, 0.7, 0.72)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1021,6 +1029,9 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
+	# Don't trigger effects during select screen or countdown
+	if select_active or not game_active:
+		return
 	# Trigger slowmo
 	slomo_timer = SLOMO_DURATION
 	Engine.time_scale = SLOMO_SCALE
@@ -1067,6 +1078,8 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 
 
 func _on_shards_only(impact_pos: Vector2) -> void:
+	if select_active or not game_active:
+		return
 	# Spawn shards (purple for Blink teleport) but NO slomo and NO ripple
 	var shard_color := Color(0.7, 0.3, 1.0, 1.0)
 	for s_i in SHARD_COUNT:
@@ -1097,18 +1110,17 @@ func _update_slomo_and_flashes(delta: float) -> void:
 	# Update impact shards (fly outward + fade)
 	var i := impact_shards.size() - 1
 	while i >= 0:
-		var sh = impact_shards[i]
 		var real_dt := delta / maxf(Engine.time_scale, 0.01)
-		var sh_time: float = sh.timer
+		var sh_time: float = impact_shards[i].timer
 		sh_time -= real_dt
-		sh.timer = sh_time
+		impact_shards[i].timer = sh_time
 		if sh_time <= 0.0:
-			sh.node.queue_free()
+			impact_shards[i].node.queue_free()
 			impact_shards.remove_at(i)
 		else:
 			# Move shard outward
-			var vel: Vector2 = sh.vel
-			var n: Line2D = sh.node
+			var vel: Vector2 = impact_shards[i].vel
+			var n: Line2D = impact_shards[i].node
 			for p_i in n.get_point_count():
 				n.set_point_position(p_i, n.get_point_position(p_i) + vel * real_dt)
 			# Fade out
@@ -1117,8 +1129,7 @@ func _update_slomo_and_flashes(delta: float) -> void:
 			c.a = lerpf(1.0, 0.0, progress)
 			n.default_color = c
 			# Shards slow down over time
-			var slow_vel: Vector2 = sh.vel
-			sh.vel = slow_vel * 0.95
+			impact_shards[i].vel = vel * 0.95
 		i -= 1
 
 	# Update screen ripple shader
