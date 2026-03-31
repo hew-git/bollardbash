@@ -79,7 +79,7 @@ const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
 const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
 const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
 const BOLT_DASH_SPEED := 1800.0      # Fixed dash speed (pixels/sec)
-const BOLT_DASH_DISTANCE := 200.0    # Fixed dash distance (pixels)
+const BOLT_DASH_DISTANCE := 500.0    # Fixed dash distance (pixels) — long-range bolt
 const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
@@ -91,6 +91,7 @@ const NECK_MAX_TILES := 12      # Max tiles needed (MAX_HEIGHT / NECK_TILE_HEIGH
 # ── Sprite Textures ─────────────────────────────────────────────────────────
 # Per-character textures (loaded dynamically in _ready based on character_type)
 var TEX_SHELL: Texture2D
+var TEX_INNER_BODY: Texture2D
 var TEX_NECK: Texture2D
 var TEX_HEAD: Texture2D
 # Palette-swap shader (replaces self_modulate for key-color recoloring)
@@ -226,6 +227,7 @@ func _load_character_sprites() -> void:
 		CharacterType.ZAPPY: folder = "zappy"
 	var base_path := "res://sprites/snail/%s/" % folder
 	TEX_SHELL = load(base_path + "shell.png")
+	TEX_INNER_BODY = load(base_path + "inner_body.png")
 	TEX_NECK = load(base_path + "neck.png")
 	TEX_HEAD = load(base_path + "head.png")
 
@@ -538,22 +540,21 @@ func _start_phase_dash() -> void:
 	apply_central_impulse(dash_dir * PHASE_DASH_IMPULSE)
 
 func _phase_set_exceptions(enable: bool) -> void:
-	# Phase through non-ground StaticBody2D AND other players (RigidBody2D snails)
+	# Phase through ALL StaticBody2D (including ground) and other players
+	# Ground is included so Blink can phase dash while standing on a surface
+	# The dash is short enough (0.27s) that they won't fall through
 	var main_node := get_tree().current_scene
 	if not main_node:
 		return
-	var ground_node: Node = main_node.get_node_or_null("Ground")
-	var slab_node: Node = main_node.get_node_or_null("Slab")
 	for child in main_node.get_children():
 		if child == self:
 			continue
-		if child is StaticBody2D and child != ground_node and child != slab_node:
+		if child is StaticBody2D:
 			if enable:
 				add_collision_exception_with(child)
 			else:
 				remove_collision_exception_with(child)
 		elif child is RigidBody2D and child != self and child.has_method("take_damage"):
-			# Phase through opponents
 			if enable:
 				add_collision_exception_with(child)
 			else:
@@ -1079,12 +1080,13 @@ func _update_shell_toss(delta: float) -> void:
 							skip_bounce = true
 						break
 			if not skip_bounce:
-				shell_toss_pos = result.position + result.normal * BASE_RADIUS
+				# Push shell out of surface with extra margin to prevent re-collision
+				shell_toss_pos = result.position + result.normal * (BASE_RADIUS + 4.0)
 				# Proper bounce: reflect velocity off the surface normal
 				shell_toss_vel = shell_toss_vel.reflect(result.normal) * SHELL_BOUNCE
 				# Ensure minimum bounce speed to prevent getting stuck
-				if shell_toss_vel.length() < 120.0 and character_type != CharacterType.GOOPY:
-					shell_toss_vel = shell_toss_vel.normalized() * 120.0
+				if shell_toss_vel.length() < 150.0 and character_type != CharacterType.GOOPY:
+					shell_toss_vel = shell_toss_vel.normalized() * 150.0
 				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
@@ -1366,8 +1368,6 @@ func _update_emerge(delta: float) -> void:
 	emerge_progress = minf(emerge_progress + delta / EMERGE_DURATION, 1.0)
 	extend_amount = lerpf(0.0, 0.5, emerge_progress)
 	_update_collision_shape()
-	_update_blink(delta)
-	_update_eye_look(delta)
 	_update_sprites()
 	if emerge_progress >= 1.0:
 		is_emerging = false
@@ -1408,10 +1408,9 @@ func _setup_sprites() -> void:
 	spr_shell = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -1)
 	spr_shell.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
-	# Body circle — behind shell, visible when shell is tossed
-	var body_circle_scale := SPRITE_SCALE * 0.85
-	spr_body_circle = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -2)
-	spr_body_circle.scale = Vector2(body_circle_scale, body_circle_scale)
+	# Inner body — behind shell, exposed when shell is tossed (body-colored, not shell-shaped)
+	spr_body_circle = _make_recolorable_sprite(TEX_INNER_BODY, Vector2.ZERO, -2)
+	spr_body_circle.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
 	# Neck tiles (stack vertically from shell upward, offset toward facing direction)
 	for i in NECK_MAX_TILES:

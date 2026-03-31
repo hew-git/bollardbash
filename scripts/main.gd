@@ -411,12 +411,12 @@ func _create_corner_platforms() -> void:
 	# Four corner platforms angled toward center circle, 1.5x central platform width
 	var plat_width := 270.0  # 1.5x the 180px central platforms
 	var plat_height := 14.0
-	# Nearly touching screen edges, solid collision (not one-way)
+	# Flush with screen edges so snails can pass between corner platforms and ground
 	var corners := [
-		{"x": 25.0, "y": 70.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
-		{"x": 1255.0, "y": 70.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
-		{"x": 25.0, "y": 500.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
-		{"x": 1255.0, "y": 500.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
+		{"x": 5.0, "y": 70.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
+		{"x": 1275.0, "y": 70.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
+		{"x": 5.0, "y": 480.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
+		{"x": 1275.0, "y": 480.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
 	]
 	for info in corners:
 		var plat := StaticBody2D.new()

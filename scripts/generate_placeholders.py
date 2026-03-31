@@ -129,6 +129,33 @@ def make_snail_shell(size=22):
     return _png(size, size, raw)
 
 
+def make_snail_inner_body(size=20):
+    """20x20 inner body circle using BODY key colors (visible when shell is tossed)."""
+    cx, cy = size / 2.0, size / 2.0
+    radius = size / 2.0 - 1
+    raw = b""
+    for y in range(size):
+        raw += b"\x00"
+        for x in range(size):
+            dx = x - cx + 0.5
+            dy = y - cy + 0.5
+            dist = (dx * dx + dy * dy) ** 0.5
+            if dist <= radius:
+                if dist > radius - 1.2:
+                    raw += bytes([*OUTLINE, 255])
+                else:
+                    shade = (dx + dy) / (radius * 2.0)
+                    if shade < -0.15:
+                        raw += bytes([*BODY_HI, 255])
+                    elif shade > 0.15:
+                        raw += bytes([*BODY_SHA, 255])
+                    else:
+                        raw += bytes([*BODY_MID, 255])
+            else:
+                raw += bytes([0, 0, 0, 0])
+    return _png(size, size, raw)
+
+
 def make_snail_neck(width=10, height=4):
     """10x4 neck tile segment using body key colors."""
     raw = b""
@@ -212,17 +239,20 @@ SPRITES = os.path.join(ROOT, "sprites")
 sprites = {
     # ── PER-CHARACTER SPRITES (use key colors for recoloring) ──
     # Blink
-    "snail/blink/shell.png":    lambda: make_snail_shell(22),
-    "snail/blink/neck.png":     lambda: make_snail_neck(10, 4),
-    "snail/blink/head.png":     lambda: make_snail_head(12, 10),
+    "snail/blink/shell.png":      lambda: make_snail_shell(22),
+    "snail/blink/inner_body.png": lambda: make_snail_inner_body(20),
+    "snail/blink/neck.png":       lambda: make_snail_neck(10, 4),
+    "snail/blink/head.png":       lambda: make_snail_head(12, 10),
     # Goopy
-    "snail/goopy/shell.png":    lambda: make_snail_shell(22),
-    "snail/goopy/neck.png":     lambda: make_snail_neck(10, 4),
-    "snail/goopy/head.png":     lambda: make_snail_head(12, 10),
+    "snail/goopy/shell.png":      lambda: make_snail_shell(22),
+    "snail/goopy/inner_body.png": lambda: make_snail_inner_body(20),
+    "snail/goopy/neck.png":       lambda: make_snail_neck(10, 4),
+    "snail/goopy/head.png":       lambda: make_snail_head(12, 10),
     # Zappy
-    "snail/zappy/shell.png":    lambda: make_snail_shell(22),
-    "snail/zappy/neck.png":     lambda: make_snail_neck(10, 4),
-    "snail/zappy/head.png":     lambda: make_snail_head(12, 10),
+    "snail/zappy/shell.png":      lambda: make_snail_shell(22),
+    "snail/zappy/inner_body.png": lambda: make_snail_inner_body(20),
+    "snail/zappy/neck.png":       lambda: make_snail_neck(10, 4),
+    "snail/zappy/head.png":       lambda: make_snail_head(12, 10),
 
     # ── ARENA PARTS (full color, not tinted) ──
     "arena/ground_dirt.png":    lambda: make_flat_rect(200, 50, 107, 77, 56),
