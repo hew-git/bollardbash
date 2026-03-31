@@ -22,7 +22,7 @@ const GROUND_Y := 520.0
 const CENTER_CIRCLE_POS := Vector2(640, 190)
 const CENTER_CIRCLE_RADIUS := 30.0
 const WALL_WIDTH := 20.0
-const WALL_HEIGHT := 240.0
+const WALL_HEIGHT := 160.0           # Lowered for shell toss bank shots
 const WALL_LEFT_X := -30.0
 const WALL_RIGHT_X := 1310.0
 const WALL_Y := 340.0
@@ -127,13 +127,13 @@ const CHAR_COLORS := [
 ]
 const CHAR_ABILITY1_DESC := [
 	"Shell Toss + Teleport",
-	"Slime Tether (pull to surface/player)",
-	"Electric Pellet (aimed zap)",
+	"Slime Shell (tether + zip)",
+	"Zap Shell (short range, fast)",
 ]
 const CHAR_ABILITY2_DESC := [
 	"Phase Dash (through platforms)",
-	"Goo Dash (sticky trail)",
-	"Thunder Dash (charged, x2)",
+	"Goo Dash (charged, slime trail)",
+	"Bolt Dash (snappy, x3)",
 ]
 const STAGE_NAMES := ["Meadow", "Random"]
 
@@ -218,6 +218,7 @@ func _setup_arena() -> void:
 	_clay_platforms()
 	_create_wall(WALL_LEFT_X, "WallLeft")
 	_create_wall(WALL_RIGHT_X, "WallRight")
+	_create_top_platforms()
 	_setup_background()
 
 
@@ -390,6 +391,31 @@ func _create_wall(x_pos: float, wall_name: String) -> void:
 	wall_visual.polygon = poly_points
 	wall_visual.color = Color(0.45, 0.35, 0.28)  # Dark brown wall
 	wall.add_child(wall_visual)
+
+
+func _create_top_platforms() -> void:
+	# Two platforms at the top of the arena, mirroring the bottom side walls
+	var plat_width := 160.0
+	var plat_height := 16.0
+	for side_info in [
+		{"x": 180.0, "name": "TopPlatLeft"},
+		{"x": 1100.0, "name": "TopPlatRight"},
+	]:
+		var plat := StaticBody2D.new()
+		plat.name = side_info.name
+		plat.position = Vector2(side_info.x, 260.0)
+		add_child(plat)
+		var shape := CollisionShape2D.new()
+		var rect := RectangleShape2D.new()
+		rect.size = Vector2(plat_width, plat_height)
+		shape.shape = rect
+		plat.add_child(shape)
+		var plat_spr := Sprite2D.new()
+		plat_spr.texture = TEX_PLATFORM
+		var sx: float = plat_width / TEX_PLATFORM.get_width()
+		var sy: float = plat_height / TEX_PLATFORM.get_height()
+		plat_spr.scale = Vector2(sx, sy)
+		plat.add_child(plat_spr)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1159,17 +1185,13 @@ func _restart_game(go_to_select: bool = true) -> void:
 		p.blink_toss_used = false
 		p.blink_teleport_used = false
 		p.blink_phase_used = false
-		p.tether_active = false
-		p.tether_target = null
-		p.tether_attached = false
-		p.tether_cooldown = 0.0
+		p.goopy_tether_active = false
+		p.goopy_tether_timer = 0.0
+		p.is_goo_charging = false
+		p.goo_charge_amount = 0.0
 		p.is_goo_dashing = false
 		p.goo_dash_cooldown = 0.0
 		p.goo_trails.clear()
-		p.pellet_cooldown = 0.0
-		p.pellet_active = false
-		p.pellet_timer = 0.0
-		p.pellet_hit = false
 		p.is_bolt_charging = false
 		p.bolt_charge_amount = 0.0
 		p.is_bolt_dashing = false
