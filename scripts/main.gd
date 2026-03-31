@@ -1435,8 +1435,8 @@ func _try_add_slime(player: Bollard, delta: float) -> void:
 func _draw() -> void:
 	# Slime dots — flat colored ellipses (no texture lookup = much cheaper)
 	for dot in slime_dots:
-		var alpha := clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.55
-		var c := Color(dot.color.r, dot.color.g, dot.color.b, alpha)
+		var alpha: float = clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.55
+		var c: Color = Color(dot.color.r, dot.color.g, dot.color.b, alpha)
 		var w := 14.0
 		var h := 5.0
 		draw_rect(Rect2(dot.pos.x - w * 0.5, dot.pos.y - h * 0.5, w, h), c)

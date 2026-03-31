@@ -648,7 +648,7 @@ func _update_goopy_zip(_delta: float) -> void:
 			_goopy_release_tether()
 			return
 		if body is RigidBody2D and body.has_method("take_damage"):
-			var dir := (body.global_position - global_position).normalized()
+			var dir: Vector2 = (body.global_position - global_position).normalized()
 			# Shell blocks the zip hit
 			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
 				linear_velocity = linear_velocity.reflect(dir) * 0.5
@@ -659,7 +659,7 @@ func _update_goopy_zip(_delta: float) -> void:
 			body.take_damage(GOO_DASH_DAMAGE * 1.5, dir)
 			var impact_force := linear_velocity.length() * 2.5
 			body.apply_central_impulse(dir * impact_force)
-			var hit_pos := (global_position + body.global_position) * 0.5
+			var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
 			is_goopy_zipping = false
 			_goopy_release_tether()
@@ -752,7 +752,7 @@ func _check_goo_dash_hits() -> void:
 		body.take_damage(dmg, dir)
 		body.apply_central_impulse(dir * kb)
 		if goo_dash_was_full_charge:
-			var hit_pos := (global_position + body.global_position) * 0.5
+			var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
 
 func _update_goo_trails(delta: float) -> void:
@@ -974,7 +974,7 @@ func _check_charge_hits() -> void:
 		body.take_damage(CHARGE_DAMAGE, dir)
 		var impact_force := linear_velocity.length() * 3.0
 		body.apply_central_impulse(dir * impact_force)
-		var hit_pos := (global_position + body.global_position) * 0.5
+		var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 		big_hit.emit(hit_pos, false)
 		_end_any_dash()
 		return
@@ -1663,7 +1663,7 @@ func _draw() -> void:
 	# Goopy goo trail puddles
 	if character_type == CharacterType.GOOPY and not goo_trails.is_empty():
 		for trail in goo_trails:
-			var local_pos := to_local(trail.pos)
+			var local_pos: Vector2 = to_local(trail.pos)
 			var trail_alpha: float = clampf(trail.timer / GOO_TRAIL_DURATION, 0.0, 1.0) * 0.7
 			draw_circle(local_pos, GOO_TRAIL_RADIUS, Color(0.35, 0.8, 0.2, trail_alpha))
 			draw_circle(local_pos, GOO_TRAIL_RADIUS * 0.5, Color(0.5, 0.9, 0.3, trail_alpha * 0.8))
