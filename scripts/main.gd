@@ -524,7 +524,7 @@ func _create_select_screen() -> void:
 		select_layer.add_child(name_lbl)
 
 		# Ability descriptions
-		var desc_text := "SQ: " + CHAR_ABILITY1_DESC[ci] + "\nX: " + CHAR_ABILITY2_DESC[ci] + "\nL1: Parry"
+		var desc_text: String = "SQ: " + CHAR_ABILITY1_DESC[ci] + "\nX: " + CHAR_ABILITY2_DESC[ci] + "\nL1: Parry"
 		var desc_lbl := _make_select_label(desc_text, 8, Color(0.75, 0.75, 0.75))
 		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		desc_lbl.offset_left = px + 10.0
