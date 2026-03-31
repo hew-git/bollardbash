@@ -135,7 +135,11 @@ const CHAR_ABILITY2_DESC := [
 	"Goo Dash (charged, slime trail)",
 	"Bolt Dash (snappy, x3)",
 ]
-const STAGE_NAMES := ["Meadow", "Random"]
+const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Random"]
+
+# ── Stage State ─────────────────────────────────────────────────────────────
+var current_stage: int = 0              # Index into STAGE_NAMES
+var stage_extra_nodes: Array = []       # Nodes created for current stage (cleaned up on switch)
 
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = false
@@ -409,6 +413,7 @@ func _create_top_platforms() -> void:
 		var rect := RectangleShape2D.new()
 		rect.size = Vector2(plat_width, plat_height)
 		shape.shape = rect
+		shape.one_way_collision = true
 		plat.add_child(shape)
 		var plat_spr := Sprite2D.new()
 		plat_spr.texture = TEX_PLATFORM
@@ -416,6 +421,115 @@ func _create_top_platforms() -> void:
 		var sy: float = plat_height / TEX_PLATFORM.get_height()
 		plat_spr.scale = Vector2(sx, sy)
 		plat.add_child(plat_spr)
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ STAGE SYSTEM                                                              ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _apply_stage(idx: int) -> void:
+	current_stage = idx
+	# Clean up any extra stage nodes from previous stage
+	for node in stage_extra_nodes:
+		if is_instance_valid(node):
+			node.queue_free()
+	stage_extra_nodes.clear()
+
+	var stage_name: String = STAGE_NAMES[idx]
+	match stage_name:
+		"Meadow":
+			_setup_meadow_stage()
+		"Oops, All Slab":
+			_setup_slab_stage()
+
+func _setup_meadow_stage() -> void:
+	# Default stage — restore normal arena elements
+	# Show original ground, center circle, platforms, walls
+	ground.visible = true
+	center_circle.visible = true
+	# Re-enable collision for ground child shapes
+	for child in ground.get_children():
+		if child is CollisionPolygon2D:
+			child.disabled = false
+	for child in center_circle.get_children():
+		if child is CollisionShape2D:
+			child.disabled = false
+	$PlatformLeft.visible = true
+	$PlatformRight.visible = true
+	for child in $PlatformLeft.get_children():
+		if child is CollisionShape2D:
+			child.disabled = false
+	for child in $PlatformRight.get_children():
+		if child is CollisionShape2D:
+			child.disabled = false
+	# Show walls and top platforms
+	for name_str in ["WallLeft", "WallRight", "TopPlatLeft", "TopPlatRight"]:
+		var node: Node = get_node_or_null(name_str)
+		if node:
+			node.visible = true
+			for child in node.get_children():
+				if child is CollisionShape2D or child is CollisionPolygon2D:
+					child.disabled = false
+	# Meadow background
+	$Background.color = Color(0.53, 0.81, 0.92)
+
+func _setup_slab_stage() -> void:
+	# Final Destination style: one flat platform, no walls or structures
+	# Hide all normal arena geometry
+	center_circle.visible = false
+	for child in center_circle.get_children():
+		if child is CollisionShape2D:
+			child.disabled = true
+	$PlatformLeft.visible = false
+	$PlatformRight.visible = false
+	for child in $PlatformLeft.get_children():
+		if child is CollisionShape2D:
+			child.disabled = true
+	for child in $PlatformRight.get_children():
+		if child is CollisionShape2D:
+			child.disabled = true
+	for name_str in ["WallLeft", "WallRight", "TopPlatLeft", "TopPlatRight"]:
+		var node: Node = get_node_or_null(name_str)
+		if node:
+			node.visible = false
+			for child in node.get_children():
+				if child is CollisionShape2D or child is CollisionPolygon2D:
+					child.disabled = true
+	# Hide original ground visuals but keep collision
+	ground.visible = false
+	for child in ground.get_children():
+		if child is CollisionPolygon2D:
+			child.disabled = true
+		if child is Polygon2D:
+			child.visible = false
+
+	# Create flat slab ground
+	var slab := StaticBody2D.new()
+	slab.name = "Slab"
+	slab.position = Vector2(640.0, GROUND_Y - 10.0)
+	add_child(slab)
+	stage_extra_nodes.append(slab)
+
+	var slab_width := 800.0
+	var slab_height := 24.0
+	var col := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(slab_width, slab_height)
+	col.shape = rect
+	slab.add_child(col)
+
+	# Light gray slab visual
+	var slab_visual := Polygon2D.new()
+	var hw := slab_width / 2.0
+	var hh := slab_height / 2.0
+	slab_visual.polygon = PackedVector2Array([
+		Vector2(-hw, -hh), Vector2(hw, -hh),
+		Vector2(hw, hh), Vector2(-hw, hh)])
+	slab_visual.color = Color(0.7, 0.7, 0.72)
+	slab.add_child(slab_visual)
+
+	# Dark gray background
+	$Background.color = Color(0.18, 0.18, 0.2)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -825,6 +939,12 @@ func _confirm_selections() -> void:
 	else:
 		player2.bollard_color = char_body_colors[p2_char_index]
 		player2.accent_color = char_accent_colors[p2_char_index]
+	# Apply stage — resolve "Random" first
+	var final_stage := stage_index
+	if STAGE_NAMES[final_stage] == "Random":
+		# Pick a random non-Random stage
+		final_stage = randi() % (STAGE_NAMES.size() - 1)
+	_apply_stage(final_stage)
 	# Hide select screen, start the game
 	select_active = false
 	select_layer.visible = false

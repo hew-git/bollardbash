@@ -20,7 +20,7 @@ const MAX_HEIGHT := 90.0
 const LEAN_TORQUE := 100000.0
 const EXTEND_SPEED := 8.0
 const ANGULAR_DAMP_AMOUNT := 1.5
-const LAUNCH_BOOST := 500.0
+const LAUNCH_BOOST := 200.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
 const DAMAGE_MULTIPLIER := 0.04
@@ -895,13 +895,24 @@ func _update_shell_toss(delta: float) -> void:
 		query.exclude = [get_rid()]
 		var result := space.intersect_ray(query)
 		if result:
-			shell_toss_pos = result.position + result.normal * (BASE_RADIUS * 0.4)
-			# Proper bounce: reflect velocity off the surface normal
-			shell_toss_vel = shell_toss_vel.reflect(result.normal) * SHELL_BOUNCE
-			# Goopy shell sticks to surfaces
-			if character_type == CharacterType.GOOPY:
-				shell_toss_vel = Vector2.ZERO
-				shell_toss_hit = true
+			# Pass through one-way platforms from below (like snails do)
+			var skip_bounce := false
+			if result.collider is StaticBody2D:
+				var hit_body: StaticBody2D = result.collider
+				for child in hit_body.get_children():
+					if child is CollisionShape2D and child.one_way_collision:
+						# One-way platform: shell passes through from below
+						if shell_toss_vel.y < 0.0:
+							skip_bounce = true
+						break
+			if not skip_bounce:
+				shell_toss_pos = result.position + result.normal * (BASE_RADIUS * 0.4)
+				# Proper bounce: reflect velocity off the surface normal
+				shell_toss_vel = shell_toss_vel.reflect(result.normal) * SHELL_BOUNCE
+				# Goopy shell sticks to surfaces
+				if character_type == CharacterType.GOOPY:
+					shell_toss_vel = Vector2.ZERO
+					shell_toss_hit = true
 
 	# Shell pickup: owner walks over their thrown shell to recover it
 	var dist_to_shell := global_position.distance_to(shell_toss_pos)
@@ -927,17 +938,22 @@ func _update_shell_toss(delta: float) -> void:
 			var target_body: RigidBody2D = collider
 			if target_body == self and not shell_deflected:
 				continue
-			# DEFLECT: if the target is dashing, they smack the shell back
+			# DEFLECT: if the target is dashing OR parrying, they smack the shell back
 			var is_target_dashing := false
+			var is_target_parrying := false
 			if target_body is Bollard:
 				var target_snail: Bollard = target_body
 				is_target_dashing = target_snail.is_dashing
-			if is_target_dashing:
+				is_target_parrying = target_snail.is_parrying
+			if is_target_dashing or is_target_parrying:
 				var deflect_dir: Vector2 = (global_position - shell_toss_pos).normalized()
 				var deflect_speed := shell_toss_vel.length() * SHELL_DEFLECT_BOOST
 				shell_toss_vel = deflect_dir * deflect_speed
 				shell_deflected = true
 				shell_toss_timer = 0.0
+				# Parry deflect breaks Goopy tether
+				if character_type == CharacterType.GOOPY:
+					_goopy_release_tether()
 				big_hit.emit(shell_toss_pos, true)
 				break
 			var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
@@ -992,12 +1008,28 @@ func _return_shell() -> void:
 # ║ COMBAT                                                                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
+const SHELL_ARMOR_MULT := 0.0        # No damage when shell is on
+const SHELLLESS_DAMAGE_MULT := 1.5    # 50% more damage when shell-less
+
 func take_damage(amount: float, knockback_dir: Vector2) -> void:
 	if is_invincible:
+		return
+	# Shell armor: no damage if shell is present, extra damage if shell-less
+	if not shell_missing:
+		amount *= SHELL_ARMOR_MULT
+	else:
+		amount *= SHELLLESS_DAMAGE_MULT
+	if amount <= 0.0:
+		# Still apply knockback even with 0 damage
+		var knockback_mult := 1.0 + damage_percent / 50.0
+		apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult * 0.3)
 		return
 	damage_percent += amount
 	var knockback_mult := 1.0 + damage_percent / 50.0
 	apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult)
+
+func _is_in_any_dash() -> bool:
+	return is_dashing or is_phase_dashing or is_bolt_dashing or is_goo_dashing
 
 func _on_body_entered(body: Node) -> void:
 	if is_invincible:
@@ -1005,6 +1037,9 @@ func _on_body_entered(body: Node) -> void:
 	if not (body is RigidBody2D) or body == self or not body.has_method("take_damage"):
 		return
 	var other: RigidBody2D = body as RigidBody2D
+	# If the other snail is dashing, they have hit immunity — don't damage them
+	if other is Bollard and (other as Bollard)._is_in_any_dash():
+		return
 	var rel_vel: Vector2 = linear_velocity - other.linear_velocity
 	var impact: float = rel_vel.length()
 	if impact > HIT_SPEED_THRESHOLD:
@@ -1019,6 +1054,15 @@ func _on_body_entered(body: Node) -> void:
 		# Shell blocks damage — if we're hitting the other snail's shell
 		# (base area), the hit is deflected and no damage is dealt.
 		if other.has_method("is_shell_hit") and other.is_shell_hit(global_position):
+			return
+		# Parry deflect: if the target is parrying, the attack bounces back to us
+		if other is Bollard and (other as Bollard).is_parrying:
+			var reverse_dir: Vector2 = -dir
+			take_damage(dmg, reverse_dir)
+			apply_central_impulse(reverse_dir * KNOCKBACK_BASE * 2.0)
+			var hit_pos := (global_position + other.global_position) * 0.5
+			big_hit.emit(hit_pos, true)
+			_end_any_dash()
 			return
 		# Dashing into another snail = big hit (same impact as shell toss)
 		if is_dashing or is_bolt_dashing:
