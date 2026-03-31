@@ -87,17 +87,21 @@ const BOLT_DASH_MAX := 3             # 3 electric dashes
 const STALK_LENGTH := 22.0
 const STALK_SPREAD := 7.0
 
-# ── Sprite Textures (preloaded — swap these PNGs for custom art) ──────────
-const TEX_SHELL := preload("res://sprites/snail/shell.png")
-const TEX_SPIRAL := preload("res://sprites/snail/shell_spiral.png")
-const TEX_BODY := preload("res://sprites/snail/body.png")   # Body tile segment (tiles vertically)
-const TEX_DOME := preload("res://sprites/snail/dome.png")
+# ── Sprite Textures ─────────────────────────────────────────────────────────
+# Per-character textures (loaded dynamically in _ready based on character_type)
+var TEX_SHELL: Texture2D
+var TEX_SPIRAL: Texture2D
+var TEX_BODY: Texture2D
+var TEX_DOME: Texture2D
+# Shared textures (same for all characters)
+const TEX_EYE := preload("res://sprites/snail/shared/eye.png")
+const TEX_PUPIL := preload("res://sprites/snail/shared/pupil.png")
+const TEX_EYE_HL := preload("res://sprites/snail/shared/eye_highlight.png")
+const TEX_STALK := preload("res://sprites/snail/shared/stalk.png")
 const BODY_TILE_HEIGHT := 8.0    # Display height of each body tile (pixels)
 const BODY_MAX_TILES := 12       # Max tiles needed (MAX_HEIGHT / BODY_TILE_HEIGHT, rounded up)
-const TEX_EYE := preload("res://sprites/snail/eye.png")
-const TEX_PUPIL := preload("res://sprites/snail/pupil.png")
-const TEX_EYE_HL := preload("res://sprites/snail/eye_highlight.png")
-const TEX_STALK := preload("res://sprites/snail/stalk.png")
+# Palette-swap shader (replaces self_modulate for key-color recoloring)
+const PALETTE_SHADER := preload("res://shaders/palette_swap.gdshader")
 # ── Emerge Constants ────────────────────────────────────────────────────────
 const EMERGE_DURATION := 0.6
 
@@ -243,6 +247,19 @@ var blink_line_l: Line2D
 var blink_line_r: Line2D
 
 
+func _load_character_sprites() -> void:
+	var folder: String
+	match character_type:
+		CharacterType.BLINK: folder = "blink"
+		CharacterType.GOOPY: folder = "goopy"
+		CharacterType.ZAPPY: folder = "zappy"
+	var base_path := "res://sprites/snail/%s/" % folder
+	TEX_SHELL = load(base_path + "shell.png")
+	TEX_SPIRAL = load(base_path + "shell_spiral.png")
+	TEX_BODY = load(base_path + "body.png")
+	TEX_DOME = load(base_path + "dome.png")
+
+
 func _ready() -> void:
 	var prefix := "p%d_" % player_id
 	act_lean_left = prefix + "lean_left"
@@ -286,6 +303,7 @@ func _ready() -> void:
 	$GrabArea.monitorable = false
 
 	next_blink_time = randf_range(1.5, 5.0)
+	_load_character_sprites()
 	_setup_sprites()
 
 
@@ -1442,89 +1460,78 @@ func _update_eye_look(delta: float) -> void:
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ SPRITE SYSTEM                                                            ║
 # ║                                                                           ║
-# ║ All visuals use Sprite2D nodes with PNG textures from sprites/snail/.    ║
-# ║ To replace any part with custom art:                                     ║
-# ║   1. Open the PNG listed for that part in sprites/snail/                 ║
-# ║   2. Paint your replacement at the same pixel size                       ║
-# ║   3. Save — the game picks it up automatically on next run               ║
+# ║ PALETTE-SWAP SPRITE SYSTEM                                               ║
 # ║                                                                           ║
-# ║ Snail sprites use self_modulate for per-player coloring.                 ║
-# ║ Shell uses accent_color, body/dome/stalks use bollard_color.             ║
+# ║ Sprites use key colors that the palette_swap shader remaps at runtime:   ║
+# ║   Body:  #FF00FF (highlight)  #CC00CC (midtone)  #990099 (shadow)       ║
+# ║   Shell: #00FFFF (highlight)  #00CCCC (midtone)  #009999 (shadow)       ║
+# ║ All other pixel colors pass through unchanged (outlines, eyes, etc.)     ║
 # ║                                                                           ║
-# ║ PARTS AND FILES:                                                          ║
-# ║   shell.png          48x48  — shell sphere                               ║
-# ║   shell_spiral.png   48x48  — spiral overlay (drawn on top of shell)     ║
-# ║   body.png           32x90  — body tile segment (tiles vertically)       ║
-# ║   dome.png           32x18  — dome cap on top of body                    ║
-# ║   stalk.png           4x16  — eye stalk (used twice)                     ║
+# ║ Per-character sprites in sprites/snail/<blink|goopy|zappy>/:             ║
+# ║   shell.png          44x44  — shell sphere                               ║
+# ║   shell_spiral.png   44x44  — spiral overlay (drawn on top of shell)     ║
+# ║   body.png           32x8   — body tile segment (tiles vertically)       ║
+# ║   dome.png           32x16  — dome cap on top of body                    ║
+# ║ Shared sprites in sprites/snail/shared/:                                 ║
+# ║   stalk.png           4x24  — eye stalk (used twice)                     ║
 # ║   eye.png            12x12  — eyeball (used twice)                       ║
 # ║   pupil.png           8x8   — pupil (used twice)                        ║
 # ║   eye_highlight.png   6x6   — white reflection dot (used twice)         ║
-# ║   (grab_dot.png      10x10  — unused, grab removed)                     ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_sprites() -> void:
 	# Shell (bottom layer, behind body)
-	spr_shell = _make_sprite(TEX_SHELL, Vector2.ZERO, -1)
-	spr_shell.self_modulate = accent_color
-	# Scale shell sprite to match BASE_RADIUS
+	spr_shell = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -1)
 	var shell_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
 	spr_shell.scale = Vector2(shell_scale, shell_scale)
 
-	spr_spiral = _make_sprite(TEX_SPIRAL, Vector2.ZERO, -1)
-	spr_spiral.self_modulate = accent_color.darkened(0.15)
+	spr_spiral = _make_recolorable_sprite(TEX_SPIRAL, Vector2.ZERO, -1)
 	spr_spiral.scale = Vector2(shell_scale, shell_scale)
 
-	# Body circle — body-colored circle behind shell, visible when shell is tossed
+	# Body circle — behind shell, visible when shell is tossed
 	var body_circle_scale := (BASE_RADIUS * 1.7) / TEX_SHELL.get_width()
-	spr_body_circle = _make_sprite(TEX_SHELL, Vector2.ZERO, -2)
-	spr_body_circle.self_modulate = bollard_color
+	spr_body_circle = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -2)
 	spr_body_circle.scale = Vector2(body_circle_scale, body_circle_scale)
 
 	# Body tiles (stack vertically instead of stretching)
 	for i in BODY_MAX_TILES:
-		var tile := _make_sprite(TEX_BODY, Vector2.ZERO, 0)
-		tile.self_modulate = bollard_color
+		var tile := _make_recolorable_sprite(TEX_BODY, Vector2.ZERO, 0)
 		tile.visible = false
 		spr_body_tiles.append(tile)
 
 	# Dome (on top of body)
-	spr_dome = _make_sprite(TEX_DOME, Vector2.ZERO, 0)
-	spr_dome.self_modulate = bollard_color
+	spr_dome = _make_recolorable_sprite(TEX_DOME, Vector2.ZERO, 0)
 
 	# Stalks
-	spr_stalk_l = _make_sprite(TEX_STALK, Vector2.ZERO, 1)
-	spr_stalk_l.self_modulate = bollard_color
-	spr_stalk_r = _make_sprite(TEX_STALK, Vector2.ZERO, 1)
-	spr_stalk_r.self_modulate = bollard_color
+	spr_stalk_l = _make_recolorable_sprite(TEX_STALK, Vector2.ZERO, 1)
+	spr_stalk_r = _make_recolorable_sprite(TEX_STALK, Vector2.ZERO, 1)
 
-	# Eyes
+	# Eyes (no shader — fixed white color)
 	spr_eye_l = _make_sprite(TEX_EYE, Vector2.ZERO, 2)
 	spr_eye_r = _make_sprite(TEX_EYE, Vector2.ZERO, 2)
 
-	# Pupils
+	# Pupils (no shader — fixed dark color)
 	spr_pupil_l = _make_sprite(TEX_PUPIL, Vector2.ZERO, 3)
 	spr_pupil_r = _make_sprite(TEX_PUPIL, Vector2.ZERO, 3)
 
-	# Eye highlights
+	# Eye highlights (no shader — fixed white)
 	spr_eye_hl_l = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
 	spr_eye_hl_r = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
 
 	# Thrown shell (global coords — not attached to snail body)
 	spr_thrown_shell = Sprite2D.new()
 	spr_thrown_shell.texture = TEX_SHELL
-	spr_thrown_shell.self_modulate = accent_color
-	var ts_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
-	spr_thrown_shell.scale = Vector2(ts_scale, ts_scale)
+	spr_thrown_shell.material = _make_palette_material()
+	spr_thrown_shell.scale = Vector2(shell_scale, shell_scale)
 	spr_thrown_shell.z_index = 5
-	spr_thrown_shell.top_level = true  # Positioned in world space
+	spr_thrown_shell.top_level = true
 	spr_thrown_shell.visible = false
 	add_child(spr_thrown_shell)
 
 	spr_thrown_spiral = Sprite2D.new()
 	spr_thrown_spiral.texture = TEX_SPIRAL
-	spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
-	spr_thrown_spiral.scale = Vector2(ts_scale, ts_scale)
+	spr_thrown_spiral.material = _make_palette_material()
+	spr_thrown_spiral.scale = Vector2(shell_scale, shell_scale)
 	spr_thrown_spiral.z_index = 5
 	spr_thrown_spiral.top_level = true
 	spr_thrown_spiral.visible = false
@@ -1546,6 +1553,24 @@ func _setup_sprites() -> void:
 	add_child(blink_line_r)
 
 
+func _make_palette_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = PALETTE_SHADER
+	mat.set_shader_parameter("body_color", Vector3(bollard_color.r, bollard_color.g, bollard_color.b))
+	mat.set_shader_parameter("shell_color", Vector3(accent_color.r, accent_color.g, accent_color.b))
+	return mat
+
+
+func _make_recolorable_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
+	var s := Sprite2D.new()
+	s.texture = tex
+	s.position = pos
+	s.z_index = z
+	s.material = _make_palette_material()
+	add_child(s)
+	return s
+
+
 func _make_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
 	var s := Sprite2D.new()
 	s.texture = tex
@@ -1555,12 +1580,22 @@ func _make_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
 	return s
 
 
+func _set_sprite_colors(sprite: Sprite2D, body_c: Color, shell_c: Color) -> void:
+	if sprite.material is ShaderMaterial:
+		var mat: ShaderMaterial = sprite.material
+		mat.set_shader_parameter("body_color", Vector3(body_c.r, body_c.g, body_c.b))
+		mat.set_shader_parameter("shell_color", Vector3(shell_c.r, shell_c.g, shell_c.b))
+
+
 func update_shell_colors() -> void:
-	# Call after changing accent_color to update thrown shell sprite tints
-	spr_shell.self_modulate = accent_color
-	spr_spiral.self_modulate = accent_color.darkened(0.15)
-	spr_thrown_shell.self_modulate = accent_color
-	spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
+	# Call after changing accent_color/bollard_color to update all shader params
+	_load_character_sprites()
+	# Rebuild all sprites with new textures and colors
+	for child in get_children():
+		if child is Sprite2D or child is Line2D:
+			child.queue_free()
+	spr_body_tiles.clear()
+	_setup_sprites()
 
 func _update_sprites() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
@@ -1612,16 +1647,23 @@ func _update_sprites() -> void:
 	var face_sign: float = 1.0 if facing_right else -1.0
 
 	# ── BODY CIRCLE (behind shell — visible when shell is tossed) ────────
-	spr_body_circle.self_modulate = body_c
+	_set_sprite_colors(spr_body_circle, body_c, shell_c)
 
 	# ── SHELL ────────────────────────────────────────────────────────────
 	spr_shell.visible = not shell_missing
 	spr_spiral.visible = not shell_missing
-	spr_shell.self_modulate = shell_c
-	spr_spiral.self_modulate = shell_c.darkened(0.15)
+	_set_sprite_colors(spr_shell, body_c, shell_c)
+	_set_sprite_colors(spr_spiral, body_c, shell_c)
 	var shell_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
 	spr_shell.scale = Vector2(shell_scale * face_sign, shell_scale)
 	spr_spiral.scale = Vector2(shell_scale * face_sign, shell_scale)
+	# Phase dash transparency
+	if is_phase_dashing:
+		spr_shell.self_modulate.a = 0.4
+		spr_spiral.self_modulate.a = 0.4
+	else:
+		spr_shell.self_modulate.a = 1.0
+		spr_spiral.self_modulate.a = 1.0
 
 	# ── THROWN SHELL (world-space projectile) ─────────────────────────────
 	spr_thrown_shell.visible = shell_missing
@@ -1632,11 +1674,12 @@ func _update_sprites() -> void:
 		# Zappy electrified shell: pulsing blue glow when stuck in place
 		if character_type == CharacterType.ZAPPY and shell_toss_hit:
 			var pulse := (sin(shell_toss_timer * 12.0) + 1.0) * 0.5
-			spr_thrown_shell.self_modulate = accent_color.lerp(Color(0.4, 0.85, 1.0), pulse * 0.7)
-			spr_thrown_spiral.self_modulate = accent_color.darkened(0.15).lerp(Color(0.3, 0.7, 1.0), pulse * 0.7)
+			var pulse_shell: Color = accent_color.lerp(Color(0.4, 0.85, 1.0), pulse * 0.7)
+			_set_sprite_colors(spr_thrown_shell, body_c, pulse_shell)
+			_set_sprite_colors(spr_thrown_spiral, body_c, pulse_shell)
 		else:
-			spr_thrown_shell.self_modulate = accent_color
-			spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
+			_set_sprite_colors(spr_thrown_shell, body_c, accent_color)
+			_set_sprite_colors(spr_thrown_spiral, body_c, accent_color)
 		# Spin the thrown shell
 		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
 		spr_thrown_spiral.rotation = spr_thrown_shell.rotation
@@ -1650,11 +1693,15 @@ func _update_sprites() -> void:
 		if i < tiles_needed:
 			var tile := spr_body_tiles[i]
 			tile.visible = true
-			# Stack from bottom (y=0) upward; each tile's center is offset
 			var tile_bottom_y: float = -float(i) * BODY_TILE_HEIGHT
 			tile.position = Vector2(body_shake_x, tile_bottom_y - BODY_TILE_HEIGHT * 0.5)
 			tile.scale = Vector2(tile_sx * face_sign, tile_sy)
-			tile.self_modulate = body_c
+			_set_sprite_colors(tile, body_c, shell_c)
+			# Phase dash transparency
+			if is_phase_dashing:
+				tile.self_modulate.a = 0.4
+			else:
+				tile.self_modulate.a = 1.0
 		else:
 			spr_body_tiles[i].visible = false
 	# Clip the topmost tile if body height isn't a perfect multiple
@@ -1668,30 +1715,30 @@ func _update_sprites() -> void:
 			top_tile.position = Vector2(body_shake_x, tile_bottom_y - remainder * 0.5)
 
 	# ── DOME ─────────────────────────────────────────────────────────────
-	# Dome sits on top of body: flat bottom on body top, curve faces up
 	var tip_y := -post_h
 	var dome_sx: float = (hw * 2.0) / TEX_DOME.get_width()
 	var dome_sy: float = (hw) / TEX_DOME.get_height()
 	spr_dome.scale = Vector2(dome_sx * face_sign, dome_sy)
-	# Position: dome center is half its scaled height above the body top
 	var dome_h: float = TEX_DOME.get_height() * dome_sy
 	spr_dome.position = Vector2(body_shake_x, tip_y - dome_h * 0.5)
-	spr_dome.self_modulate = body_c
+	_set_sprite_colors(spr_dome, body_c, shell_c)
+	if is_phase_dashing:
+		spr_dome.self_modulate.a = 0.4
+	else:
+		spr_dome.self_modulate.a = 1.0
 
 	# ── STALKS ───────────────────────────────────────────────────────────
-	# Stalks extend from dome top to eye positions — no gap
 	var dome_top_y: float = tip_y - dome_h
 	var left_eye_pos := Vector2(-STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
 	var right_eye_pos := Vector2(STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
 
-	# Stalk base starts inside the dome (2px overlap) so there's no gap
 	var stalk_base_y := dome_top_y + 2.0
 	var stalk_total_l := stalk_base_y - left_eye_pos.y
 	var stalk_total_r := stalk_base_y - right_eye_pos.y
 	spr_stalk_l.position = Vector2(-STALK_SPREAD + body_shake_x, (stalk_base_y + left_eye_pos.y) * 0.5)
 	spr_stalk_r.position = Vector2(STALK_SPREAD + body_shake_x, (stalk_base_y + right_eye_pos.y) * 0.5)
-	spr_stalk_l.self_modulate = body_c
-	spr_stalk_r.self_modulate = body_c
+	_set_sprite_colors(spr_stalk_l, body_c, shell_c)
+	_set_sprite_colors(spr_stalk_r, body_c, shell_c)
 	spr_stalk_l.scale = Vector2(1.0, stalk_total_l / TEX_STALK.get_height())
 	spr_stalk_r.scale = Vector2(1.0, stalk_total_r / TEX_STALK.get_height())
 

@@ -2,7 +2,19 @@
 """
 Generate placeholder PNG sprites for Bollard Bash.
 Run once: python3 scripts/generate_placeholders.py
-Then replace any PNG in sprites/ with your own art.
+Then replace any PNG with your own art (keep the same filename).
+
+PALETTE KEY COLORS (used by the palette_swap shader):
+  Body:  #FF00FF (highlight)  #CC00CC (midtone)  #990099 (shadow)
+  Shell: #00FFFF (highlight)  #00CCCC (midtone)  #009999 (shadow)
+Paint recolorable areas with these exact colors. Everything else stays as-is.
+
+SPRITE STRUCTURE:
+  sprites/snail/shared/    — shared by all characters (eyes, stalks)
+  sprites/snail/blink/     — Blink character sprites
+  sprites/snail/goopy/     — Goopy character sprites
+  sprites/snail/zappy/     — Zappy character sprites
+  sprites/arena/           — arena elements
 """
 
 import struct
@@ -26,7 +38,6 @@ def _png(width, height, pixels):
 
 
 def make_flat_rect(width, height, r, g, b, a=255):
-    """Solid flat-color rectangle."""
     raw = b""
     for y in range(height):
         raw += b"\x00"
@@ -36,7 +47,6 @@ def make_flat_rect(width, height, r, g, b, a=255):
 
 
 def make_flat_circle(size, r, g, b, a=255):
-    """Solid flat-color circle with transparent outside."""
     cx, cy = size / 2.0, size / 2.0
     radius = size / 2.0 - 1
     raw = b""
@@ -53,7 +63,6 @@ def make_flat_circle(size, r, g, b, a=255):
 
 
 def make_flat_dome(width, height, r, g, b):
-    """Flat dome: semicircle on top, flat bottom edge. Curves upward."""
     cx = width / 2.0
     radius = width / 2.0 - 1
     raw = b""
@@ -61,8 +70,6 @@ def make_flat_dome(width, height, r, g, b):
         raw += b"\x00"
         for x in range(width):
             dx = x - cx + 0.5
-            # y=0 is top of image, y=height-1 is bottom (flat edge)
-            # Distance from bottom-center: dome curves up from the bottom
             dy = (height - 1 - y)
             if (dx * dx + dy * dy) ** 0.5 <= radius:
                 raw += bytes([r, g, b, 255])
@@ -74,17 +81,33 @@ def make_flat_dome(width, height, r, g, b):
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPRITES = os.path.join(ROOT, "sprites")
 
+# Key palette midtone colors for placeholders
+BODY_MID = (204, 0, 204)   # #CC00CC
+SHELL_MID = (0, 204, 204)  # #00CCCC
+
 sprites = {
-    # ── SNAIL PARTS (neutral gray, tinted by code with self_modulate) ──
-    "snail/shell.png":          lambda: make_flat_circle(48, 200, 200, 200),
-    "snail/shell_spiral.png":   lambda: make_flat_circle(48, 140, 140, 140, 100),
-    "snail/body.png":           lambda: make_flat_rect(32, 90, 200, 200, 200),
-    "snail/dome.png":           lambda: make_flat_dome(32, 18, 200, 200, 200),
-    "snail/eye.png":            lambda: make_flat_circle(12, 230, 200, 48),
-    "snail/pupil.png":          lambda: make_flat_circle(8, 20, 15, 15),
-    "snail/eye_highlight.png":  lambda: make_flat_circle(6, 255, 255, 255),
-    "snail/stalk.png":          lambda: make_flat_rect(4, 16, 180, 180, 180),
-    "snail/grab_dot.png":       lambda: make_flat_circle(10, 220, 50, 40),
+    # ── SHARED SNAIL PARTS ──
+    "snail/shared/eye.png":            lambda: make_flat_circle(12, 230, 200, 48),
+    "snail/shared/pupil.png":          lambda: make_flat_circle(8, 20, 15, 15),
+    "snail/shared/eye_highlight.png":  lambda: make_flat_circle(6, 255, 255, 255),
+    "snail/shared/stalk.png":          lambda: make_flat_rect(4, 24, *BODY_MID),
+
+    # ── PER-CHARACTER SPRITES (use key colors for recoloring) ──
+    # Blink
+    "snail/blink/shell.png":          lambda: make_flat_circle(44, *SHELL_MID),
+    "snail/blink/shell_spiral.png":   lambda: make_flat_circle(44, *SHELL_MID, 100),
+    "snail/blink/body.png":           lambda: make_flat_rect(32, 8, *BODY_MID),
+    "snail/blink/dome.png":           lambda: make_flat_dome(32, 16, *BODY_MID),
+    # Goopy
+    "snail/goopy/shell.png":          lambda: make_flat_circle(44, *SHELL_MID),
+    "snail/goopy/shell_spiral.png":   lambda: make_flat_circle(44, *SHELL_MID, 100),
+    "snail/goopy/body.png":           lambda: make_flat_rect(32, 8, *BODY_MID),
+    "snail/goopy/dome.png":           lambda: make_flat_dome(32, 16, *BODY_MID),
+    # Zappy
+    "snail/zappy/shell.png":          lambda: make_flat_circle(44, *SHELL_MID),
+    "snail/zappy/shell_spiral.png":   lambda: make_flat_circle(44, *SHELL_MID, 100),
+    "snail/zappy/body.png":           lambda: make_flat_rect(32, 8, *BODY_MID),
+    "snail/zappy/dome.png":           lambda: make_flat_dome(32, 16, *BODY_MID),
 
     # ── ARENA PARTS (full color, not tinted) ──
     "arena/ground_dirt.png":    lambda: make_flat_rect(200, 50, 107, 77, 56),
@@ -105,3 +128,6 @@ for path, gen_fn in sprites.items():
 
 print(f"\nDone! {len(sprites)} placeholder sprites in sprites/")
 print("Replace any PNG with your own art (keep the same filename).")
+print("\nUse these key colors for recolorable areas:")
+print("  Body:  #FF00FF (highlight)  #CC00CC (midtone)  #990099 (shadow)")
+print("  Shell: #00FFFF (highlight)  #00CCCC (midtone)  #009999 (shadow)")
