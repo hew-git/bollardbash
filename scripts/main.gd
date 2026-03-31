@@ -1,9 +1,6 @@
 extends Node2D
 
 # ── Arena Sprite Textures (swap these PNGs for custom art) ─────────────────
-const TEX_DIRT := preload("res://sprites/arena/ground_dirt.png")
-const TEX_GRASS := preload("res://sprites/arena/ground_grass.png")
-const TEX_WALL := preload("res://sprites/arena/wall.png")
 const TEX_PLATFORM := preload("res://sprites/arena/platform.png")
 const TEX_ROCK := preload("res://sprites/arena/center_rock.png")
 const TEX_SLIME := preload("res://sprites/arena/slime_dot.png")
@@ -96,8 +93,8 @@ var death_phrase_timer: float = 0.0
 var last_death_time: float = -999.0  # Engine time of last death (for double death detection)
 
 # ── Hit Slomo + Shards + Ripple ────────────────────────────────────────────
-const SLOMO_DURATION := 0.4         # Real-time seconds of slowdown
-const SLOMO_SCALE := 0.25           # Time scale during slomo (25% speed)
+const SLOMO_DURATION := 0.6         # Real-time seconds of slowdown
+const SLOMO_SCALE := 0.4            # Time scale during slomo (40% speed)
 const SHARD_DURATION := 0.4         # How long impact shards last
 const SHARD_COUNT := 8              # Number of shards per impact
 const SHARD_SPEED := 300.0          # Shard outward speed
@@ -110,30 +107,31 @@ var ripple_rect: ColorRect          # Screen-covering rect with ripple shader
 
 # ── Select Screen State ─────────────────────────────────────────────────────
 var select_active: bool = true          # Start on select screen
-var select_phase: String = "character"  # "character" or "stage"
-var p1_char_index: int = 0              # 0=Blink, 1=Goopy, 2=Zappy
+var select_phase: String = "p1_pick"    # "p1_pick", "p2_pick", or "stage"
+var p1_char_index: int = 0              # 0=Blink, 1=Goopy, 2=Zappy, 3=Random
 var p2_char_index: int = 0
-var p1_confirmed: bool = false
-var p2_confirmed: bool = false
 var stage_index: int = 0                # 0=current, 1=random (placeholder)
 var select_layer: CanvasLayer
 var select_input_cooldown: float = 0.0  # Prevent rapid-fire navigation
 
-const CHAR_NAMES := ["BLINK", "GOOPY", "ZAPPY"]
+const CHAR_NAMES := ["BLINK", "GOOPY", "ZAPPY", "RANDOM"]
 const CHAR_COLORS := [
 	Color(0.7, 0.35, 1.0),  # Blink — purple
 	Color(0.3, 0.85, 0.3),  # Goopy — green
 	Color(0.35, 0.7, 1.0),  # Zappy — blue
+	Color(0.7, 0.7, 0.7),   # Random — gray
 ]
 const CHAR_ABILITY1_DESC := [
 	"Shell Toss + Teleport",
 	"Slime Shell (tether + zip)",
 	"Zap Shell (short range, fast)",
+	"???",
 ]
 const CHAR_ABILITY2_DESC := [
 	"Phase Dash (through platforms)",
 	"Goo Dash (charged, slime trail)",
 	"Bolt Dash (snappy, x3)",
+	"???",
 ]
 const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Random"]
 
@@ -155,8 +153,6 @@ var p2_shake_timer: float = 0.0
 
 # ── Slime State ─────────────────────────────────────────────────────────────
 var slime_dots: Array = []   # [{pos: Vector2, color: Color, age: float}]
-var p1_slime_timer: float = 0.0
-var p2_slime_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -247,12 +243,12 @@ uniform vec2 center = vec2(0.5, 0.5);
 uniform float time = 0.0;
 uniform float active = 0.0;
 uniform float duration = 0.5;
-uniform float ripple_width = 0.10;
-uniform float ripple_strength = 0.03;
+uniform float ripple_width = 0.20;
+uniform float ripple_strength = 0.05;
 
 void fragment() {
 	vec2 uv = SCREEN_UV;
-	if (active < 0.5 && time <= 0.0) {
+	if (active < 0.5) {
 		COLOR = textureLod(screen_tex, uv, 0.0);
 	} else {
 		float dist = distance(uv, center);
@@ -607,10 +603,7 @@ func _create_death_phrase_label() -> void:
 
 var select_title_label: Label
 var char_panels: Array = []          # [{bg: ColorRect, name_label: Label, desc_label: Label}]
-var p1_token_label: Label
-var p2_token_label: Label
-var p1_confirm_label: Label
-var p2_confirm_label: Label
+var select_cursor_label: Label       # Arrow indicator below selected panel
 var stage_label: Label
 var select_hint_label: Label
 var pixel_font: Font
@@ -627,104 +620,79 @@ func _create_select_screen() -> void:
 	select_layer.add_child(bg)
 
 	# Title
-	select_title_label = _make_select_label("CHOOSE YOUR SNAIL", 20, Color(1.0, 0.9, 0.3))
+	select_title_label = _make_select_label("P1: CHOOSE YOUR SNAIL", 18, Color(1.0, 0.9, 0.3))
 	select_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	select_title_label.offset_left = 0.0
-	select_title_label.offset_top = 20.0
-	select_title_label.offset_right = 1280.0
-	select_title_label.offset_bottom = 60.0
+	select_title_label.offset_left = 0
+	select_title_label.offset_top = 20
+	select_title_label.offset_right = 1280
+	select_title_label.offset_bottom = 60
 	select_layer.add_child(select_title_label)
 
-	# Character panels — 3 panels side by side (Smash Bros style)
-	var panel_w := 340.0
+	# Character panels — 4 panels side by side (BLINK, GOOPY, ZAPPY, RANDOM)
+	var panel_w := 270.0
 	var panel_h := 360.0
-	var panel_gap := 30.0
-	var total_w := panel_w * 3.0 + panel_gap * 2.0
-	var start_x := (1280.0 - total_w) / 2.0
+	var panel_gap := 20.0
+	var total_w := panel_w * 4.0 + panel_gap * 3.0
+	var start_x := floorf((1280.0 - total_w) / 2.0)
 	var panel_y := 80.0
 
-	for ci in 3:
+	for ci in 4:
 		var px := start_x + float(ci) * (panel_w + panel_gap)
 		# Panel background
 		var panel_bg := ColorRect.new()
 		panel_bg.color = CHAR_COLORS[ci].darkened(0.7)
-		panel_bg.offset_left = px
+		panel_bg.offset_left = floorf(px)
 		panel_bg.offset_top = panel_y
-		panel_bg.offset_right = px + panel_w
+		panel_bg.offset_right = floorf(px + panel_w)
 		panel_bg.offset_bottom = panel_y + panel_h
 		select_layer.add_child(panel_bg)
 
 		# Character name at top of panel
-		var name_lbl := _make_select_label(CHAR_NAMES[ci], 16, CHAR_COLORS[ci])
+		var name_lbl := _make_select_label(CHAR_NAMES[ci], 14, CHAR_COLORS[ci])
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_lbl.offset_left = px
-		name_lbl.offset_top = panel_y + 15.0
-		name_lbl.offset_right = px + panel_w
-		name_lbl.offset_bottom = panel_y + 50.0
+		name_lbl.offset_left = floorf(px)
+		name_lbl.offset_top = panel_y + 15
+		name_lbl.offset_right = floorf(px + panel_w)
+		name_lbl.offset_bottom = panel_y + 50
 		select_layer.add_child(name_lbl)
 
 		# Ability descriptions
 		var desc_text: String = "SQ: " + CHAR_ABILITY1_DESC[ci] + "\nX: " + CHAR_ABILITY2_DESC[ci] + "\nL1: Parry"
-		var desc_lbl := _make_select_label(desc_text, 8, Color(0.75, 0.75, 0.75))
+		var desc_lbl := _make_select_label(desc_text, 7, Color(0.75, 0.75, 0.75))
 		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		desc_lbl.offset_left = px + 10.0
-		desc_lbl.offset_top = panel_y + 200.0
-		desc_lbl.offset_right = px + panel_w - 10.0
-		desc_lbl.offset_bottom = panel_y + panel_h - 10.0
+		desc_lbl.offset_left = floorf(px) + 8
+		desc_lbl.offset_top = panel_y + 200
+		desc_lbl.offset_right = floorf(px + panel_w) - 8
+		desc_lbl.offset_bottom = panel_y + panel_h - 10
 		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		select_layer.add_child(desc_lbl)
 
-		char_panels.append({"bg": panel_bg, "name": name_lbl, "desc": desc_lbl, "x": px, "w": panel_w, "y": panel_y, "h": panel_h})
+		char_panels.append({"bg": panel_bg, "name": name_lbl, "desc": desc_lbl, "x": floorf(px), "w": panel_w, "y": panel_y, "h": panel_h})
 
-	# P1 token — sits below the selected panel
-	p1_token_label = _make_select_label("P1", 12, Color(1.0, 0.4, 0.4))
-	p1_token_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p1_token_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	p1_token_label.add_theme_constant_override("outline_size", 3)
-	select_layer.add_child(p1_token_label)
+	# Cursor label — arrow below the currently selected panel
+	select_cursor_label = _make_select_label("^", 14, Color(1.0, 0.9, 0.3))
+	select_cursor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	select_cursor_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	select_cursor_label.add_theme_constant_override("outline_size", 3)
+	select_layer.add_child(select_cursor_label)
 
-	# P2 token
-	p2_token_label = _make_select_label("P2", 12, Color(0.4, 0.6, 1.0))
-	p2_token_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p2_token_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	p2_token_label.add_theme_constant_override("outline_size", 3)
-	select_layer.add_child(p2_token_label)
-
-	# P1 confirm status
-	p1_confirm_label = _make_select_label("", 10, Color(0.7, 0.7, 0.7))
-	p1_confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p1_confirm_label.offset_left = 0.0
-	p1_confirm_label.offset_top = 470.0
-	p1_confirm_label.offset_right = 640.0
-	p1_confirm_label.offset_bottom = 500.0
-	select_layer.add_child(p1_confirm_label)
-
-	# P2 confirm status
-	p2_confirm_label = _make_select_label("", 10, Color(0.7, 0.7, 0.7))
-	p2_confirm_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	p2_confirm_label.offset_left = 640.0
-	p2_confirm_label.offset_top = 470.0
-	p2_confirm_label.offset_right = 1280.0
-	p2_confirm_label.offset_bottom = 500.0
-	select_layer.add_child(p2_confirm_label)
-
-	# Stage select label (shown after both confirm)
+	# Stage select label (shown after both pick)
 	stage_label = _make_select_label("", 14, Color(1.0, 0.9, 0.3))
 	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stage_label.offset_left = 200.0
-	stage_label.offset_top = 530.0
-	stage_label.offset_right = 1080.0
-	stage_label.offset_bottom = 570.0
+	stage_label.offset_left = 200
+	stage_label.offset_top = 530
+	stage_label.offset_right = 1080
+	stage_label.offset_bottom = 570
 	stage_label.visible = false
 	select_layer.add_child(stage_label)
 
 	# Hint label at bottom
 	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 8, Color(0.45, 0.45, 0.45))
 	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	select_hint_label.offset_left = 100.0
-	select_hint_label.offset_top = 650.0
-	select_hint_label.offset_right = 1180.0
-	select_hint_label.offset_bottom = 680.0
+	select_hint_label.offset_left = 100
+	select_hint_label.offset_top = 650
+	select_hint_label.offset_right = 1180
+	select_hint_label.offset_bottom = 680
 	select_layer.add_child(select_hint_label)
 
 func _make_select_label(text: String, size: int, color: Color) -> Label:
@@ -739,11 +707,9 @@ func _make_select_label(text: String, size: int, color: Color) -> Label:
 
 func _show_select_screen() -> void:
 	select_active = true
-	select_phase = "character"
-	p1_confirmed = false
-	p2_confirmed = false
+	select_phase = "p1_pick"
 	p1_char_index = 0
-	p2_char_index = randi() % 3 if player2.is_ai else 0
+	p2_char_index = 0
 	stage_index = 0
 	select_input_cooldown = 0.0
 	select_layer.visible = true
@@ -752,47 +718,63 @@ func _show_select_screen() -> void:
 
 
 func _update_select_display() -> void:
-	if select_phase == "character":
-		select_title_label.text = "CHOOSE YOUR SNAIL"
-		stage_label.visible = false
+	stage_label.visible = false
 
-		# Highlight selected panels, dim others
-		for ci in 3:
+	if select_phase == "p1_pick":
+		select_title_label.text = "P1: CHOOSE YOUR SNAIL"
+		select_title_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5))
+		# Highlight P1's current selection
+		var cur := p1_char_index
+		for ci in 4:
 			var panel = char_panels[ci]
-			var is_p1 := (ci == p1_char_index)
-			var is_p2 := (ci == p2_char_index)
-			if is_p1 or is_p2:
+			panel.bg.color = CHAR_COLORS[ci].darkened(0.5) if ci == cur else CHAR_COLORS[ci].darkened(0.8)
+		# Position cursor below selected panel
+		var p := char_panels[cur]
+		select_cursor_label.offset_left = p.x
+		select_cursor_label.offset_right = p.x + p.w
+		select_cursor_label.offset_top = p.y + p.h + 5
+		select_cursor_label.offset_bottom = p.y + p.h + 30
+		select_cursor_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5))
+		select_cursor_label.visible = true
+
+	elif select_phase == "p2_pick":
+		if player2.is_ai:
+			select_title_label.text = "P1: CHOOSE P2's SNAIL"
+		else:
+			select_title_label.text = "P2: CHOOSE YOUR SNAIL"
+		select_title_label.add_theme_color_override("font_color", Color(0.5, 0.7, 1.0))
+		# Dim P1's locked-in choice, highlight P2's cursor
+		var cur := p2_char_index
+		for ci in 4:
+			var panel = char_panels[ci]
+			if ci == p1_char_index:
+				# P1's locked panel — subtle highlight
+				panel.bg.color = CHAR_COLORS[ci].darkened(0.55)
+			elif ci == cur:
 				panel.bg.color = CHAR_COLORS[ci].darkened(0.5)
 			else:
 				panel.bg.color = CHAR_COLORS[ci].darkened(0.8)
-
-		# Position P1 token below selected panel
-		var p1_panel = char_panels[p1_char_index]
-		p1_token_label.offset_left = p1_panel.x
-		p1_token_label.offset_right = p1_panel.x + p1_panel.w * 0.5
-		p1_token_label.offset_top = p1_panel.y + p1_panel.h + 5.0
-		p1_token_label.offset_bottom = p1_panel.y + p1_panel.h + 30.0
-
-		# Position P2 token below selected panel
-		var p2_panel = char_panels[p2_char_index]
-		p2_token_label.offset_left = p2_panel.x + p2_panel.w * 0.5
-		p2_token_label.offset_right = p2_panel.x + p2_panel.w
-		p2_token_label.offset_top = p2_panel.y + p2_panel.h + 5.0
-		p2_token_label.offset_bottom = p2_panel.y + p2_panel.h + 30.0
-
-		# Confirm labels
-		p1_confirm_label.text = "P1 READY!" if p1_confirmed else "P1: Q to lock"
-		p1_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p1_confirmed else Color(0.7, 0.7, 0.7))
-		if player2.is_ai:
-			p2_confirm_label.text = "P2 READY!" if p2_confirmed else "P2(AI): F to lock"
-		else:
-			p2_confirm_label.text = "P2 READY!" if p2_confirmed else "P2: Shift to lock"
-		p2_confirm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.3) if p2_confirmed else Color(0.7, 0.7, 0.7))
+		var p := char_panels[cur]
+		select_cursor_label.offset_left = p.x
+		select_cursor_label.offset_right = p.x + p.w
+		select_cursor_label.offset_top = p.y + p.h + 5
+		select_cursor_label.offset_bottom = p.y + p.h + 30
+		select_cursor_label.add_theme_color_override("font_color", Color(0.5, 0.7, 1.0))
+		select_cursor_label.visible = true
 
 	elif select_phase == "stage":
 		select_title_label.text = "CHOOSE STAGE"
+		select_title_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 		stage_label.visible = true
 		stage_label.text = "< " + STAGE_NAMES[stage_index] + " >"
+		select_cursor_label.visible = false
+		# Show both locked character panels
+		for ci in 4:
+			var panel = char_panels[ci]
+			if ci == p1_char_index or ci == p2_char_index:
+				panel.bg.color = CHAR_COLORS[ci].darkened(0.5)
+			else:
+				panel.bg.color = CHAR_COLORS[ci].darkened(0.8)
 
 
 func _update_select_screen(delta: float) -> void:
@@ -803,93 +785,61 @@ func _update_select_screen(delta: float) -> void:
 	if select_input_cooldown > 0.0:
 		return
 
-	if select_phase == "character":
-		_handle_char_select_input()
-	elif select_phase == "stage":
-		_handle_stage_select_input()
+	match select_phase:
+		"p1_pick":
+			_handle_p1_pick_input()
+		"p2_pick":
+			_handle_p2_pick_input()
+		"stage":
+			_handle_stage_select_input()
 
 
-func _handle_char_select_input() -> void:
-	var parry_pressed := Input.is_action_just_pressed("p1_parry")
+func _handle_p1_pick_input() -> void:
+	# P1 navigates with left/right, confirms with ability1
+	if Input.is_action_just_pressed("p1_lean_left"):
+		p1_char_index = (p1_char_index - 1 + 4) % 4
+		select_input_cooldown = 0.15
+		_update_select_display()
+		return
+	if Input.is_action_just_pressed("p1_lean_right"):
+		p1_char_index = (p1_char_index + 1) % 4
+		select_input_cooldown = 0.15
+		_update_select_display()
+		return
+	if Input.is_action_just_pressed("p1_ability1"):
+		select_phase = "p2_pick"
+		select_input_cooldown = 0.2
+		_update_select_display()
 
-	# P1 navigation (WASD / D-Pad device 0)
-	if not p1_confirmed:
-		if Input.is_action_just_pressed("p1_lean_left"):
-			p1_char_index = (p1_char_index - 1 + 3) % 3
-			select_input_cooldown = 0.15
-			_update_select_display()
-			return
-		if Input.is_action_just_pressed("p1_lean_right"):
-			p1_char_index = (p1_char_index + 1) % 3
-			select_input_cooldown = 0.15
-			_update_select_display()
-			return
-		if Input.is_action_just_pressed("p1_ability1"):
-			p1_confirmed = true
-			select_input_cooldown = 0.2
-			_update_select_display()
-			return
 
-	# P2 navigation — if AI, P1 controls P2's pick with W/S + ability2
-	if player2.is_ai:
-		if not p2_confirmed:
-			if Input.is_action_just_pressed("p1_aim_up"):
-				p2_char_index = (p2_char_index - 1 + 3) % 3
-				select_input_cooldown = 0.15
-				_update_select_display()
-				return
-			if Input.is_action_just_pressed("p1_aim_down"):
-				p2_char_index = (p2_char_index + 1) % 3
-				select_input_cooldown = 0.15
-				_update_select_display()
-				return
-			if Input.is_action_just_pressed("p1_ability2"):
-				p2_confirmed = true
-				select_input_cooldown = 0.2
-				_update_select_display()
-				return
-		elif parry_pressed:
-			# Undo P2 AI pick first
-			p2_confirmed = false
-			select_input_cooldown = 0.2
-			_update_select_display()
-			return
-	else:
-		# P2 is human
-		if not p2_confirmed:
-			if Input.is_action_just_pressed("p2_lean_left"):
-				p2_char_index = (p2_char_index - 1 + 3) % 3
-				select_input_cooldown = 0.15
-				_update_select_display()
-				return
-			if Input.is_action_just_pressed("p2_lean_right"):
-				p2_char_index = (p2_char_index + 1) % 3
-				select_input_cooldown = 0.15
-				_update_select_display()
-				return
-			if Input.is_action_just_pressed("p2_ability1"):
-				p2_confirmed = true
-				select_input_cooldown = 0.2
-				_update_select_display()
-				return
-		else:
-			if Input.is_action_just_pressed("p2_parry"):
-				p2_confirmed = false
-				select_input_cooldown = 0.2
-				_update_select_display()
-				return
+func _handle_p2_pick_input() -> void:
+	# P2 picks — if AI, P1 controls with same left/right + ability1
+	# If human, P2 uses their own controls
+	var use_p1_controls := player2.is_ai
+	var left_action: String = "p1_lean_left" if use_p1_controls else "p2_lean_left"
+	var right_action: String = "p1_lean_right" if use_p1_controls else "p2_lean_right"
+	var confirm_action: String = "p1_ability1" if use_p1_controls else "p2_ability1"
+	var back_action: String = "p1_parry" if use_p1_controls else "p2_parry"
 
-	# P1 undo (only if P2 AI isn't the one being undone)
-	if p1_confirmed and parry_pressed:
-		p1_confirmed = false
+	if Input.is_action_just_pressed(left_action):
+		p2_char_index = (p2_char_index - 1 + 4) % 4
+		select_input_cooldown = 0.15
+		_update_select_display()
+		return
+	if Input.is_action_just_pressed(right_action):
+		p2_char_index = (p2_char_index + 1) % 4
+		select_input_cooldown = 0.15
+		_update_select_display()
+		return
+	if Input.is_action_just_pressed(confirm_action):
+		select_phase = "stage"
 		select_input_cooldown = 0.2
 		_update_select_display()
 		return
-
-	# Both confirmed → move to stage select
-	if p1_confirmed and p2_confirmed:
-		select_phase = "stage"
-		select_input_cooldown = 0.3
+	# Back to P1 pick
+	if Input.is_action_just_pressed(back_action):
+		select_phase = "p1_pick"
+		select_input_cooldown = 0.2
 		_update_select_display()
 
 
@@ -907,18 +857,19 @@ func _handle_stage_select_input() -> void:
 		_confirm_selections()
 	# Go back with parry
 	if Input.is_action_just_pressed("p1_parry"):
-		select_phase = "character"
-		p1_confirmed = false
-		p2_confirmed = false
+		select_phase = "p2_pick"
 		stage_label.visible = false
 		select_input_cooldown = 0.2
 		_update_select_display()
 
 
 func _confirm_selections() -> void:
+	# Resolve RANDOM picks (index 3 → random 0..2)
+	var p1_final := p1_char_index if p1_char_index < 3 else randi() % 3
+	var p2_final := p2_char_index if p2_char_index < 3 else randi() % 3
 	# Apply character types
-	player1.character_type = p1_char_index
-	player2.character_type = p2_char_index
+	player1.character_type = p1_final
+	player2.character_type = p2_final
 	# Set character-themed colors
 	var char_body_colors: Array[Color] = [
 		Color("B080E0"),  # Blink — purple
@@ -930,15 +881,15 @@ func _confirm_selections() -> void:
 		Color("306828"),  # Goopy — deep green
 		Color("2060A0"),  # Zappy — deep blue
 	]
-	player1.bollard_color = char_body_colors[p1_char_index]
-	player1.accent_color = char_accent_colors[p1_char_index]
+	player1.bollard_color = char_body_colors[p1_final]
+	player1.accent_color = char_accent_colors[p1_final]
 	# If P2 picked the same character, lighten their colors so they're distinguishable
-	if p2_char_index == p1_char_index:
-		player2.bollard_color = char_body_colors[p2_char_index].lightened(0.25)
-		player2.accent_color = char_accent_colors[p2_char_index].lightened(0.25)
+	if p2_final == p1_final:
+		player2.bollard_color = char_body_colors[p2_final].lightened(0.25)
+		player2.accent_color = char_accent_colors[p2_final].lightened(0.25)
 	else:
-		player2.bollard_color = char_body_colors[p2_char_index]
-		player2.accent_color = char_accent_colors[p2_char_index]
+		player2.bollard_color = char_body_colors[p2_final]
+		player2.accent_color = char_accent_colors[p2_final]
 	# Apply stage — resolve "Random" first
 	var final_stage := stage_index
 	if STAGE_NAMES[final_stage] == "Random":
@@ -1258,6 +1209,7 @@ func _restart_game(go_to_select: bool = true) -> void:
 	ripple_timer = 0.0
 	if ripple_rect and ripple_rect.material:
 		ripple_rect.material.set_shader_parameter("active", 0.0)
+		ripple_rect.material.set_shader_parameter("time", 0.0)
 	# Clean up any lingering shards
 	for sh in impact_shards:
 		sh.node.queue_free()
@@ -1317,6 +1269,10 @@ func _restart_game(go_to_select: bool = true) -> void:
 		p.is_bolt_dashing = false
 		p.bolt_dash_cooldown = 0.0
 		p.bolt_dashes_remaining = p.BOLT_DASH_MAX
+		for dt in p.drop_through_bodies:
+			if is_instance_valid(dt.body):
+				p.remove_collision_exception_with(dt.body)
+		p.drop_through_bodies.clear()
 		p.damage_percent = 0.0
 		p.extend_amount = 0.5
 		p.linear_velocity = Vector2.ZERO

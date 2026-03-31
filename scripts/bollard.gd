@@ -150,7 +150,7 @@ var parry_cooldown: float = 0.0
 var can_teleport_to_shell: bool = false  # True while shell is flying (press ability1 again)
 var blink_toss_used: bool = false        # Shell toss once per jump
 var blink_teleport_used: bool = false    # Teleport once per jump
-var blink_phase_used: bool = false       # Phase dash once per jump # Once per airborne session — resets on ground touch
+var blink_phase_used: bool = false       # Phase dash once per jump — resets on ground touch
 var is_phase_dashing: bool = false
 var phase_dash_timer: float = 0.0
 var phase_dash_cooldown: float = 0.0
@@ -165,6 +165,10 @@ var goo_dash_timer: float = 0.0
 var goo_dash_cooldown: float = 0.0
 var goo_trails: Array = []                   # [{pos: Vector2, timer: float}] — sticky puddles
 
+# ── Platform Drop-Through ───────────────────────────────────────────────────
+var drop_through_bodies: Array = []  # StaticBody2Ds we're temporarily ignoring
+const DROP_THROUGH_TIME := 0.25      # Seconds to keep collision disabled
+
 # ── Zappy State ─────────────────────────────────────────────────────────────
 var is_bolt_charging: bool = false
 var bolt_charge_amount: float = 0.0
@@ -176,7 +180,7 @@ var bolt_dash_cooldown: float = 0.0
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
 
-# ── Blink State ─────────────────────────────────────────────────────────────
+# ── Eye Blink Animation ─────────────────────────────────────────────────────
 var is_blinking: bool = false
 var blink_timer: float = 0.0
 var next_blink_time: float = 3.0
@@ -306,6 +310,7 @@ func _physics_process(delta: float) -> void:
 				blink_teleport_used = false
 				blink_phase_used = false
 				break
+	_update_drop_through(delta)
 	_update_parry(delta)
 	_update_charge(delta)
 	_update_shell_toss(delta)
@@ -414,6 +419,53 @@ func _update_parry(delta: float) -> void:
 		# Invincibility ends with parry (unless respawn invincibility is active)
 		if invincible_timer < 0.1:
 			is_invincible = false
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ PLATFORM DROP-THROUGH                                                    ║
+# ║                                                                           ║
+# ║ Hold down while on a one-way platform to fall through it.                ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _update_drop_through(delta: float) -> void:
+	# Age and restore drop-through exceptions
+	var i := drop_through_bodies.size() - 1
+	while i >= 0:
+		drop_through_bodies[i].timer -= delta
+		if drop_through_bodies[i].timer <= 0.0:
+			var body: StaticBody2D = drop_through_bodies[i].body
+			if is_instance_valid(body):
+				remove_collision_exception_with(body)
+			drop_through_bodies.remove_at(i)
+		i -= 1
+
+	# Check if holding down while on a one-way platform
+	var holding_down := false
+	if is_ai:
+		holding_down = false  # AI doesn't drop through
+	else:
+		holding_down = Input.is_action_pressed(act_aim_down)
+	if not holding_down:
+		return
+	for body in get_colliding_bodies():
+		if not (body is StaticBody2D):
+			continue
+		# Check if this body has a one-way collision shape
+		var is_one_way := false
+		for child in body.get_children():
+			if child is CollisionShape2D and child.one_way_collision:
+				is_one_way = true
+				break
+		if is_one_way:
+			# Already dropping through this one?
+			var already := false
+			for dt in drop_through_bodies:
+				if dt.body == body:
+					already = true
+					break
+			if not already:
+				add_collision_exception_with(body)
+				drop_through_bodies.append({"body": body, "timer": DROP_THROUGH_TIME})
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -760,7 +812,7 @@ func _check_launch() -> void:
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ CHARGE ATTACK                                                            ║
 # ║                                                                           ║
-# ║ Hold charge + lean direction to build up power (0.8s to full).           ║
+# ║ Hold charge + lean direction to build up power (0.3s to full).           ║
 # ║ Release to dash in that direction. Full charge = big impulse + damage.   ║
 # ║ During dash you're briefly invulnerable.                                 ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -824,9 +876,8 @@ func _check_charge_hits() -> void:
 				return
 			body.take_damage(CHARGE_DAMAGE, dir)
 			# Billiard-style impact: big extra knockback on target
-			if body is RigidBody2D:
-				var impact_force := linear_velocity.length() * 3.0
-				body.apply_central_impulse(dir * impact_force)
+			var impact_force := linear_velocity.length() * 3.0
+			body.apply_central_impulse(dir * impact_force)
 			# Slomo + flash
 			var hit_pos := (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
@@ -1150,6 +1201,11 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	is_bolt_dashing = false
 	bolt_dash_cooldown = 0.0
 	bolt_dashes_remaining = BOLT_DASH_MAX
+	# Clear drop-through exceptions
+	for dt in drop_through_bodies:
+		if is_instance_valid(dt.body):
+			remove_collision_exception_with(dt.body)
+	drop_through_bodies.clear()
 
 func _update_emerge(delta: float) -> void:
 	emerge_progress = minf(emerge_progress + delta / EMERGE_DURATION, 1.0)
