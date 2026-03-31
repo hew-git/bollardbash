@@ -3,7 +3,7 @@ extends Node2D
 # ── Arena Sprite Textures (swap these PNGs for custom art) ─────────────────
 const TEX_PLATFORM := preload("res://sprites/arena/platform.png")
 const TEX_ROCK := preload("res://sprites/arena/center_rock.png")
-const TEX_SLIME := preload("res://sprites/arena/slime_dot.png")
+
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
 const BLAST_ZONE := Rect2(-700, -900, 2680, 2100)
@@ -70,7 +70,7 @@ const DOUBLE_DEATH_WINDOW := 0.5    # Seconds — deaths this close count as dou
 # ── Slime Trail ─────────────────────────────────────────────────────────────
 const SLIME_LIFETIME := 4.0
 const SLIME_INTERVAL := 0.08
-const SLIME_MAX_DOTS := 400
+const SLIME_MAX_DOTS := 200
 
 # ── Node References ─────────────────────────────────────────────────────────
 @onready var player1: Bollard = $Player1
@@ -231,7 +231,7 @@ func _setup_arena() -> void:
 	_clay_platforms()
 	_create_wall(WALL_LEFT_X, "WallLeft")
 	_create_wall(WALL_RIGHT_X, "WallRight")
-	_create_top_platforms()
+	_create_corner_platforms()
 	_setup_background()
 
 
@@ -286,6 +286,7 @@ void fragment() {
 	# Add to a CanvasLayer so it renders over everything
 	var ripple_layer := CanvasLayer.new()
 	ripple_layer.layer = 100
+	ripple_rect.visible = false  # Only visible during active ripple
 	add_child(ripple_layer)
 	ripple_layer.add_child(ripple_rect)
 
@@ -406,17 +407,21 @@ func _create_wall(x_pos: float, wall_name: String) -> void:
 	wall.add_child(wall_visual)
 
 
-func _create_top_platforms() -> void:
-	# Two platforms at the top of the arena, mirroring the bottom side walls
-	var plat_width := 160.0
-	var plat_height := 16.0
-	for side_info in [
-		{"x": 180.0, "name": "TopPlatLeft"},
-		{"x": 1100.0, "name": "TopPlatRight"},
-	]:
+func _create_corner_platforms() -> void:
+	# Angled platforms in each corner of the arena
+	var plat_width := 130.0
+	var plat_height := 14.0
+	var corners := [
+		{"x": 160.0, "y": 180.0, "rot": -0.4, "name": "CornerTopLeft"},
+		{"x": 1120.0, "y": 180.0, "rot": 0.4, "name": "CornerTopRight"},
+		{"x": 130.0, "y": 440.0, "rot": -0.35, "name": "CornerBottomLeft"},
+		{"x": 1150.0, "y": 440.0, "rot": 0.35, "name": "CornerBottomRight"},
+	]
+	for info in corners:
 		var plat := StaticBody2D.new()
-		plat.name = side_info.name
-		plat.position = Vector2(side_info.x, 260.0)
+		plat.name = info.name
+		plat.position = Vector2(info.x, info.y)
+		plat.rotation = info.rot
 		add_child(plat)
 		var shape := CollisionShape2D.new()
 		var rect := RectangleShape2D.new()
@@ -453,16 +458,17 @@ func _apply_stage(idx: int) -> void:
 
 func _setup_meadow_stage() -> void:
 	# Default stage — restore normal arena elements
-	# Show original ground, center circle, platforms, walls
 	ground.visible = true
 	center_circle.visible = true
-	# Re-enable collision for ground child shapes
 	for child in ground.get_children():
 		if child is CollisionPolygon2D:
 			child.disabled = false
 	for child in center_circle.get_children():
 		if child is CollisionShape2D:
 			child.disabled = false
+	# Move mid-platforms inward for tighter arena
+	$PlatformLeft.position = Vector2(350, 330)
+	$PlatformRight.position = Vector2(930, 330)
 	$PlatformLeft.visible = true
 	$PlatformRight.visible = true
 	for child in $PlatformLeft.get_children():
@@ -471,15 +477,16 @@ func _setup_meadow_stage() -> void:
 	for child in $PlatformRight.get_children():
 		if child is CollisionShape2D:
 			child.disabled = false
-	# Show walls and top platforms
-	for name_str in ["WallLeft", "WallRight", "TopPlatLeft", "TopPlatRight"]:
+	# Show walls and corner platforms
+	var meadow_nodes := ["WallLeft", "WallRight",
+		"CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]
+	for name_str in meadow_nodes:
 		var node: Node = get_node_or_null(name_str)
 		if node:
 			node.visible = true
 			for child in node.get_children():
 				if child is CollisionShape2D or child is CollisionPolygon2D:
 					child.disabled = false
-	# Meadow background
 	$Background.color = Color(0.53, 0.81, 0.92)
 
 func _setup_slab_stage() -> void:
@@ -497,7 +504,9 @@ func _setup_slab_stage() -> void:
 	for child in $PlatformRight.get_children():
 		if child is CollisionShape2D:
 			child.disabled = true
-	for name_str in ["WallLeft", "WallRight", "TopPlatLeft", "TopPlatRight"]:
+	var slab_hide := ["WallLeft", "WallRight",
+		"CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]
+	for name_str in slab_hide:
 		var node: Node = get_node_or_null(name_str)
 		if node:
 			node.visible = false
@@ -880,8 +889,8 @@ func _confirm_selections() -> void:
 	var p1_final: int = p1_char_index if p1_char_index < 3 else randi() % 3
 	var p2_final: int = p2_char_index if p2_char_index < 3 else randi() % 3
 	# Apply character types
-	player1.character_type = p1_final
-	player2.character_type = p2_final
+	player1.character_type = p1_final as Bollard.CharacterType
+	player2.character_type = p2_final as Bollard.CharacterType
 	# Set character-themed colors
 	var char_body_colors: Array[Color] = [
 		Color("B080E0"),  # Blink — purple
@@ -902,6 +911,9 @@ func _confirm_selections() -> void:
 	else:
 		player2.bollard_color = char_body_colors[p2_final]
 		player2.accent_color = char_accent_colors[p2_final]
+	# Update shell sprite tints to match new colors
+	player1.update_shell_colors()
+	player2.update_shell_colors()
 	# Apply stage — resolve "Random" first
 	var final_stage := stage_index
 	if STAGE_NAMES[final_stage] == "Random":
@@ -1039,6 +1051,7 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 	ripple_timer = RIPPLE_DURATION
 	ripple_center = impact_pos
 	if ripple_rect and ripple_rect.material:
+		ripple_rect.visible = true
 		var mat: ShaderMaterial = ripple_rect.material
 		# Convert world pos to UV (0..1) relative to camera view
 		var cam: Camera2D = $Camera2D
@@ -1118,6 +1131,7 @@ func _update_slomo_and_flashes(delta: float) -> void:
 			mat.set_shader_parameter("time", elapsed)
 			if ripple_timer <= 0.0:
 				mat.set_shader_parameter("active", 0.0)
+				ripple_rect.visible = false
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1225,6 +1239,7 @@ func _restart_game(go_to_select: bool = true) -> void:
 	slomo_timer = 0.0
 	ripple_timer = 0.0
 	if ripple_rect and ripple_rect.material:
+		ripple_rect.visible = false
 		ripple_rect.material.set_shader_parameter("active", 0.0)
 		ripple_rect.material.set_shader_parameter("time", 0.0)
 	# Clean up any lingering shards
@@ -1355,7 +1370,8 @@ func _update_slime(delta: float) -> void:
 			slime_dots.remove_at(i)
 		i -= 1
 
-	queue_redraw()
+	if not slime_dots.is_empty():
+		queue_redraw()
 
 var _slime_timers := {}
 
@@ -1384,17 +1400,13 @@ func _try_add_slime(player: Bollard, delta: float) -> void:
 
 
 func _draw() -> void:
-	# Slime dots — drawn as wide, flat puddles hugging the ground
-	var slime_w := TEX_SLIME.get_width()
-	var slime_h := TEX_SLIME.get_height()
+	# Slime dots — flat colored ellipses (no texture lookup = much cheaper)
 	for dot in slime_dots:
-		var alpha := clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.6
+		var alpha := clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.55
 		var c := Color(dot.color.r, dot.color.g, dot.color.b, alpha)
-		# Flatten: draw 1.6x wider and 0.4x shorter for a viscous puddle look
-		var w := slime_w * 1.6
-		var h := slime_h * 0.4
-		var rect := Rect2(dot.pos.x - w * 0.5, dot.pos.y - h * 0.5, w, h)
-		draw_texture_rect(TEX_SLIME, rect, false, c)
+		var w := 14.0
+		var h := 5.0
+		draw_rect(Rect2(dot.pos.x - w * 0.5, dot.pos.y - h * 0.5, w, h), c)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗

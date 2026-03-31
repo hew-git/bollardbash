@@ -59,9 +59,9 @@ const PHASE_DASH_COOLDOWN := 0.8
 const GOOPY_TOSS_KNOCKBACK_MULT := 0.3  # 30% of Blink's shell knockback
 const GOOPY_ZIP_IMPULSE := 2200.0    # Impulse when zipping to shell
 const GOOPY_SWING_PULL := 1200.0     # Looser swing force (lower = looser)
-const GOOPY_TETHER_DURATION := 3.0   # Max tether swing time
-const GOO_DASH_IMPULSE := 1400.0     # Max dash impulse (at full charge)
-const GOO_DASH_MIN_IMPULSE := 500.0  # Min dash impulse (quick tap)
+const GOOPY_TETHER_DURATION := 6.0   # Max tether swing time (long for strategic use)
+const GOO_DASH_IMPULSE := 2100.0     # Max dash impulse (1.5x for longer travel)
+const GOO_DASH_MIN_IMPULSE := 750.0  # Min dash impulse (1.5x for longer travel)
 const GOO_DASH_CHARGE_TIME := 0.5    # Charge time for full dash
 const GOO_DASH_TIME := 0.4           # Dash duration
 const GOO_DASH_COOLDOWN := 0.8       # Cooldown
@@ -76,10 +76,11 @@ const ZAPPY_TOSS_DAMAGE := 12.0      # Light damage
 const ZAPPY_TOSS_KNOCKBACK := 200.0  # Light knockback
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
-const BOLT_DASH_CHARGE_TIME := 0.15  # Half of 0.3 — much snappier
-const BOLT_DASH_IMPULSE := 1440.0    # Dash impulse
-const BOLT_DASH_TIME := 0.25         # Shorter dash = snappier feel
-const BOLT_DASH_COOLDOWN := 1.2      # Cooldown after all 3 dashes used
+const ZAPPY_TOSS_MAX_RANGE := 280.0  # Max distance before shell stops
+const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
+const BOLT_DASH_IMPULSE := 1800.0    # Stronger impulse for quicker burst
+const BOLT_DASH_TIME := 0.15         # Very short dash duration
+const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
 # ── Visual Constants ────────────────────────────────────────────────────────
@@ -137,6 +138,7 @@ var is_toss_charging: bool = false      # Holding toss to charge aim+power
 var toss_charge_amount: float = 0.0     # 0..1
 var shell_toss_pos: Vector2 = Vector2.ZERO
 var shell_toss_vel: Vector2 = Vector2.ZERO
+var shell_toss_origin: Vector2 = Vector2.ZERO  # Where the shell was thrown from
 var shell_toss_timer: float = 0.0
 var shell_toss_cooldown: float = 0.0
 var shell_toss_hit: bool = false        # Already hit someone this throw
@@ -317,6 +319,7 @@ func _physics_process(delta: float) -> void:
 	_update_shell_toss(delta)
 	_update_phase_dash(delta)
 	_update_goopy_tether(delta)
+	_update_goopy_zip(delta)
 	_update_goo_dash(delta)
 	_update_goo_trails(delta)
 	_update_bolt_dash(delta)
@@ -332,7 +335,14 @@ func _physics_process(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _get_aim_dir() -> Vector2:
-	# Build a 2D aim vector from WASD / left stick
+	# Try analog stick first (smooth aiming for controller)
+	var joy_device := player_id - 1  # P1 = device 0, P2 = device 1
+	var stick := Vector2(
+		Input.get_joy_axis(joy_device, JOY_AXIS_LEFT_X),
+		Input.get_joy_axis(joy_device, JOY_AXIS_LEFT_Y))
+	if stick.length() > 0.3:
+		return stick.normalized()
+	# Fallback to digital input (keyboard WASD / D-pad)
 	var aim := Vector2.ZERO
 	if Input.is_action_pressed(act_lean_left):
 		aim.x -= 1.0
@@ -600,14 +610,44 @@ func _input_goopy_ability2(delta: float, lean_dir: float) -> void:
 	elif is_goo_charging:
 		_start_goo_dash()
 
+var is_goopy_zipping: bool = false     # True while zipping to shell (big hit)
+var goopy_zip_timer: float = 0.0
+const GOOPY_ZIP_DURATION := 0.3        # Window to land a big hit while zipping
+
 func _goopy_zip_to_shell() -> void:
 	var dir: Vector2 = (shell_toss_pos - global_position).normalized()
 	apply_central_impulse(dir * GOOPY_ZIP_IMPULSE)
+	is_goopy_zipping = true
+	goopy_zip_timer = GOOPY_ZIP_DURATION
 	_goopy_release_tether()
 
 func _goopy_release_tether() -> void:
 	goopy_tether_active = false
 	goopy_tether_timer = 0.0
+
+func _update_goopy_zip(delta: float) -> void:
+	if not is_goopy_zipping:
+		return
+	goopy_zip_timer -= delta
+	if goopy_zip_timer <= 0.0:
+		is_goopy_zipping = false
+		return
+	# Check for hits while zipping — counts as big hit
+	for body in get_colliding_bodies():
+		if body == self or not (body is RigidBody2D):
+			continue
+		if not body.has_method("take_damage"):
+			continue
+		var dist := global_position.distance_to(body.global_position)
+		if dist < CHARGE_HIT_RADIUS:
+			var dir := (body.global_position - global_position).normalized()
+			body.take_damage(GOO_DASH_DAMAGE * 1.5, dir)
+			var impact_force := linear_velocity.length() * 2.5
+			body.apply_central_impulse(dir * impact_force)
+			var hit_pos := (global_position + body.global_position) * 0.5
+			big_hit.emit(hit_pos, false)
+			is_goopy_zipping = false
+			return
 
 func _update_goopy_tether(delta: float) -> void:
 	if not goopy_tether_active or not shell_missing:
@@ -625,11 +665,14 @@ func _update_goopy_tether(delta: float) -> void:
 	if goopy_tether_timer >= GOOPY_TETHER_DURATION:
 		_goopy_release_tether()
 
+var goo_dash_was_full_charge: bool = false  # Track if dash was fully charged
+
 func _start_goo_dash() -> void:
 	if goo_charge_amount < 0.1:
 		is_goo_charging = false
 		goo_charge_amount = 0.0
 		return
+	goo_dash_was_full_charge = goo_charge_amount >= 0.95
 	is_goo_charging = false
 	var dash_dir := aim_dir
 	if dash_dir.length() < 0.1:
@@ -663,10 +706,16 @@ func _check_goo_dash_hits() -> void:
 		var dist := global_position.distance_to(body.global_position)
 		if dist < CHARGE_HIT_RADIUS:
 			var dir := (body.global_position - global_position).normalized()
-			body.take_damage(GOO_DASH_DAMAGE, dir)
-			body.apply_central_impulse(dir * GOO_DASH_KNOCKBACK)
-			var hit_pos := (global_position + body.global_position) * 0.5
-			big_hit.emit(hit_pos, false)
+			var dmg := GOO_DASH_DAMAGE
+			var kb := GOO_DASH_KNOCKBACK
+			if goo_dash_was_full_charge:
+				dmg *= 1.5
+				kb *= 1.5
+			body.take_damage(dmg, dir)
+			body.apply_central_impulse(dir * kb)
+			if goo_dash_was_full_charge:
+				var hit_pos := (global_position + body.global_position) * 0.5
+				big_hit.emit(hit_pos, false)
 
 func _update_goo_trails(delta: float) -> void:
 	# Age trails, apply gravity so they fall to ground, slow enemies in goo
@@ -735,6 +784,7 @@ func _fire_zappy_shell_toss() -> void:
 	shell_deflected = false
 	shell_toss_timer = 0.0
 	shell_toss_pos = global_position
+	shell_toss_origin = global_position
 	var toss_dir := aim_dir
 	if toss_dir.length() < 0.1:
 		toss_dir = last_aim_dir
@@ -913,6 +963,7 @@ func _fire_shell_toss() -> void:
 	shell_deflected = false
 	shell_toss_timer = 0.0
 	shell_toss_pos = global_position
+	shell_toss_origin = global_position
 	# Direction from aim; fallback to last aimed direction
 	var toss_dir := aim_dir
 	if toss_dir.length() < 0.1:
@@ -965,6 +1016,13 @@ func _update_shell_toss(delta: float) -> void:
 				if character_type == CharacterType.GOOPY:
 					shell_toss_vel = Vector2.ZERO
 					shell_toss_hit = true
+
+	# Zappy max range: stop shell after traveling max distance
+	if character_type == CharacterType.ZAPPY and not shell_toss_hit:
+		var travel_dist := shell_toss_origin.distance_to(shell_toss_pos)
+		if travel_dist >= ZAPPY_TOSS_MAX_RANGE:
+			shell_toss_vel = Vector2.ZERO
+			shell_toss_hit = true
 
 	# Shell pickup: owner walks over their thrown shell to recover it
 	var dist_to_shell := global_position.distance_to(shell_toss_pos)
@@ -1198,7 +1256,10 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	is_goo_charging = false
 	goo_charge_amount = 0.0
 	is_goo_dashing = false
+	goo_dash_was_full_charge = false
 	goo_dash_cooldown = 0.0
+	is_goopy_zipping = false
+	goopy_zip_timer = 0.0
 	goo_trails.clear()
 	is_bolt_charging = false
 	bolt_charge_amount = 0.0
@@ -1383,6 +1444,13 @@ func _make_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
 	add_child(s)
 	return s
 
+
+func update_shell_colors() -> void:
+	# Call after changing accent_color to update thrown shell sprite tints
+	spr_shell.self_modulate = accent_color
+	spr_spiral.self_modulate = accent_color.darkened(0.15)
+	spr_thrown_shell.self_modulate = accent_color
+	spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
 
 func _update_sprites() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
