@@ -127,12 +127,12 @@ const CHAR_COLORS := [
 ]
 const CHAR_ABILITY1_DESC := [
 	"Shell Toss + Teleport",
-	"Slime Tether (pull/swing)",
-	"Shock Burst (aimed zap)",
+	"Slime Tether (pull to surface/player)",
+	"Shock Burst (electric AoE)",
 ]
 const CHAR_ABILITY2_DESC := [
-	"Phase Dash (through objects)",
-	"Goo Burst (AoE knockback)",
+	"Phase Dash (through platforms)",
+	"Goo Dash (sticky trail)",
 	"Thunder Dash (charged, x2)",
 ]
 const STAGE_NAMES := ["Meadow", "Random"]
@@ -176,6 +176,8 @@ func _ready() -> void:
 
 	player1.big_hit.connect(_on_big_hit)
 	player2.big_hit.connect(_on_big_hit)
+	player1.shards_only.connect(_on_shards_only)
+	player2.shards_only.connect(_on_shards_only)
 	player2.ai_target = player1
 	# Auto-detect second controller: if connected, P2 is human
 	if Input.get_connected_joypads().size() >= 2:
@@ -904,6 +906,26 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 		mat.set_shader_parameter("active", 1.0)
 
 
+func _on_shards_only(impact_pos: Vector2) -> void:
+	# Spawn shards (purple for Blink teleport) but NO slomo and NO ripple
+	var shard_color := Color(0.7, 0.3, 1.0, 1.0)
+	for s_i in SHARD_COUNT:
+		var angle := (float(s_i) / float(SHARD_COUNT)) * TAU + randf_range(-0.2, 0.2)
+		var dir := Vector2(cos(angle), sin(angle))
+		var shard := Line2D.new()
+		shard.width = 2.5
+		shard.default_color = shard_color
+		shard.z_index = 10
+		var start_pos := impact_pos + dir * 4.0
+		shard.add_point(start_pos)
+		shard.add_point(start_pos + dir * 12.0)
+		shard.top_level = true
+		add_child(shard)
+		impact_shards.append({
+			"node": shard, "vel": dir * SHARD_SPEED * randf_range(0.7, 1.3),
+			"timer": SHARD_DURATION, "origin": impact_pos})
+
+
 func _update_slomo_and_flashes(delta: float) -> void:
 	# Slomo uses unscaled delta to count down in real time
 	if slomo_timer > 0.0:
@@ -1096,8 +1118,13 @@ func _restart_game(go_to_select: bool = true) -> void:
 		p.is_phase_dashing = false
 		p.phase_dash_cooldown = 0.0
 		p.can_teleport_to_shell = false
+		p.teleport_used_airborne = false
 		p.tether_active = false
-		p.goo_burst_cooldown = 0.0
+		p.tether_target = null
+		p.tether_cooldown = 0.0
+		p.is_goo_dashing = false
+		p.goo_dash_cooldown = 0.0
+		p.goo_trails.clear()
 		p.shock_burst_cooldown = 0.0
 		p.shock_burst_timer = 0.0
 		p.is_bolt_charging = false
