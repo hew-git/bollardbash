@@ -54,28 +54,30 @@ const PHASE_DASH_IMPULSE := 1400.0
 const PHASE_DASH_TIME := 0.3
 const PHASE_DASH_COOLDOWN := 0.8
 
-# ── Goopy: Slime Tether + Goo Burst ────────────────────────────────────────
-const TETHER_SPEED := 1600.0        # Tether projectile speed
-const TETHER_MAX_LENGTH := 300.0    # Max tether reach
-const TETHER_PULL_FORCE := 900.0    # Pull strength toward anchor
-const TETHER_DURATION := 2.0        # How long tether lasts
-const GOO_BURST_RADIUS := 120.0     # AoE radius
-const GOO_BURST_DAMAGE := 25.0      # AoE damage
-const GOO_BURST_KNOCKBACK := 600.0  # AoE knockback force
-const GOO_BURST_COOLDOWN := 1.5
+# ── Goopy: Slime Tether + Goo Dash ─────────────────────────────────────────
+const TETHER_MAX_LENGTH := 350.0     # Max tether reach
+const TETHER_PULL_SELF := 2400.0     # Pull force when attached to surface
+const TETHER_PULL_ENEMY := 1600.0    # Pull force on enemy when attached to player
+const TETHER_DURATION := 2.5         # How long tether lasts
+const TETHER_COOLDOWN := 0.5         # Brief cooldown after tether ends
+const GOO_DASH_IMPULSE := 1100.0     # Dash impulse
+const GOO_DASH_TIME := 0.3           # Dash duration
+const GOO_DASH_COOLDOWN := 1.0       # Cooldown
+const GOO_TRAIL_RADIUS := 18.0       # Goo puddle size
+const GOO_TRAIL_DURATION := 3.0      # How long goo puddles last
+const GOO_SLOW_FACTOR := 0.4         # Speed multiplied by this when in goo
 
 # ── Zappy: Shock Burst + Thunder Dash ──────────────────────────────────────
-const SHOCK_BURST_RANGE := 140.0     # How far the shock reaches
-const SHOCK_BURST_RADIUS := 35.0    # Width of the shock hit area
-const SHOCK_BURST_DAMAGE := 22.0    # Damage dealt
+const SHOCK_BURST_RADIUS := 80.0     # Circle AoE radius around snail
+const SHOCK_BURST_DAMAGE := 22.0     # Damage dealt
 const SHOCK_BURST_KNOCKBACK := 500.0
 const SHOCK_BURST_COOLDOWN := 0.8
-const SHOCK_BURST_DURATION := 0.25  # Visual duration
-const BOLT_DASH_CHARGE_TIME := 0.3  # Charge time (same as old charge)
-const BOLT_DASH_IMPULSE := 1800.0   # Full charge impulse
-const BOLT_DASH_TIME := 0.35        # Dash duration
-const BOLT_DASH_COOLDOWN := 1.0     # Cooldown after all dashes used
-const BOLT_DASH_MAX := 2            # Can double-dash
+const SHOCK_BURST_DURATION := 0.35   # Visual duration (longer for impact)
+const BOLT_DASH_CHARGE_TIME := 0.3   # Charge time (same as old charge)
+const BOLT_DASH_IMPULSE := 1440.0    # Full charge impulse (20% less than 1800)
+const BOLT_DASH_TIME := 0.35         # Dash duration
+const BOLT_DASH_COOLDOWN := 1.0      # Cooldown after all dashes used
+const BOLT_DASH_MAX := 2             # Can double-dash
 
 # ── Visual Constants ────────────────────────────────────────────────────────
 const EYE_RADIUS := 5.5
@@ -123,6 +125,7 @@ var dashes_remaining: int = CHARGE_MAX_DASHES  # Resets after cooldown
 
 # ── Hit Effect (slomo + flash) ─────────────────────────────────────────────
 signal big_hit(impact_pos: Vector2, is_deflect: bool)
+signal shards_only(impact_pos: Vector2)  # Visual shards without slomo (e.g. Blink teleport)
 
 # ── Shell Toss State ──────────────────────────────────────────────────────
 var shell_missing: bool = false         # True while shell is flying
@@ -142,20 +145,25 @@ var parry_cooldown: float = 0.0
 
 # ── Blink State ─────────────────────────────────────────────────────────────
 var can_teleport_to_shell: bool = false  # True while shell is flying (press ability1 again)
+var teleport_used_airborne: bool = false # Once per airborne session — resets on ground touch
 var is_phase_dashing: bool = false
 var phase_dash_timer: float = 0.0
 var phase_dash_cooldown: float = 0.0
 
 # ── Goopy State ─────────────────────────────────────────────────────────────
 var tether_active: bool = false
-var tether_anchor: Vector2 = Vector2.ZERO  # Where tether stuck to a surface
+var tether_anchor: Vector2 = Vector2.ZERO   # Where tether stuck (surface)
+var tether_target: RigidBody2D = null        # If tethered to a player
 var tether_timer: float = 0.0
-var goo_burst_cooldown: float = 0.0
+var tether_cooldown: float = 0.0
+var is_goo_dashing: bool = false
+var goo_dash_timer: float = 0.0
+var goo_dash_cooldown: float = 0.0
+var goo_trails: Array = []                   # [{pos: Vector2, timer: float}] — sticky puddles
 
 # ── Zappy State ─────────────────────────────────────────────────────────────
 var shock_burst_cooldown: float = 0.0
 var shock_burst_timer: float = 0.0     # > 0 means shock visual is active
-var shock_burst_dir: Vector2 = Vector2.ZERO  # Direction of active shock
 var is_bolt_charging: bool = false
 var bolt_charge_amount: float = 0.0
 var is_bolt_dashing: bool = false
@@ -288,14 +296,21 @@ func _physics_process(delta: float) -> void:
 		_process_input(delta)
 
 	_update_collision_shape()
+	# Reset Blink teleport when touching ground
+	if teleport_used_airborne and character_type == CharacterType.BLINK:
+		for body in get_colliding_bodies():
+			if body is StaticBody2D:
+				teleport_used_airborne = false
+				break
 	_update_parry(delta)
 	_update_charge(delta)
 	_update_shell_toss(delta)
 	_update_phase_dash(delta)
 	_update_tether(delta)
+	_update_goo_dash(delta)
+	_update_goo_trails(delta)
 	_update_bolt_dash(delta)
 	_update_shock_burst(delta)
-	_update_goo_burst_cooldown(delta)
 	_check_launch()
 	_update_invincibility(delta)
 	_update_blink(delta)
@@ -323,7 +338,7 @@ func _get_aim_dir() -> Vector2:
 
 func _process_input(delta: float) -> void:
 	# During any dash, no input — you're flying
-	if is_dashing or is_phase_dashing or is_bolt_dashing:
+	if is_dashing or is_phase_dashing or is_bolt_dashing or is_goo_dashing:
 		return
 
 	# Read aim + lean
@@ -404,8 +419,8 @@ func _update_parry(delta: float) -> void:
 
 func _input_blink_ability1(delta: float, lean_dir: float) -> void:
 	# Ability1: Shell toss (hold to charge, release to throw)
-	# If shell is already flying, press again to teleport to it
-	if shell_missing and can_teleport_to_shell and Input.is_action_just_pressed(act_ability1):
+	# If shell is already flying, press again to teleport to it (once per airborne)
+	if shell_missing and can_teleport_to_shell and not teleport_used_airborne and Input.is_action_just_pressed(act_ability1):
 		_blink_teleport_to_shell()
 		return
 	if Input.is_action_pressed(act_ability1) and not shell_missing and shell_toss_cooldown <= 0.0:
@@ -430,7 +445,8 @@ func _blink_teleport_to_shell() -> void:
 	linear_velocity = shell_toss_vel * 0.3  # Keep some momentum from shell
 	_return_shell()
 	can_teleport_to_shell = false
-	big_hit.emit(target, false)
+	teleport_used_airborne = true  # Can't teleport again until touching ground
+	shards_only.emit(target)  # Shards but NO slomo
 
 func _start_phase_dash() -> void:
 	var dash_dir := aim_dir
@@ -438,12 +454,31 @@ func _start_phase_dash() -> void:
 		dash_dir = last_aim_dir
 	is_phase_dashing = true
 	phase_dash_timer = 0.0
-	# Disable collision during phase dash
-	base_shape.disabled = true
-	post_shape.disabled = true
-	if dome_shape:
-		dome_shape.disabled = true
+	# Add collision exceptions for non-ground structures (platforms, center rock, etc.)
+	# Ground is NOT excluded — you can't phase through the ground
+	_phase_set_exceptions(true)
 	apply_central_impulse(dash_dir * PHASE_DASH_IMPULSE)
+
+func _phase_set_exceptions(enable: bool) -> void:
+	# Find all StaticBody2D that are NOT the ground (floating platforms, center circle, etc.)
+	var main_node := get_tree().current_scene
+	if not main_node:
+		return
+	var ground_node: Node = main_node.get_node_or_null("Ground")
+	for child in main_node.get_children():
+		if child is StaticBody2D and child != ground_node:
+			if enable:
+				add_collision_exception_with(child)
+			else:
+				remove_collision_exception_with(child)
+	# Also check for walls added at runtime
+	for name_str in ["WallLeft", "WallRight"]:
+		var wall: Node = main_node.get_node_or_null(name_str)
+		if wall and wall is StaticBody2D:
+			if enable:
+				add_collision_exception_with(wall)
+			else:
+				remove_collision_exception_with(wall)
 
 func _update_phase_dash(delta: float) -> void:
 	if phase_dash_cooldown > 0.0:
@@ -454,9 +489,8 @@ func _update_phase_dash(delta: float) -> void:
 	if phase_dash_timer >= PHASE_DASH_TIME:
 		is_phase_dashing = false
 		phase_dash_cooldown = PHASE_DASH_COOLDOWN
-		# Re-enable collision
-		_update_collision_shape()  # Restores shapes based on extend_amount
-		base_shape.disabled = false
+		# Remove collision exceptions
+		_phase_set_exceptions(false)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -464,73 +498,127 @@ func _update_phase_dash(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _input_goopy_ability1(_delta: float, _lean_dir: float) -> void:
-	# Ability1: Fire a slime tether (sticks to surfaces, pull toward it)
+	# Ability1: Slime tether — attaches to surfaces or players
+	# While active, automatically pulls you toward surface / pulls player toward you
 	if tether_active:
-		# While tether is active, holding ability1 pulls you toward the anchor
-		if Input.is_action_pressed(act_ability1):
-			var pull_dir: Vector2 = (tether_anchor - global_position).normalized()
-			apply_central_force(pull_dir * TETHER_PULL_FORCE)
+		# Press again to release early
+		if Input.is_action_just_pressed(act_ability1):
+			_release_tether()
 		return
-	if Input.is_action_just_pressed(act_ability1):
+	if Input.is_action_just_pressed(act_ability1) and tether_cooldown <= 0.0:
 		_fire_tether()
 
 func _input_goopy_ability2(_delta: float, _lean_dir: float) -> void:
-	# Ability2: Goo burst — AoE damage + knockback around self
-	if Input.is_action_just_pressed(act_ability2) and goo_burst_cooldown <= 0.0:
-		_goo_burst()
+	# Ability2: Goo dash — short dash leaving sticky goo trail
+	if Input.is_action_just_pressed(act_ability2) and goo_dash_cooldown <= 0.0 and not is_goo_dashing:
+		_start_goo_dash()
 
 func _fire_tether() -> void:
 	var tether_dir := aim_dir
 	if tether_dir.length() < 0.1:
 		tether_dir = last_aim_dir
-	# Raycast to find anchor point
 	var space := get_world_2d().direct_space_state
 	var end_pos := global_position + tether_dir * TETHER_MAX_LENGTH
+	# First check for player hits along the line
 	var query := PhysicsRayQueryParameters2D.create(global_position, end_pos)
 	query.exclude = [get_rid()]
+	query.collide_with_bodies = true
 	var result := space.intersect_ray(query)
 	if result:
-		tether_active = true
-		tether_anchor = result.position
-		tether_timer = 0.0
-	# If no surface hit, tether doesn't activate
+		if result.collider is RigidBody2D and result.collider.has_method("take_damage"):
+			# Attached to a player!
+			tether_active = true
+			tether_target = result.collider
+			tether_anchor = Vector2.ZERO  # Not used when targeting player
+			tether_timer = 0.0
+		elif result.collider is StaticBody2D:
+			# Attached to a surface
+			tether_active = true
+			tether_target = null
+			tether_anchor = result.position
+			tether_timer = 0.0
+
+func _release_tether() -> void:
+	tether_active = false
+	tether_target = null
+	tether_cooldown = TETHER_COOLDOWN
 
 func _update_tether(delta: float) -> void:
+	if tether_cooldown > 0.0:
+		tether_cooldown -= delta
 	if not tether_active:
 		return
 	tether_timer += delta
-	# Tether breaks after duration or if too far
-	var dist := global_position.distance_to(tether_anchor)
-	if tether_timer >= TETHER_DURATION or dist > TETHER_MAX_LENGTH * 1.5:
-		tether_active = false
 
-func _goo_burst() -> void:
-	goo_burst_cooldown = GOO_BURST_COOLDOWN
-	# AoE: find all nearby bodies and damage/knockback them
-	var space := get_world_2d().direct_space_state
-	var shape_query := PhysicsShapeQueryParameters2D.new()
-	var circle := CircleShape2D.new()
-	circle.radius = GOO_BURST_RADIUS
-	shape_query.shape = circle
-	shape_query.transform = Transform2D(0.0, global_position)
-	shape_query.exclude = [get_rid()]
-	var hits := space.intersect_shape(shape_query, 8)
-	var hit_any := false
-	for hit in hits:
-		var collider = hit.collider
-		if collider is RigidBody2D and collider.has_method("take_damage") and collider != self:
-			var dir: Vector2 = (collider.global_position - global_position).normalized()
-			collider.take_damage(GOO_BURST_DAMAGE, dir)
-			collider.apply_central_impulse(dir * GOO_BURST_KNOCKBACK)
-			hit_any = true
-	# Deflect any in-flight shells in range
-	# (handled by the shell toss update checking for goo burst)
-	if hit_any:
-		big_hit.emit(global_position, false)
+	if tether_target and is_instance_valid(tether_target):
+		# Tethered to a player — pull them toward us AND us slightly toward them
+		var to_target: Vector2 = (tether_target.global_position - global_position)
+		var dist := to_target.length()
+		if dist > 10.0:
+			var dir := to_target.normalized()
+			# Pull enemy toward us (strong)
+			tether_target.apply_central_force(-dir * TETHER_PULL_ENEMY)
+			# Pull us toward enemy (weaker, for swinging)
+			apply_central_force(dir * TETHER_PULL_SELF * 0.3)
+		if dist > TETHER_MAX_LENGTH * 1.5 or tether_timer >= TETHER_DURATION:
+			_release_tether()
+		# If target died, release
+		if tether_target is Bollard and tether_target.is_dead:
+			_release_tether()
+	elif tether_anchor != Vector2.ZERO:
+		# Tethered to a surface — pull us toward it strongly
+		var to_anchor: Vector2 = (tether_anchor - global_position)
+		var dist := to_anchor.length()
+		if dist > 10.0:
+			var dir := to_anchor.normalized()
+			apply_central_force(dir * TETHER_PULL_SELF)
+		if dist > TETHER_MAX_LENGTH * 1.5 or tether_timer >= TETHER_DURATION:
+			_release_tether()
+		# Snap close: if very close to anchor, release
+		if dist < 20.0:
+			_release_tether()
+	else:
+		_release_tether()
 
-func _update_goo_burst_cooldown(delta: float) -> void:
-	if goo_burst_cooldown > 0.0:
-		goo_burst_cooldown -= delta
+func _start_goo_dash() -> void:
+	var dash_dir := aim_dir
+	if dash_dir.length() < 0.1:
+		dash_dir = last_aim_dir
+	is_goo_dashing = true
+	goo_dash_timer = 0.0
+	apply_central_impulse(dash_dir * GOO_DASH_IMPULSE)
+
+func _update_goo_dash(delta: float) -> void:
+	if goo_dash_cooldown > 0.0:
+		goo_dash_cooldown -= delta
+	if not is_goo_dashing:
+		return
+	goo_dash_timer += delta
+	# Leave goo puddles along the path
+	goo_trails.append({"pos": global_position, "timer": GOO_TRAIL_DURATION})
+	if goo_dash_timer >= GOO_DASH_TIME:
+		is_goo_dashing = false
+		goo_dash_cooldown = GOO_DASH_COOLDOWN
+
+func _update_goo_trails(delta: float) -> void:
+	# Age trails and apply slow to enemies standing in goo
+	var i := goo_trails.size() - 1
+	while i >= 0:
+		goo_trails[i].timer -= delta
+		if goo_trails[i].timer <= 0.0:
+			goo_trails.remove_at(i)
+		i -= 1
+	# Check if any enemies are in goo puddles
+	if goo_trails.is_empty():
+		return
+	for body in get_colliding_bodies():
+		if body is RigidBody2D and body != self and body.has_method("take_damage"):
+			for trail in goo_trails:
+				var dist: float = body.global_position.distance_to(trail.pos)
+				if dist < GOO_TRAIL_RADIUS * 2.0:
+					# Slow them down by applying opposing force
+					body.apply_central_force(-body.linear_velocity * 3.0)
+					break
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -555,43 +643,26 @@ func _input_zappy_ability2(delta: float, lean_dir: float) -> void:
 
 func _fire_shock_burst() -> void:
 	shock_burst_cooldown = SHOCK_BURST_COOLDOWN
-	var burst_dir := aim_dir
-	if burst_dir.length() < 0.1:
-		burst_dir = last_aim_dir
-	shock_burst_dir = burst_dir
 	shock_burst_timer = SHOCK_BURST_DURATION
-	# Raycast-style hit detection along the shock line
+	# Circle AoE around self — zap everything in range
 	var space := get_world_2d().direct_space_state
-	var end_pos := global_position + burst_dir * SHOCK_BURST_RANGE
 	var shape_query := PhysicsShapeQueryParameters2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = SHOCK_BURST_RADIUS
 	shape_query.shape = circle
-	shape_query.transform = Transform2D(0.0, end_pos)
+	shape_query.transform = Transform2D(0.0, global_position)
 	shape_query.exclude = [get_rid()]
-	# Also check midpoint for better coverage
-	var mid_pos := global_position + burst_dir * SHOCK_BURST_RANGE * 0.5
-	var mid_query := PhysicsShapeQueryParameters2D.new()
-	mid_query.shape = circle
-	mid_query.transform = Transform2D(0.0, mid_pos)
-	mid_query.exclude = [get_rid()]
+	var hits := space.intersect_shape(shape_query, 8)
 	var hit_someone := false
-	var checked_bodies: Array = []
-	for query in [mid_query, shape_query]:
-		var hits := space.intersect_shape(query, 4)
-		for hit in hits:
-			var collider = hit.collider
-			if collider in checked_bodies:
-				continue
-			checked_bodies.append(collider)
-			if collider is RigidBody2D and collider.has_method("take_damage") and collider != self:
-				var dir: Vector2 = (collider.global_position - global_position).normalized()
-				collider.take_damage(SHOCK_BURST_DAMAGE, dir)
-				collider.apply_central_impulse(dir * SHOCK_BURST_KNOCKBACK)
-				hit_someone = true
+	for hit in hits:
+		var collider = hit.collider
+		if collider is RigidBody2D and collider.has_method("take_damage") and collider != self:
+			var dir: Vector2 = (collider.global_position - global_position).normalized()
+			collider.take_damage(SHOCK_BURST_DAMAGE, dir)
+			collider.apply_central_impulse(dir * SHOCK_BURST_KNOCKBACK)
+			hit_someone = true
 	if hit_someone:
-		var hit_pos := global_position + burst_dir * SHOCK_BURST_RANGE * 0.5
-		big_hit.emit(hit_pos, false)
+		big_hit.emit(global_position, false)
 	queue_redraw()
 
 func _start_bolt_dash() -> void:
@@ -990,8 +1061,13 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	is_phase_dashing = false
 	phase_dash_cooldown = 0.0
 	can_teleport_to_shell = false
+	teleport_used_airborne = false
 	tether_active = false
-	goo_burst_cooldown = 0.0
+	tether_target = null
+	tether_cooldown = 0.0
+	is_goo_dashing = false
+	goo_dash_cooldown = 0.0
+	goo_trails.clear()
 	shock_burst_cooldown = 0.0
 	shock_burst_timer = 0.0
 	is_bolt_charging = false
@@ -1206,6 +1282,9 @@ func _update_sprites() -> void:
 	if is_bolt_dashing:
 		body_c = Color(0.3, 0.9, 1.0)  # Electric blue
 		shell_c = Color(0.5, 1.0, 1.0)
+	if is_goo_dashing:
+		body_c = Color(0.3, 0.9, 0.2)  # Bright green
+		shell_c = Color(0.4, 1.0, 0.3)
 	if is_parrying:
 		shell_c = Color(1.0, 1.0, 0.6)  # Bright shield flash
 		body_c = body_c.lerp(Color(1.0, 1.0, 0.8), 0.5)
@@ -1303,36 +1382,83 @@ func _update_sprites() -> void:
 		spr_eye_hl_l.position = left_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
 		spr_eye_hl_r.position = right_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
 
-	# Tether needs redraw every frame
+	# Character ability visuals need redraw
 	if character_type == CharacterType.GOOPY:
+		queue_redraw()
+	if character_type == CharacterType.ZAPPY and (is_bolt_dashing or shock_burst_timer > 0.0):
 		queue_redraw()
 
 func _draw() -> void:
 	# Goopy tether line
 	if tether_active and character_type == CharacterType.GOOPY:
-		var local_anchor := to_local(tether_anchor)
-		draw_line(Vector2.ZERO, local_anchor, Color(0.4, 0.85, 0.3, 0.8), 3.0)
-		draw_circle(local_anchor, 5.0, Color(0.4, 0.85, 0.3, 0.9))
+		var target_pos := Vector2.ZERO
+		if tether_target and is_instance_valid(tether_target):
+			target_pos = to_local(tether_target.global_position)
+		elif tether_anchor != Vector2.ZERO:
+			target_pos = to_local(tether_anchor)
+		if target_pos.length() > 5.0:
+			# Slimy stretchy tether — draw multiple wobbly lines
+			var tether_color := Color(0.3, 0.85, 0.2, 0.85)
+			draw_line(Vector2.ZERO, target_pos, tether_color, 4.0)
+			# Second line with slight offset for thickness
+			var perp := Vector2(-target_pos.y, target_pos.x).normalized() * 2.0
+			draw_line(perp, target_pos + perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
+			draw_line(-perp, target_pos - perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
+			# Anchor dot
+			draw_circle(target_pos, 6.0, Color(0.3, 0.85, 0.2, 0.9))
 
-	# Zappy shock burst — jagged electric bolt line
+	# Goopy goo trail puddles
+	if character_type == CharacterType.GOOPY and not goo_trails.is_empty():
+		for trail in goo_trails:
+			var local_pos := to_local(trail.pos)
+			var trail_alpha: float = clampf(trail.timer / GOO_TRAIL_DURATION, 0.0, 1.0) * 0.7
+			draw_circle(local_pos, GOO_TRAIL_RADIUS, Color(0.35, 0.8, 0.2, trail_alpha))
+			draw_circle(local_pos, GOO_TRAIL_RADIUS * 0.5, Color(0.5, 0.9, 0.3, trail_alpha * 0.8))
+
+	# Zappy shock burst — expanding electric circle with arcs
 	if shock_burst_timer > 0.0 and character_type == CharacterType.ZAPPY:
 		var alpha: float = clampf(shock_burst_timer / SHOCK_BURST_DURATION, 0.0, 1.0)
-		var bolt_end := shock_burst_dir * SHOCK_BURST_RANGE
-		# Draw 3 jagged segments to look like electricity
-		var prev_pt := Vector2.ZERO
-		var seg_count := 6
-		for seg_i in seg_count:
-			var t: float = float(seg_i + 1) / float(seg_count)
-			var pt := shock_burst_dir * SHOCK_BURST_RANGE * t
-			# Add perpendicular jag (except last point)
-			if seg_i < seg_count - 1:
-				var perp := Vector2(-shock_burst_dir.y, shock_burst_dir.x)
-				pt += perp * randf_range(-14.0, 14.0)
-			var width: float = lerpf(4.0, 1.5, t)
-			draw_line(prev_pt, pt, Color(0.4, 0.85, 1.0, alpha), width)
-			# Secondary thinner bright line
-			draw_line(prev_pt, pt, Color(0.8, 0.95, 1.0, alpha * 0.6), width * 0.4)
-			prev_pt = pt
+		var progress: float = 1.0 - (shock_burst_timer / SHOCK_BURST_DURATION)
+		var radius: float = SHOCK_BURST_RADIUS * (0.3 + progress * 0.7)
+		# Outer ring
+		var ring_segs := 24
+		for ring_i in ring_segs:
+			var a1: float = (float(ring_i) / float(ring_segs)) * TAU
+			var a2: float = (float(ring_i + 1) / float(ring_segs)) * TAU
+			var p1 := Vector2(cos(a1), sin(a1)) * radius
+			var p2 := Vector2(cos(a2), sin(a2)) * radius
+			draw_line(p1, p2, Color(0.3, 0.7, 1.0, alpha * 0.6), 2.0)
+		# Inner bright ring
+		var inner_r: float = radius * 0.6
+		for ring_i in ring_segs:
+			var a1: float = (float(ring_i) / float(ring_segs)) * TAU
+			var a2: float = (float(ring_i + 1) / float(ring_segs)) * TAU
+			var p1 := Vector2(cos(a1), sin(a1)) * inner_r
+			var p2 := Vector2(cos(a2), sin(a2)) * inner_r
+			draw_line(p1, p2, Color(0.7, 0.95, 1.0, alpha * 0.8), 1.5)
+		# Jagged electric arcs shooting outward from center
+		var arc_count := 8
+		for arc_i in arc_count:
+			var angle: float = (float(arc_i) / float(arc_count)) * TAU + progress * 2.0
+			var prev_pt := Vector2.ZERO
+			for seg_i in 4:
+				var t: float = float(seg_i + 1) / 4.0
+				var pt := Vector2(cos(angle), sin(angle)) * radius * t
+				var perp := Vector2(-sin(angle), cos(angle))
+				if seg_i < 3:
+					pt += perp * randf_range(-10.0, 10.0)
+				var w: float = lerpf(3.0, 1.0, t)
+				draw_line(prev_pt, pt, Color(0.5, 0.9, 1.0, alpha), w)
+				draw_line(prev_pt, pt, Color(1.0, 1.0, 1.0, alpha * 0.4), w * 0.3)
+				prev_pt = pt
+
+	# Zappy bolt dash — electric sparks trailing behind
+	if is_bolt_dashing and character_type == CharacterType.ZAPPY:
+		for spark_i in 4:
+			var offset := Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
+			var spark_end := offset + Vector2(randf_range(-8.0, 8.0), randf_range(-8.0, 8.0))
+			draw_line(offset, spark_end, Color(0.4, 0.9, 1.0, 0.8), 2.0)
+			draw_line(offset, spark_end, Color(1.0, 1.0, 1.0, 0.5), 0.8)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1471,7 +1597,7 @@ func _ai_shell_toss() -> void:
 			_fire_shell_toss()
 			can_teleport_to_shell = true
 		CharacterType.GOOPY:
-			if not tether_active:
+			if not tether_active and tether_cooldown <= 0.0:
 				_fire_tether()
 		_:
 			if shell_missing or shell_toss_cooldown > 0.0:
@@ -1488,8 +1614,8 @@ func _ai_ability2() -> void:
 			if phase_dash_cooldown <= 0.0:
 				_start_phase_dash()
 		CharacterType.GOOPY:
-			if goo_burst_cooldown <= 0.0:
-				_goo_burst()
+			if goo_dash_cooldown <= 0.0 and not is_goo_dashing:
+				_start_goo_dash()
 		CharacterType.ZAPPY:
 			if shock_burst_cooldown <= 0.0:
 				_fire_shock_burst()
