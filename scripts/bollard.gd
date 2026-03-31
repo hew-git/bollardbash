@@ -40,7 +40,7 @@ const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit (Blink base)
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
-const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
+const SHELL_BOUNCE := 0.75          # Bounce factor off surfaces (firm bounces)
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
 const SHELL_PICKUP_RADIUS := 35.0   # Walk over shell to pick it up
@@ -505,7 +505,7 @@ func _input_blink_ability2(_delta: float, _lean_dir: float) -> void:
 		_start_phase_dash()
 		blink_phase_used = true
 
-const BLAST_ZONE := Rect2(-700, -900, 2680, 2100)  # Must match main.gd
+const BLAST_ZONE := Rect2(-1100, -900, 3480, 2500)  # Must match main.gd
 
 func _blink_teleport_to_shell() -> void:
 	# Don't teleport if shell is outside the death box
@@ -537,10 +537,11 @@ func _phase_set_exceptions(enable: bool) -> void:
 	if not main_node:
 		return
 	var ground_node: Node = main_node.get_node_or_null("Ground")
+	var slab_node: Node = main_node.get_node_or_null("Slab")
 	for child in main_node.get_children():
 		if child == self:
 			continue
-		if child is StaticBody2D and child != ground_node:
+		if child is StaticBody2D and child != ground_node and child != slab_node:
 			if enable:
 				add_collision_exception_with(child)
 			else:
@@ -643,8 +644,14 @@ func _update_goopy_zip(_delta: float) -> void:
 			_goopy_release_tether()
 			return
 		if body is RigidBody2D and body.has_method("take_damage"):
-			# Hit a player — big hit!
 			var dir := (body.global_position - global_position).normalized()
+			# Shell blocks the zip hit
+			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
+				linear_velocity = linear_velocity.reflect(dir) * 0.5
+				is_goopy_zipping = false
+				_goopy_release_tether()
+				return
+			# Hit a player's body — big hit!
 			body.take_damage(GOO_DASH_DAMAGE * 1.5, dir)
 			var impact_force := linear_velocity.length() * 2.5
 			body.apply_central_impulse(dir * impact_force)
@@ -663,12 +670,13 @@ func _update_goopy_tether(delta: float) -> void:
 		return
 	goopy_tether_timer += delta
 	queue_redraw()
-	# Loose swing: pull goopy gently toward shell
-	var to_shell: Vector2 = (shell_toss_pos - global_position)
-	var dist := to_shell.length()
-	if dist > 30.0:
-		var dir := to_shell.normalized()
-		apply_central_force(dir * GOOPY_SWING_PULL)
+	# Only pull toward shell AFTER shell has hit a surface (not while flying)
+	if shell_toss_hit:
+		var to_shell: Vector2 = (shell_toss_pos - global_position)
+		var dist := to_shell.length()
+		if dist > 30.0:
+			var dir := to_shell.normalized()
+			apply_central_force(dir * GOOPY_SWING_PULL)
 	# Auto-release after duration
 	if goopy_tether_timer >= GOOPY_TETHER_DURATION:
 		_goopy_release_tether()
@@ -706,24 +714,41 @@ func _update_goo_dash(delta: float) -> void:
 		goo_dash_cooldown = GOO_DASH_COOLDOWN
 
 func _check_goo_dash_hits() -> void:
+	# Use both colliding bodies AND shape query for reliable hit detection
+	var targets: Array = []
 	for body in get_colliding_bodies():
 		if body == self or not (body is RigidBody2D):
 			continue
-		if not body.has_method("take_damage"):
+		if body.has_method("take_damage"):
+			targets.append(body)
+	var space := get_world_2d().direct_space_state
+	var shape_q := PhysicsShapeQueryParameters2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = CHARGE_HIT_RADIUS
+	shape_q.shape = circle
+	shape_q.transform = Transform2D(0.0, global_position)
+	shape_q.exclude = [get_rid()]
+	var hits := space.intersect_shape(shape_q, 4)
+	for hit in hits:
+		var col = hit.collider
+		if col is RigidBody2D and col.has_method("take_damage") and col != self:
+			if not targets.has(col):
+				targets.append(col)
+	for body in targets:
+		var dir := (body.global_position - global_position).normalized()
+		# Shell blocks goo dash
+		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
 			continue
-		var dist := global_position.distance_to(body.global_position)
-		if dist < CHARGE_HIT_RADIUS:
-			var dir := (body.global_position - global_position).normalized()
-			var dmg := GOO_DASH_DAMAGE
-			var kb := GOO_DASH_KNOCKBACK
-			if goo_dash_was_full_charge:
-				dmg *= 1.5
-				kb *= 1.5
-			body.take_damage(dmg, dir)
-			body.apply_central_impulse(dir * kb)
-			if goo_dash_was_full_charge:
-				var hit_pos := (global_position + body.global_position) * 0.5
-				big_hit.emit(hit_pos, false)
+		var dmg := GOO_DASH_DAMAGE
+		var kb := GOO_DASH_KNOCKBACK
+		if goo_dash_was_full_charge:
+			dmg *= 1.5
+			kb *= 1.5
+		body.take_damage(dmg, dir)
+		body.apply_central_impulse(dir * kb)
+		if goo_dash_was_full_charge:
+			var hit_pos := (global_position + body.global_position) * 0.5
+			big_hit.emit(hit_pos, false)
 
 func _update_goo_trails(delta: float) -> void:
 	# Age trails, apply gravity so they fall to ground, slow enemies in goo
@@ -911,29 +936,41 @@ func _update_charge(delta: float) -> void:
 
 
 func _check_charge_hits() -> void:
+	# Use both colliding bodies AND a shape query to catch high-speed tunneling
+	var targets: Array = []
 	for body in get_colliding_bodies():
 		if body == self or not (body is RigidBody2D):
 			continue
-		if not body.has_method("take_damage"):
-			continue
-		var dist := global_position.distance_to(body.global_position)
-		if dist < CHARGE_HIT_RADIUS:
-			var dir := (body.global_position - global_position).normalized()
-			# Shell blocks charge too
-			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
-				# Bounce off the shell
-				linear_velocity = linear_velocity.reflect(dir) * 0.5
-				_end_any_dash()
-				return
-			body.take_damage(CHARGE_DAMAGE, dir)
-			# Billiard-style impact: big extra knockback on target
-			var impact_force := linear_velocity.length() * 3.0
-			body.apply_central_impulse(dir * impact_force)
-			# Slomo + flash
-			var hit_pos := (global_position + body.global_position) * 0.5
-			big_hit.emit(hit_pos, false)
+		if body.has_method("take_damage"):
+			targets.append(body)
+	# Shape query for nearby opponents (catches tunneling misses)
+	var space := get_world_2d().direct_space_state
+	var shape_q := PhysicsShapeQueryParameters2D.new()
+	var circle := CircleShape2D.new()
+	circle.radius = CHARGE_HIT_RADIUS
+	shape_q.shape = circle
+	shape_q.transform = Transform2D(0.0, global_position)
+	shape_q.exclude = [get_rid()]
+	var hits := space.intersect_shape(shape_q, 4)
+	for hit in hits:
+		var col = hit.collider
+		if col is RigidBody2D and col.has_method("take_damage") and col != self:
+			if not targets.has(col):
+				targets.append(col)
+	for body in targets:
+		var dir := (body.global_position - global_position).normalized()
+		# Shell blocks charge too
+		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
+			linear_velocity = linear_velocity.reflect(dir) * 0.5
 			_end_any_dash()
 			return
+		body.take_damage(CHARGE_DAMAGE, dir)
+		var impact_force := linear_velocity.length() * 3.0
+		body.apply_central_impulse(dir * impact_force)
+		var hit_pos := (global_position + body.global_position) * 0.5
+		big_hit.emit(hit_pos, false)
+		_end_any_dash()
+		return
 
 func _end_any_dash() -> void:
 	if is_dashing:
@@ -999,19 +1036,22 @@ func _update_shell_toss(delta: float) -> void:
 		var result := space.intersect_ray(query)
 		if result:
 			# Pass through one-way platforms from below (like snails do)
+			# Goopy's shell does NOT pass through — he needs to grapple to platforms
 			var skip_bounce := false
-			if result.collider is StaticBody2D:
+			if character_type != CharacterType.GOOPY and result.collider is StaticBody2D:
 				var hit_body: StaticBody2D = result.collider
 				for child in hit_body.get_children():
 					if child is CollisionShape2D and child.one_way_collision:
-						# One-way platform: shell passes through from below
 						if shell_toss_vel.y < 0.0:
 							skip_bounce = true
 						break
 			if not skip_bounce:
-				shell_toss_pos = result.position + result.normal * (BASE_RADIUS * 0.4)
+				shell_toss_pos = result.position + result.normal * (BASE_RADIUS * 0.8)
 				# Proper bounce: reflect velocity off the surface normal
 				shell_toss_vel = shell_toss_vel.reflect(result.normal) * SHELL_BOUNCE
+				# Ensure minimum bounce speed to prevent getting stuck
+				if shell_toss_vel.length() < 80.0 and character_type != CharacterType.GOOPY:
+					shell_toss_vel = shell_toss_vel.normalized() * 80.0
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
 					shell_toss_vel = Vector2.ZERO
@@ -1061,10 +1101,13 @@ func _update_shell_toss(delta: float) -> void:
 				shell_toss_vel = deflect_dir * deflect_speed
 				shell_deflected = true
 				shell_toss_timer = 0.0
-				# Parry deflect breaks Goopy tether
 				if character_type == CharacterType.GOOPY:
 					_goopy_release_tether()
 				big_hit.emit(shell_toss_pos, true)
+				break
+			# Shell area blocks thrown shells — bounce off
+			if target_body.has_method("is_shell_hit") and target_body.is_shell_hit(shell_toss_pos):
+				shell_toss_vel = shell_toss_vel.reflect((shell_toss_pos - target_body.global_position).normalized()) * SHELL_BOUNCE
 				break
 			var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
 			# Per-character damage and knockback
@@ -1121,19 +1164,16 @@ func _return_shell() -> void:
 # ║ COMBAT                                                                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-const SHELL_ARMOR_MULT := 0.0        # No damage when shell is on
 const SHELLLESS_DAMAGE_MULT := 1.5    # 50% more damage when shell-less
 
 func take_damage(amount: float, knockback_dir: Vector2) -> void:
 	if is_invincible:
 		return
-	# Shell armor: no damage if shell is present, extra damage if shell-less
-	if not shell_missing:
-		amount *= SHELL_ARMOR_MULT
-	else:
+	# Shell-less = extra vulnerable. With shell attached, normal damage applies
+	# (shell AREA protection is handled by is_shell_hit() at the call site)
+	if shell_missing:
 		amount *= SHELLLESS_DAMAGE_MULT
 	if amount <= 0.0:
-		# Still apply knockback even with 0 damage
 		var knockback_mult := 1.0 + damage_percent / 50.0
 		apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult * 0.3)
 		return

@@ -6,7 +6,7 @@ const TEX_ROCK := preload("res://sprites/arena/center_rock.png")
 
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
-const BLAST_ZONE := Rect2(-700, -900, 2680, 2100)
+const BLAST_ZONE := Rect2(-1100, -900, 3480, 2500)
 const SPAWN_P1 := Vector2(450, 478)
 const SPAWN_P2 := Vector2(830, 478)
 const RESPAWN_DELAY := 2.0
@@ -411,11 +411,12 @@ func _create_corner_platforms() -> void:
 	# Four corner platforms angled toward center circle, 1.5x central platform width
 	var plat_width := 270.0  # 1.5x the 180px central platforms
 	var plat_height := 14.0
+	# 45° angles, flat side facing center, endpoints near screen edges
 	var corners := [
-		{"x": 180.0, "y": 190.0, "rot": 0.3, "name": "CornerTopLeft"},
-		{"x": 1100.0, "y": 190.0, "rot": -0.3, "name": "CornerTopRight"},
-		{"x": 150.0, "y": 430.0, "rot": -0.3, "name": "CornerBottomLeft"},
-		{"x": 1130.0, "y": 430.0, "rot": 0.3, "name": "CornerBottomRight"},
+		{"x": 145.0, "y": 155.0, "rot": PI / 4.0, "name": "CornerTopLeft"},
+		{"x": 1135.0, "y": 155.0, "rot": -PI / 4.0, "name": "CornerTopRight"},
+		{"x": 145.0, "y": 435.0, "rot": -PI / 4.0, "name": "CornerBottomLeft"},
+		{"x": 1135.0, "y": 435.0, "rot": PI / 4.0, "name": "CornerBottomRight"},
 	]
 	for info in corners:
 		var plat := StaticBody2D.new()
