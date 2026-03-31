@@ -1485,18 +1485,22 @@ func _update_hud() -> void:
 	p1_stock_label.text = _stock_display(player1.stocks)
 	p2_stock_label.text = _stock_display(player2.stocks)
 
-	# Shake
+	# Shake — intensity scales with damage (1x at 0%, up to 3x at 150%+)
 	if p1_shake_timer > 0.0:
+		var p1_mult := 1.0 + 2.0 * clampf(player1.damage_percent / 150.0, 0.0, 1.0)
+		var p1_s := SHAKE_INTENSITY * p1_mult
 		p1_group.position = Vector2(
-			randf_range(-SHAKE_INTENSITY, SHAKE_INTENSITY),
-			randf_range(-SHAKE_INTENSITY, SHAKE_INTENSITY))
+			randf_range(-p1_s, p1_s),
+			randf_range(-p1_s, p1_s))
 	else:
 		p1_group.position = Vector2.ZERO
 
 	if p2_shake_timer > 0.0:
+		var p2_mult := 1.0 + 2.0 * clampf(player2.damage_percent / 150.0, 0.0, 1.0)
+		var p2_s := SHAKE_INTENSITY * p2_mult
 		p2_group.position = Vector2(
-			randf_range(-SHAKE_INTENSITY, SHAKE_INTENSITY),
-			randf_range(-SHAKE_INTENSITY, SHAKE_INTENSITY))
+			randf_range(-p2_s, p2_s),
+			randf_range(-p2_s, p2_s))
 	else:
 		p2_group.position = Vector2.ZERO
 
