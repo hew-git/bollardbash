@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[sub_resource type="RectangleShape2D" id="slab_shape"]
+size = Vector2(1000, 24)
+
+[node name="Slab" type="Node2D"]
+
+[node name="SlabPlatform" type="StaticBody2D" parent="." groups=["stage_collision"]]
+position = Vector2(640, 510)
+
+[node name="CollisionShape" type="CollisionShape2D" parent="SlabPlatform"]
+shape = SubResource("slab_shape")
+
+[node name="Visual" type="Polygon2D" parent="SlabPlatform"]
+color = Color(0.18, 0.18, 0.2, 1)
+polygon = PackedVector2Array(-500, -12, 500, -12, 500, 12, -500, 12)

@@ -545,33 +545,27 @@ func _start_phase_dash() -> void:
 	apply_central_impulse(dash_dir * PHASE_DASH_IMPULSE)
 
 func _phase_set_exceptions(enable: bool) -> void:
-	# Phase through ALL StaticBody2D (including ground) and other players
-	# Ground is included so Blink can phase dash while standing on a surface
-	# The dash is short enough (0.27s) that they won't fall through
+	# Phase through ALL stage collision bodies and other players
+	# Uses "stage_collision" group so it works with scene-based stages
+	for node in get_tree().get_nodes_in_group("stage_collision"):
+		if node == self:
+			continue
+		if enable:
+			add_collision_exception_with(node)
+		else:
+			remove_collision_exception_with(node)
+	# Also phase through other players
 	var main_node := get_tree().current_scene
 	if not main_node:
 		return
 	for child in main_node.get_children():
 		if child == self:
 			continue
-		if child is StaticBody2D:
+		if child is RigidBody2D and child != self and child.has_method("take_damage"):
 			if enable:
 				add_collision_exception_with(child)
 			else:
 				remove_collision_exception_with(child)
-		elif child is RigidBody2D and child != self and child.has_method("take_damage"):
-			if enable:
-				add_collision_exception_with(child)
-			else:
-				remove_collision_exception_with(child)
-	# Also check for walls added at runtime
-	for name_str in ["WallLeft", "WallRight"]:
-		var wall: Node = main_node.get_node_or_null(name_str)
-		if wall and wall is StaticBody2D:
-			if enable:
-				add_collision_exception_with(wall)
-			else:
-				remove_collision_exception_with(wall)
 
 func _update_phase_dash(delta: float) -> void:
 	if phase_dash_cooldown > 0.0:

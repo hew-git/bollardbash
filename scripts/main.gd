@@ -1,35 +1,19 @@
 extends Node2D
 
-# ── Arena Sprite Textures (swap these PNGs for custom art) ─────────────────
-const TEX_PLATFORM := preload("res://sprites/arena/platform.png")
-const TEX_ROCK := preload("res://sprites/arena/center_rock.png")
-const TEX_TILE := preload("res://sprites/arena/tile.png")
-const TILE_SIZE := 48.0          # 24px art at 2x scale — matches snail shell size
-
+# ── Stage Scenes (edit these in the Godot editor) ─────────────────────────
+const STAGE_SCENES := {
+	"Meadow": preload("res://scenes/stages/meadow.tscn"),
+	"Oops, All Slab": preload("res://scenes/stages/slab.tscn"),
+	"Tower": preload("res://scenes/stages/tower.tscn"),
+}
+const HUD_SCENE := preload("res://scenes/hud.tscn")
+const BORDER_SCENE := preload("res://scenes/border_frame.tscn")
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
 const BLAST_ZONE := Rect2(-1100, -900, 3480, 2500)
 const SPAWN_P1 := Vector2(450, 478)
 const SPAWN_P2 := Vector2(830, 478)
 const RESPAWN_DELAY := 2.0
-
-# ── Arena Geometry ──────────────────────────────────────────────────────────
-const GROUND_HALF_WIDTH := 495.0   # 990 total (10% less than 1100)
-const GROUND_CURVE := 10.0         # Edges raised 10px above center
-const GROUND_SEGMENTS := 20
-const GROUND_Y := 520.0
-const CENTER_CIRCLE_POS := Vector2(640, 190)
-const CENTER_CIRCLE_RADIUS := 30.0
-const WALL_WIDTH := 20.0
-const WALL_HEIGHT := 160.0           # Lowered for shell toss bank shots
-const WALL_LEFT_X := -30.0
-const WALL_RIGHT_X := 1310.0
-const WALL_Y := 340.0
-const WALL_ANGLE_INWARD := 30.0     # Bottom edge angled inward by this many pixels
-
-# ── HUD Constants ───────────────────────────────────────────────────────────
-const P1_BAR_LEFT := 180.0
-const P2_BAR_RIGHT := 1100.0
 const EFFECT_DURATION := 1.0
 const SHAKE_DURATION := 0.35
 const SHAKE_INTENSITY := 4.0
@@ -68,28 +52,22 @@ const SLIME_LIFETIME := 4.0
 const SLIME_INTERVAL := 0.08
 const SLIME_MAX_DOTS := 200
 
-# ── Node References ─────────────────────────────────────────────────────────
+# ── Node References (populated in _ready from loaded scenes) ────────────────
 @onready var player1: Bollard = $Player1
 @onready var player2: Bollard = $Player2
-@onready var p1_group: Control = $HUD/P1Group
-@onready var p2_group: Control = $HUD/P2Group
-@onready var p1_effect: Label = $HUD/P1Group/P1Effect
-@onready var p2_effect: Label = $HUD/P2Group/P2Effect
-@onready var p1_stock_label: Label = $HUD/P1Group/P1Stocks
-@onready var p2_stock_label: Label = $HUD/P2Group/P2Stocks
-@onready var p1_dmg_label: Label = $HUD/P1Group/P1DmgLabel
-@onready var p2_dmg_label: Label = $HUD/P2Group/P2DmgLabel
-@onready var game_over_label: Label = $HUD/GameOver
-@onready var controls_label: Label = $HUD/Controls
-@onready var ground: StaticBody2D = $Ground
-@onready var center_circle: StaticBody2D = $CenterCircle
+var hud_layer: CanvasLayer
+var p1_group: Control
+var p2_group: Control
+var p1_effect: Label
+var p2_effect: Label
+var p1_stock_label: Label
+var p2_stock_label: Label
+var game_over_label: Label
+var controls_label: Label
 
-# ── HP Squares (created at runtime) ─────────────────────────────────────────
+# ── HP Squares (from HUD scene) ────────────────────────────────────────────
 var p1_hp_squares: Array[ColorRect] = []
 var p2_hp_squares: Array[ColorRect] = []
-const HP_SQUARE_SIZE := 18.0
-const HP_SQUARE_GAP := 4.0
-const HP_SQUARE_Y := 658.0
 const HP_FULL_COLOR := Color(0.3, 0.85, 0.35)
 const HP_EMPTY_COLOR := Color(0.18, 0.18, 0.2, 0.8)
 
@@ -153,7 +131,7 @@ const WRAP_BOTTOM := 720.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
-var stage_extra_nodes: Array = []       # Nodes created for current stage (cleaned up on switch)
+var current_stage_instance: Node = null # The loaded stage scene instance
 
 # ── Game State ──────────────────────────────────────────────────────────────
 var game_active: bool = false
@@ -176,8 +154,15 @@ func _ready() -> void:
 	Engine.physics_ticks_per_second = 120
 	pixel_font = load("res://fonts/PressStart2P-Regular.ttf")
 	_setup_input()
-	_setup_arena()
-	_create_bar_polygons()
+
+	# Load HUD from scene
+	hud_layer = HUD_SCENE.instantiate()
+	add_child(hud_layer)
+	_bind_hud_refs()
+
+	# Load border frame from scene
+	add_child(BORDER_SCENE.instantiate())
+
 	_create_countdown_label()
 	_create_death_phrase_label()
 
@@ -186,9 +171,6 @@ func _ready() -> void:
 
 	# Screen ripple effect overlay
 	_setup_ripple_shader()
-
-	# Stylized border frame
-	_create_border_frame()
 
 	# Slime colors per player
 	player1.slime_color = Color(0.55, 0.75, 0.35, 0.6)
@@ -207,21 +189,6 @@ func _ready() -> void:
 	controls_label.visible = true
 	p1_effect.visible = false
 	p2_effect.visible = false
-	# Apply pixel font to all scene-based labels
-	if pixel_font:
-		for lbl in [game_over_label, controls_label, p1_stock_label, p2_stock_label, p1_effect, p2_effect]:
-			lbl.add_theme_font_override("font", pixel_font)
-		# Apply pixel font to scene-based "dmg." labels
-		var p1_dmg_lbl: Label = $HUD/P1Group/P1DmgLabel
-		var p2_dmg_lbl: Label = $HUD/P2Group/P2DmgLabel
-		p1_dmg_lbl.add_theme_font_override("font", pixel_font)
-		p2_dmg_lbl.add_theme_font_override("font", pixel_font)
-		game_over_label.add_theme_font_size_override("font_size", 16)
-		controls_label.add_theme_font_size_override("font_size", 8)
-		p1_stock_label.add_theme_font_size_override("font_size", 10)
-		p2_stock_label.add_theme_font_size_override("font_size", 10)
-		p1_effect.add_theme_font_size_override("font_size", 14)
-		p2_effect.add_theme_font_size_override("font_size", 14)
 
 	# Start on select screen instead of jumping straight to countdown
 	_create_select_screen()
@@ -232,25 +199,55 @@ func _ready() -> void:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ ARENA SETUP — curved ground, platforms, walls                            ║
+# ║ HUD BINDING — connect to nodes from the loaded HUD scene                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _setup_arena() -> void:
-	_setup_curved_ground()
-	_setup_center_circle()
-	_move_platforms_inward()
-	_clay_platforms()
-	_create_wall(WALL_LEFT_X, "WallLeft")
-	_create_wall(WALL_RIGHT_X, "WallRight")
-	_create_corner_platforms()
-	_setup_background()
+func _bind_hud_refs() -> void:
+	p1_group = hud_layer.get_node("P1Group")
+	p2_group = hud_layer.get_node("P2Group")
+	p1_effect = hud_layer.get_node("P1Group/P1Effect")
+	p2_effect = hud_layer.get_node("P2Group/P2Effect")
+	p1_stock_label = hud_layer.get_node("P1Group/P1Stocks")
+	p2_stock_label = hud_layer.get_node("P2Group/P2Stocks")
+	game_over_label = hud_layer.get_node("GameOver")
+	controls_label = hud_layer.get_node("Controls")
+	# Collect HP squares from scene
+	for i in range(1, 6):
+		p1_hp_squares.append(hud_layer.get_node("P1Group/P1HpSquare%d" % i))
+		p2_hp_squares.append(hud_layer.get_node("P2Group/P2HpSquare%d" % i))
 
 
-func _move_platforms_inward() -> void:
-	# Move floating horizontal platforms closer to center so there's a bigger gap
-	# between them and the side walls
-	$PlatformLeft.position.x = 320.0
-	$PlatformRight.position.x = 960.0
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ STAGE SYSTEM — loads stage scenes from scenes/stages/                    ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+func _apply_stage(idx: int) -> void:
+	current_stage = idx
+	# Clean up previous stage instance
+	if current_stage_instance and is_instance_valid(current_stage_instance):
+		current_stage_instance.queue_free()
+		current_stage_instance = null
+
+	screen_wrap_enabled = false
+
+	var stage_name: String = STAGE_NAMES[idx]
+
+	# Set background color per stage
+	match stage_name:
+		"Meadow":
+			$Background.color = Color(0.53, 0.81, 0.92)
+		"Oops, All Slab":
+			$Background.color = Color(0.7, 0.7, 0.72)
+		"Tower":
+			$Background.color = Color(0.12, 0.10, 0.15)
+			screen_wrap_enabled = true
+
+	# Instance and add the stage scene
+	if STAGE_SCENES.has(stage_name):
+		current_stage_instance = STAGE_SCENES[stage_name].instantiate()
+		add_child(current_stage_instance)
+		# Move stage behind players in the scene tree
+		move_child(current_stage_instance, 1)
 
 
 func _setup_ripple_shader() -> void:
@@ -302,522 +299,6 @@ void fragment() {
 	ripple_layer.add_child(ripple_rect)
 
 
-func _create_border_frame() -> void:
-	# Stylized pixel-art border around the play area and above the HUD
-	# Uses a CanvasLayer at high z-index so it draws on top of everything
-	var border_layer := CanvasLayer.new()
-	border_layer.name = "BorderFrame"
-	border_layer.layer = 90  # Below ripple (100) but above game
-	add_child(border_layer)
-
-	var border_color := Color(0.08, 0.06, 0.1)        # Near-black
-	var accent_color := Color(0.25, 0.2, 0.35)         # Muted purple
-	var highlight_color := Color(0.4, 0.35, 0.5, 0.6)  # Subtle highlight
-
-	var border_w := 16.0   # Side border width
-	var hud_y := 648.0     # Where the HUD separator sits
-
-	# ── Left border ──
-	var left := ColorRect.new()
-	left.position = Vector2(0, 0)
-	left.size = Vector2(border_w, 720)
-	left.color = border_color
-	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(left)
-
-	# Left inner accent line
-	var left_accent := ColorRect.new()
-	left_accent.position = Vector2(border_w, 0)
-	left_accent.size = Vector2(2, 720)
-	left_accent.color = accent_color
-	left_accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(left_accent)
-
-	# ── Right border ──
-	var right := ColorRect.new()
-	right.position = Vector2(1280 - border_w, 0)
-	right.size = Vector2(border_w, 720)
-	right.color = border_color
-	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(right)
-
-	# Right inner accent line
-	var right_accent := ColorRect.new()
-	right_accent.position = Vector2(1280 - border_w - 2, 0)
-	right_accent.size = Vector2(2, 720)
-	right_accent.color = accent_color
-	right_accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(right_accent)
-
-	# ── Top border ──
-	var top := ColorRect.new()
-	top.position = Vector2(0, 0)
-	top.size = Vector2(1280, border_w)
-	top.color = border_color
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(top)
-
-	# Top inner accent line
-	var top_accent := ColorRect.new()
-	top_accent.position = Vector2(0, border_w)
-	top_accent.size = Vector2(1280, 2)
-	top_accent.color = accent_color
-	top_accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(top_accent)
-
-	# ── HUD separator bar (above the HP/stock area) ──
-	var hud_bar := ColorRect.new()
-	hud_bar.position = Vector2(0, hud_y)
-	hud_bar.size = Vector2(1280, 4)
-	hud_bar.color = accent_color
-	hud_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(hud_bar)
-
-	# HUD separator highlight (1px bright line on top edge)
-	var hud_highlight := ColorRect.new()
-	hud_highlight.position = Vector2(border_w, hud_y)
-	hud_highlight.size = Vector2(1280 - border_w * 2, 1)
-	hud_highlight.color = highlight_color
-	hud_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(hud_highlight)
-
-	# ── Bottom border ──
-	var bottom := ColorRect.new()
-	bottom.position = Vector2(0, 720 - 4)
-	bottom.size = Vector2(1280, 4)
-	bottom.color = border_color
-	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	border_layer.add_child(bottom)
-
-	# ── Corner accents (small squares in each corner for pixel-art feel) ──
-	for corner_pos in [
-		Vector2(0, 0), Vector2(1280 - border_w, 0),
-		Vector2(0, 720 - border_w), Vector2(1280 - border_w, 720 - border_w)
-	]:
-		var corner := ColorRect.new()
-		corner.position = corner_pos
-		corner.size = Vector2(border_w, border_w)
-		corner.color = accent_color
-		corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		border_layer.add_child(corner)
-
-
-func _setup_background() -> void:
-	var bg: ColorRect = $Background
-	bg.color = Color(0.53, 0.81, 0.92)  # Light sky blue
-
-
-func _setup_curved_ground() -> void:
-	# Remove old ground children (rect shape + visuals from scene)
-	for child in ground.get_children():
-		child.queue_free()
-
-	# Build curved top surface points (for collision)
-	var top_points := PackedVector2Array()
-	for i in GROUND_SEGMENTS + 1:
-		var t := float(i) / float(GROUND_SEGMENTS) * 2.0 - 1.0
-		var x := t * GROUND_HALF_WIDTH
-		var y := -20.0 - GROUND_CURVE * t * t
-		top_points.append(Vector2(x, y))
-
-	var full_points := PackedVector2Array()
-	full_points.append_array(top_points)
-	full_points.append(Vector2(GROUND_HALF_WIDTH, 30.0))
-	full_points.append(Vector2(-GROUND_HALF_WIDTH, 30.0))
-
-	# Collision polygon (physics only)
-	var col_poly := CollisionPolygon2D.new()
-	col_poly.polygon = full_points
-	ground.add_child(col_poly)
-
-	# ── VISUAL: dirt body (Polygon2D matching the curved collision shape) ─
-	var dirt_poly := Polygon2D.new()
-	dirt_poly.polygon = full_points
-	dirt_poly.color = Color(0.55, 0.36, 0.24)  # Warm brown dirt
-	ground.add_child(dirt_poly)
-
-	# ── VISUAL: grass strip (thin curved polygon on top of the dirt) ──────
-	var grass_thickness := 6.0
-	var grass_points := PackedVector2Array()
-	# Top edge: offset upward from collision surface
-	for i in GROUND_SEGMENTS + 1:
-		grass_points.append(top_points[i] + Vector2(0, -grass_thickness))
-	# Bottom edge: the collision surface itself (reversed order)
-	for i in range(GROUND_SEGMENTS, -1, -1):
-		grass_points.append(top_points[i])
-	var grass_poly := Polygon2D.new()
-	grass_poly.polygon = grass_points
-	grass_poly.color = Color(0.35, 0.65, 0.25)  # Green grass
-	grass_poly.z_index = 1
-	ground.add_child(grass_poly)
-
-
-func _setup_center_circle() -> void:
-	center_circle.position = CENTER_CIRCLE_POS
-	# Replace the scene's default visual
-	var old_visual := center_circle.get_node_or_null("CenterVisual")
-	if old_visual:
-		old_visual.queue_free()
-
-	# ── VISUAL: center rock sprite ────────────────────────────────────
-	# Replace: swap sprites/arena/center_rock.png (64x64 circle)
-	var rock_spr := Sprite2D.new()
-	rock_spr.texture = TEX_ROCK
-	var rock_scale := (CENTER_CIRCLE_RADIUS * 2.0) / TEX_ROCK.get_width()
-	rock_spr.scale = Vector2(rock_scale, rock_scale)
-	center_circle.add_child(rock_spr)
-
-
-func _clay_platforms() -> void:
-	# Restyle floating platforms with sprite + one-way collision (pass through from below)
-	for plat_info in [
-		{node = $PlatformLeft, visual = "PlatLeftVisual"},
-		{node = $PlatformRight, visual = "PlatRightVisual"}
-	]:
-		var plat: StaticBody2D = plat_info.node
-		var old_vis = plat.get_node_or_null(plat_info.visual)
-		if old_vis:
-			old_vis.queue_free()
-
-		# Set collision shapes to one-way (shells and players pass through from below)
-		for child in plat.get_children():
-			if child is CollisionShape2D:
-				child.one_way_collision = true
-
-		# ── VISUAL: platform sprite ───────────────────────────────────
-		# Replace: swap sprites/arena/platform.png (180x20)
-		var plat_spr := Sprite2D.new()
-		plat_spr.texture = TEX_PLATFORM
-		var plat_sx: float = 180.0 / TEX_PLATFORM.get_width()
-		var plat_sy: float = 16.0 / TEX_PLATFORM.get_height()
-		plat_spr.scale = Vector2(plat_sx, plat_sy)
-		plat.add_child(plat_spr)
-
-
-func _create_wall(x_pos: float, wall_name: String) -> void:
-	var wall := StaticBody2D.new()
-	wall.name = wall_name
-	wall.position = Vector2(x_pos, WALL_Y)
-	add_child(wall)
-
-	# Angled wall: top is straight, bottom edge angles inward toward stage
-	var is_left := x_pos < 640.0
-	var half_w := WALL_WIDTH * 0.5
-	var half_h := WALL_HEIGHT * 0.5
-	var inward: float = WALL_ANGLE_INWARD if is_left else -WALL_ANGLE_INWARD
-	var poly_points := PackedVector2Array([
-		Vector2(-half_w, -half_h),           # Top outer
-		Vector2(half_w, -half_h),            # Top inner
-		Vector2(half_w + inward, half_h),    # Bottom inner (angled toward stage)
-		Vector2(-half_w + inward, half_h),   # Bottom outer (angled toward stage)
-	])
-
-	var col_poly := CollisionPolygon2D.new()
-	col_poly.polygon = poly_points
-	wall.add_child(col_poly)
-
-	# ── VISUAL: wall polygon matching collision ──────────────────────
-	var wall_visual := Polygon2D.new()
-	wall_visual.polygon = poly_points
-	wall_visual.color = Color(0.45, 0.35, 0.28)  # Dark brown wall
-	wall.add_child(wall_visual)
-
-
-func _create_corner_platforms() -> void:
-	# Four corner platforms angled toward center circle, 1.5x central platform width
-	var plat_width := 270.0  # 1.5x the 180px central platforms
-	var plat_height := 14.0
-	# Flush with screen edges so snails can pass between corner platforms and ground
-	var corners := [
-		{"x": 5.0, "y": 70.0, "rot": 3.0 * PI / 4.0, "name": "CornerTopLeft"},
-		{"x": 1275.0, "y": 70.0, "rot": -3.0 * PI / 4.0, "name": "CornerTopRight"},
-		{"x": 5.0, "y": 480.0, "rot": -3.0 * PI / 4.0, "name": "CornerBottomLeft"},
-		{"x": 1275.0, "y": 480.0, "rot": 3.0 * PI / 4.0, "name": "CornerBottomRight"},
-	]
-	for info in corners:
-		var plat := StaticBody2D.new()
-		plat.name = info.name
-		plat.position = Vector2(info.x, info.y)
-		plat.rotation = info.rot
-		add_child(plat)
-		var shape := CollisionShape2D.new()
-		var rect := RectangleShape2D.new()
-		rect.size = Vector2(plat_width, plat_height)
-		shape.shape = rect
-		shape.one_way_collision = false  # Solid — angled platforms collide from both sides
-		plat.add_child(shape)
-		var plat_spr := Sprite2D.new()
-		plat_spr.texture = TEX_PLATFORM
-		var sx: float = plat_width / TEX_PLATFORM.get_width()
-		var sy: float = plat_height / TEX_PLATFORM.get_height()
-		plat_spr.scale = Vector2(sx, sy)
-		plat.add_child(plat_spr)
-
-
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ STAGE SYSTEM                                                              ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
-
-func _apply_stage(idx: int) -> void:
-	current_stage = idx
-	# Clean up any extra stage nodes from previous stage
-	for node in stage_extra_nodes:
-		if is_instance_valid(node):
-			node.queue_free()
-	stage_extra_nodes.clear()
-
-	screen_wrap_enabled = false
-
-	var stage_name: String = STAGE_NAMES[idx]
-	match stage_name:
-		"Meadow":
-			_setup_meadow_stage()
-		"Oops, All Slab":
-			_setup_slab_stage()
-		"Tower":
-			_setup_tower_stage()
-
-func _setup_meadow_stage() -> void:
-	# Default stage — restore normal arena elements
-	ground.visible = true
-	center_circle.visible = true
-	for child in ground.get_children():
-		if child is CollisionPolygon2D:
-			child.disabled = false
-		if child is Polygon2D or child is ColorRect:
-			child.visible = true
-	for child in center_circle.get_children():
-		if child is CollisionShape2D:
-			child.disabled = false
-	# Central platforms — keep same positions
-	$PlatformLeft.position = Vector2(350, 330)
-	$PlatformRight.position = Vector2(930, 330)
-	$PlatformLeft.visible = true
-	$PlatformRight.visible = true
-	for child in $PlatformLeft.get_children():
-		if child is CollisionShape2D:
-			child.disabled = false
-	for child in $PlatformRight.get_children():
-		if child is CollisionShape2D:
-			child.disabled = false
-	# Hide walls (meadow has no walls)
-	for wall_name in ["WallLeft", "WallRight"]:
-		var node: Node = get_node_or_null(wall_name)
-		if node:
-			node.visible = false
-			for child in node.get_children():
-				if child is CollisionShape2D or child is CollisionPolygon2D:
-					child.disabled = true
-	# Show corner platforms
-	for corner_name in ["CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]:
-		var node: Node = get_node_or_null(corner_name)
-		if node:
-			node.visible = true
-			for child in node.get_children():
-				if child is CollisionShape2D or child is CollisionPolygon2D:
-					child.disabled = false
-	$Background.color = Color(0.53, 0.81, 0.92)
-
-func _setup_slab_stage() -> void:
-	# Final Destination style: one flat platform, no walls or structures
-	# Hide all normal arena geometry
-	center_circle.visible = false
-	for child in center_circle.get_children():
-		if child is CollisionShape2D:
-			child.disabled = true
-	$PlatformLeft.visible = false
-	$PlatformRight.visible = false
-	for child in $PlatformLeft.get_children():
-		if child is CollisionShape2D:
-			child.disabled = true
-	for child in $PlatformRight.get_children():
-		if child is CollisionShape2D:
-			child.disabled = true
-	var slab_hide := ["WallLeft", "WallRight",
-		"CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]
-	for name_str in slab_hide:
-		var node: Node = get_node_or_null(name_str)
-		if node:
-			node.visible = false
-			for child in node.get_children():
-				if child is CollisionShape2D or child is CollisionPolygon2D:
-					child.disabled = true
-	# Hide original ground visuals but keep collision
-	ground.visible = false
-	for child in ground.get_children():
-		if child is CollisionPolygon2D:
-			child.disabled = true
-		if child is Polygon2D:
-			child.visible = false
-
-	# Create flat slab ground
-	var slab := StaticBody2D.new()
-	slab.name = "Slab"
-	slab.position = Vector2(640.0, GROUND_Y - 10.0)
-	add_child(slab)
-	stage_extra_nodes.append(slab)
-
-	var slab_width := 1000.0  # 25% wider than 800
-	var slab_height := 24.0
-	var col := CollisionShape2D.new()
-	var rect := RectangleShape2D.new()
-	rect.size = Vector2(slab_width, slab_height)
-	col.shape = rect
-	slab.add_child(col)
-
-	# Light gray slab visual
-	var slab_visual := Polygon2D.new()
-	var hw := slab_width / 2.0
-	var hh := slab_height / 2.0
-	slab_visual.polygon = PackedVector2Array([
-		Vector2(-hw, -hh), Vector2(hw, -hh),
-		Vector2(hw, hh), Vector2(-hw, hh)])
-	slab_visual.color = Color(0.18, 0.18, 0.2)  # Dark platform
-	slab.add_child(slab_visual)
-
-	# Light gray background (swapped with platform)
-	$Background.color = Color(0.7, 0.7, 0.72)
-
-
-func _setup_tower_stage() -> void:
-	# Towerfall Ascension-style enclosed arena with screen wrapping
-	screen_wrap_enabled = true
-
-	# Hide all normal arena geometry
-	_hide_all_arena_nodes()
-
-	# Build the level from 48x48 tiles (24px art at 2x)
-	# Grid: 1280 / 48 ≈ 27 columns, 720 / 48 = 15 rows
-	# Level layout: '#' = solid tile, '.' = empty
-	var layout := [
-		"...........................",  # row 0
-		"....#####.......#####.....",  # row 1
-		"...........................",  # row 2
-		"............#..............",  # row 3 (center blocker — prevents continuous fall)
-		"##...................##..##",  # row 4 (side ledges)
-		"...........................",  # row 5
-		"........#####.####........",  # row 6
-		"...........................",  # row 7
-		"...........................",  # row 8
-		"###...................#####",  # row 9 (side ledges)
-		"...........................",  # row 10
-		"....#####.......#####.....",  # row 11
-		"...........................",  # row 12
-		"########.........#########",  # row 13 (floor with center hole)
-		"########.........#########",  # row 14 (floor depth)
-	]
-
-	# First pass: find horizontal runs per row
-	# Each run = {col, row, count} — a contiguous horizontal strip of '#' tiles
-	var runs: Array = []  # [{col: int, row: int, count: int}]
-	for row_i in layout.size():
-		var row_str: String = layout[row_i]
-		var col_i := 0
-		while col_i < row_str.length():
-			if row_str[col_i] == "#":
-				var run_start := col_i
-				while col_i < row_str.length() and row_str[col_i] == "#":
-					col_i += 1
-				runs.append({"col": run_start, "row": row_i, "count": col_i - run_start, "height": 1})
-			else:
-				col_i += 1
-
-	# Second pass: merge vertically adjacent runs with same col and count
-	# This prevents shells getting stuck between rows (e.g. floor rows 13-14)
-	var merged: Array = []
-	var used: Array = []
-	for i in runs.size():
-		used.append(false)
-	for i in runs.size():
-		if used[i]:
-			continue
-		var run = runs[i]
-		var cur_col: int = run.col
-		var cur_count: int = run.count
-		var cur_row: int = run.row
-		var cur_height: int = 1
-		# Look for matching runs in subsequent rows
-		for j in range(i + 1, runs.size()):
-			if used[j]:
-				continue
-			var other = runs[j]
-			if other.col == cur_col and other.count == cur_count and other.row == cur_row + cur_height:
-				cur_height += 1
-				used[j] = true
-		merged.append({"col": cur_col, "row": cur_row, "count": cur_count, "height": cur_height})
-		used[i] = true
-
-	# Place merged tile regions
-	for region in merged:
-		_place_tile_region(region.col, region.row, region.count, region.height)
-
-	$Background.color = Color(0.12, 0.10, 0.15)  # Dark purple-black
-
-
-func _place_tile_region(start_col: int, start_row: int, count: int, height: int) -> void:
-	# Create one StaticBody2D with a single collision rect spanning count x height tiles,
-	# then overlay individual tile sprites for the visual
-	var region_width := TILE_SIZE * count
-	var region_height := TILE_SIZE * height
-	var center_x := start_col * TILE_SIZE + region_width * 0.5
-	var center_y := start_row * TILE_SIZE + region_height * 0.5
-	var pos := Vector2(center_x, center_y)
-
-	var tile_body := StaticBody2D.new()
-	tile_body.name = "TileRegion_%d_%d_%dx%d" % [start_col, start_row, count, height]
-	tile_body.position = pos
-	add_child(tile_body)
-	stage_extra_nodes.append(tile_body)
-
-	# Single collision shape spanning the full region
-	var shape := CollisionShape2D.new()
-	var rect := RectangleShape2D.new()
-	rect.size = Vector2(region_width, region_height)
-	shape.shape = rect
-	tile_body.add_child(shape)
-
-	# Individual tile sprites for visual
-	for r in height:
-		for c in count:
-			var spr := Sprite2D.new()
-			spr.texture = TEX_TILE
-			spr.scale = Vector2(2.0, 2.0)  # 24px art at 2x = 48px
-			spr.position = Vector2(
-				(c - (count - 1) * 0.5) * TILE_SIZE,
-				(r - (height - 1) * 0.5) * TILE_SIZE
-			)
-			tile_body.add_child(spr)
-
-
-func _hide_all_arena_nodes() -> void:
-	# Hide all default arena nodes (ground, platforms, center circle, walls, corners)
-	center_circle.visible = false
-	for child in center_circle.get_children():
-		if child is CollisionShape2D:
-			child.disabled = true
-	$PlatformLeft.visible = false
-	$PlatformRight.visible = false
-	for child in $PlatformLeft.get_children():
-		if child is CollisionShape2D:
-			child.disabled = true
-	for child in $PlatformRight.get_children():
-		if child is CollisionShape2D:
-			child.disabled = true
-	ground.visible = false
-	for child in ground.get_children():
-		if child is CollisionPolygon2D:
-			child.disabled = true
-		if child is Polygon2D:
-			child.visible = false
-	var hide_names := ["WallLeft", "WallRight",
-		"CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]
-	for name_str in hide_names:
-		var node: Node = get_node_or_null(name_str)
-		if node:
-			node.visible = false
-			for child in node.get_children():
-				if child is CollisionShape2D or child is CollisionPolygon2D:
-					child.disabled = true
 
 
 func _wrap_position(player: Bollard) -> void:
@@ -856,31 +337,6 @@ func _wrap_shell(player: Bollard) -> void:
 		player.shell_toss_pos.y = WRAP_TOP - player.BASE_RADIUS
 
 
-# ╔══════════════════════════════════════════════════════════════════════════╗
-# ║ HUD SETUP                                                                ║
-# ╚══════════════════════════════════════════════════════════════════════════╝
-
-func _create_bar_polygons() -> void:
-	# Create 5 HP squares for each player
-	var p1_start_x := P1_BAR_LEFT
-	for i in 5:
-		var sq := ColorRect.new()
-		sq.size = Vector2(HP_SQUARE_SIZE, HP_SQUARE_SIZE)
-		sq.position = Vector2(p1_start_x + i * (HP_SQUARE_SIZE + HP_SQUARE_GAP), HP_SQUARE_Y)
-		sq.color = HP_FULL_COLOR
-		p1_group.add_child(sq)
-		p1_hp_squares.append(sq)
-
-	var p2_start_x := P2_BAR_RIGHT - 5.0 * (HP_SQUARE_SIZE + HP_SQUARE_GAP) + HP_SQUARE_GAP
-	for i in 5:
-		var sq := ColorRect.new()
-		sq.size = Vector2(HP_SQUARE_SIZE, HP_SQUARE_SIZE)
-		sq.position = Vector2(p2_start_x + i * (HP_SQUARE_SIZE + HP_SQUARE_GAP), HP_SQUARE_Y)
-		sq.color = HP_FULL_COLOR
-		p2_group.add_child(sq)
-		p2_hp_squares.append(sq)
-
-
 func _create_countdown_label() -> void:
 	countdown_label = Label.new()
 	if pixel_font:
@@ -896,7 +352,7 @@ func _create_countdown_label() -> void:
 	countdown_label.offset_right = 1280.0
 	countdown_label.offset_bottom = 340.0
 	countdown_label.visible = false
-	$HUD.add_child(countdown_label)
+	hud_layer.add_child(countdown_label)
 
 
 func _create_death_phrase_label() -> void:
@@ -914,7 +370,7 @@ func _create_death_phrase_label() -> void:
 	death_phrase_label.offset_right = 1040.0
 	death_phrase_label.offset_bottom = 190.0
 	death_phrase_label.visible = false
-	$HUD.add_child(death_phrase_label)
+	hud_layer.add_child(death_phrase_label)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1803,10 +1259,6 @@ func _update_hud() -> void:
 	# Stocks
 	p1_stock_label.text = _stock_display(player1.stocks)
 	p2_stock_label.text = _stock_display(player2.stocks)
-
-	# Hide damage label (using squares instead)
-	p1_dmg_label.visible = false
-	p2_dmg_label.visible = false
 
 	# Shake
 	if p1_shake_timer > 0.0:

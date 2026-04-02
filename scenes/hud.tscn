@@ -1,0 +1,149 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="FontFile" path="res://fonts/PressStart2P-Regular.ttf" id="1_font"]
+
+[node name="HUD" type="CanvasLayer"]
+
+[node name="P1Group" type="Control" parent="."]
+
+[node name="P1HpSquare1" type="ColorRect" parent="P1Group"]
+offset_left = 180.0
+offset_top = 658.0
+offset_right = 198.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P1HpSquare2" type="ColorRect" parent="P1Group"]
+offset_left = 202.0
+offset_top = 658.0
+offset_right = 220.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P1HpSquare3" type="ColorRect" parent="P1Group"]
+offset_left = 224.0
+offset_top = 658.0
+offset_right = 242.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P1HpSquare4" type="ColorRect" parent="P1Group"]
+offset_left = 246.0
+offset_top = 658.0
+offset_right = 264.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P1HpSquare5" type="ColorRect" parent="P1Group"]
+offset_left = 268.0
+offset_top = 658.0
+offset_right = 286.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P1Stocks" type="Label" parent="P1Group"]
+offset_left = 180.0
+offset_top = 685.0
+offset_right = 300.0
+offset_bottom = 710.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 10
+text = "O O O"
+horizontal_alignment = 1
+
+[node name="P1Effect" type="Label" parent="P1Group"]
+visible = false
+offset_left = 240.0
+offset_top = 590.0
+offset_right = 540.0
+offset_bottom = 624.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(1, 0.3, 0.1, 1)
+text = "OOF!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="P2Group" type="Control" parent="."]
+
+[node name="P2HpSquare1" type="ColorRect" parent="P2Group"]
+offset_left = 990.0
+offset_top = 658.0
+offset_right = 1008.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P2HpSquare2" type="ColorRect" parent="P2Group"]
+offset_left = 1012.0
+offset_top = 658.0
+offset_right = 1030.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P2HpSquare3" type="ColorRect" parent="P2Group"]
+offset_left = 1034.0
+offset_top = 658.0
+offset_right = 1052.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P2HpSquare4" type="ColorRect" parent="P2Group"]
+offset_left = 1056.0
+offset_top = 658.0
+offset_right = 1074.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P2HpSquare5" type="ColorRect" parent="P2Group"]
+offset_left = 1078.0
+offset_top = 658.0
+offset_right = 1096.0
+offset_bottom = 676.0
+color = Color(0.3, 0.85, 0.35, 1)
+
+[node name="P2Stocks" type="Label" parent="P2Group"]
+offset_left = 980.0
+offset_top = 685.0
+offset_right = 1100.0
+offset_bottom = 710.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 10
+text = "O O O"
+horizontal_alignment = 1
+
+[node name="P2Effect" type="Label" parent="P2Group"]
+visible = false
+offset_left = 740.0
+offset_top = 590.0
+offset_right = 1040.0
+offset_bottom = 624.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(1, 0.3, 0.1, 1)
+text = "OOF!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="GameOver" type="Label" parent="."]
+visible = false
+offset_left = 340.0
+offset_top = 180.0
+offset_right = 940.0
+offset_bottom = 350.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 16
+text = "GAME OVER"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Controls" type="Label" parent="."]
+offset_left = 340.0
+offset_top = 20.0
+offset_right = 940.0
+offset_bottom = 80.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 8
+text = "P1: WASD aim, Q ability1, F ability2, E parry  |  Controller: L-Stick, Square, Cross, L1
+P2: AI  (or Arrows, Shift/., /)    ESC = Quit    T = Restart"
+horizontal_alignment = 1
+vertical_alignment = 0
