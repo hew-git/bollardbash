@@ -89,7 +89,7 @@ var p1_hp_squares: Array[ColorRect] = []
 var p2_hp_squares: Array[ColorRect] = []
 const HP_SQUARE_SIZE := 18.0
 const HP_SQUARE_GAP := 4.0
-const HP_SQUARE_Y := 638.0
+const HP_SQUARE_Y := 658.0
 const HP_FULL_COLOR := Color(0.3, 0.85, 0.35)
 const HP_EMPTY_COLOR := Color(0.18, 0.18, 0.2, 0.8)
 
@@ -149,7 +149,7 @@ var screen_wrap_enabled: bool = false
 const WRAP_LEFT := 0.0
 const WRAP_RIGHT := 1280.0
 const WRAP_TOP := 0.0
-const WRAP_BOTTOM := 700.0
+const WRAP_BOTTOM := 720.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
@@ -186,6 +186,9 @@ func _ready() -> void:
 
 	# Screen ripple effect overlay
 	_setup_ripple_shader()
+
+	# Stylized border frame
+	_create_border_frame()
 
 	# Slime colors per player
 	player1.slime_color = Color(0.55, 0.75, 0.35, 0.6)
@@ -297,6 +300,106 @@ void fragment() {
 	ripple_rect.visible = false  # Only visible during active ripple
 	add_child(ripple_layer)
 	ripple_layer.add_child(ripple_rect)
+
+
+func _create_border_frame() -> void:
+	# Stylized pixel-art border around the play area and above the HUD
+	# Uses a CanvasLayer at high z-index so it draws on top of everything
+	var border_layer := CanvasLayer.new()
+	border_layer.name = "BorderFrame"
+	border_layer.layer = 90  # Below ripple (100) but above game
+	add_child(border_layer)
+
+	var border_color := Color(0.08, 0.06, 0.1)        # Near-black
+	var accent_color := Color(0.25, 0.2, 0.35)         # Muted purple
+	var highlight_color := Color(0.4, 0.35, 0.5, 0.6)  # Subtle highlight
+
+	var border_w := 16.0   # Side border width
+	var hud_y := 648.0     # Where the HUD separator sits
+
+	# ── Left border ──
+	var left := ColorRect.new()
+	left.position = Vector2(0, 0)
+	left.size = Vector2(border_w, 720)
+	left.color = border_color
+	left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(left)
+
+	# Left inner accent line
+	var left_accent := ColorRect.new()
+	left_accent.position = Vector2(border_w, 0)
+	left_accent.size = Vector2(2, 720)
+	left_accent.color = accent_color
+	left_accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(left_accent)
+
+	# ── Right border ──
+	var right := ColorRect.new()
+	right.position = Vector2(1280 - border_w, 0)
+	right.size = Vector2(border_w, 720)
+	right.color = border_color
+	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(right)
+
+	# Right inner accent line
+	var right_accent := ColorRect.new()
+	right_accent.position = Vector2(1280 - border_w - 2, 0)
+	right_accent.size = Vector2(2, 720)
+	right_accent.color = accent_color
+	right_accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(right_accent)
+
+	# ── Top border ──
+	var top := ColorRect.new()
+	top.position = Vector2(0, 0)
+	top.size = Vector2(1280, border_w)
+	top.color = border_color
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(top)
+
+	# Top inner accent line
+	var top_accent := ColorRect.new()
+	top_accent.position = Vector2(0, border_w)
+	top_accent.size = Vector2(1280, 2)
+	top_accent.color = accent_color
+	top_accent.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(top_accent)
+
+	# ── HUD separator bar (above the HP/stock area) ──
+	var hud_bar := ColorRect.new()
+	hud_bar.position = Vector2(0, hud_y)
+	hud_bar.size = Vector2(1280, 4)
+	hud_bar.color = accent_color
+	hud_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(hud_bar)
+
+	# HUD separator highlight (1px bright line on top edge)
+	var hud_highlight := ColorRect.new()
+	hud_highlight.position = Vector2(border_w, hud_y)
+	hud_highlight.size = Vector2(1280 - border_w * 2, 1)
+	hud_highlight.color = highlight_color
+	hud_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(hud_highlight)
+
+	# ── Bottom border ──
+	var bottom := ColorRect.new()
+	bottom.position = Vector2(0, 720 - 4)
+	bottom.size = Vector2(1280, 4)
+	bottom.color = border_color
+	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	border_layer.add_child(bottom)
+
+	# ── Corner accents (small squares in each corner for pixel-art feel) ──
+	for corner_pos in [
+		Vector2(0, 0), Vector2(1280 - border_w, 0),
+		Vector2(0, 720 - border_w), Vector2(1280 - border_w, 720 - border_w)
+	]:
+		var corner := ColorRect.new()
+		corner.position = corner_pos
+		corner.size = Vector2(border_w, border_w)
+		corner.color = accent_color
+		corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		border_layer.add_child(corner)
 
 
 func _setup_background() -> void:
@@ -584,7 +687,7 @@ func _setup_tower_stage() -> void:
 	_hide_all_arena_nodes()
 
 	# Build the level from 48x48 tiles (24px art at 2x)
-	# Grid: 1280 / 48 ≈ 27 columns, 700 / 48 ≈ 15 rows
+	# Grid: 1280 / 48 ≈ 27 columns, 720 / 48 = 15 rows
 	# Level layout: '#' = solid tile, '.' = empty
 	var layout := [
 		"...........................",  # row 0
@@ -907,9 +1010,9 @@ func _create_select_screen() -> void:
 	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 8, Color(0.45, 0.45, 0.45))
 	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_hint_label.offset_left = 100
-	select_hint_label.offset_top = 650
+	select_hint_label.offset_top = 660
 	select_hint_label.offset_right = 1180
-	select_hint_label.offset_bottom = 680
+	select_hint_label.offset_bottom = 695
 	select_layer.add_child(select_hint_label)
 
 func _make_select_label(text: String, size: int, color: Color) -> Label:
