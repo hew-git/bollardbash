@@ -4,7 +4,7 @@ extends Node2D
 const TEX_PLATFORM := preload("res://sprites/arena/platform.png")
 const TEX_ROCK := preload("res://sprites/arena/center_rock.png")
 const TEX_TILE := preload("res://sprites/arena/tile.png")
-const TILE_SIZE := 24.0          # Towerfall-style tile grid size
+const TILE_SIZE := 48.0          # 24px art at 2x scale — matches snail shell size
 
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
@@ -29,13 +29,7 @@ const WALL_ANGLE_INWARD := 30.0     # Bottom edge angled inward by this many pix
 
 # ── HUD Constants ───────────────────────────────────────────────────────────
 const P1_BAR_LEFT := 180.0
-const P1_BAR_RIGHT := 540.0
-const P2_BAR_LEFT := 740.0
 const P2_BAR_RIGHT := 1100.0
-const BAR_MAX_WIDTH := 360.0
-const BAR_INNER_TOP := 638.0
-const BAR_OUTER_TOP := 622.0
-const BAR_BOTTOM := 660.0
 const EFFECT_DURATION := 1.0
 const SHAKE_DURATION := 0.35
 const SHAKE_INTENSITY := 4.0
@@ -90,11 +84,14 @@ const SLIME_MAX_DOTS := 200
 @onready var ground: StaticBody2D = $Ground
 @onready var center_circle: StaticBody2D = $CenterCircle
 
-# ── Bar Polygon2D (created at runtime) ──────────────────────────────────────
-var p1_bar_bg: Polygon2D
-var p1_bar_fill: Polygon2D
-var p2_bar_bg: Polygon2D
-var p2_bar_fill: Polygon2D
+# ── HP Squares (created at runtime) ─────────────────────────────────────────
+var p1_hp_squares: Array[ColorRect] = []
+var p2_hp_squares: Array[ColorRect] = []
+const HP_SQUARE_SIZE := 18.0
+const HP_SQUARE_GAP := 4.0
+const HP_SQUARE_Y := 638.0
+const HP_FULL_COLOR := Color(0.3, 0.85, 0.35)
+const HP_EMPTY_COLOR := Color(0.18, 0.18, 0.2, 0.8)
 
 # ── Countdown Label (created at runtime) ───────────────────────────────────
 var countdown_label: Label
@@ -581,39 +578,25 @@ func _setup_tower_stage() -> void:
 	# Hide all normal arena geometry
 	_hide_all_arena_nodes()
 
-	# Build the level from 24x24 tiles
-	# Grid: 1280 / 24 ≈ 53 columns, 700 / 24 ≈ 29 rows
+	# Build the level from 48x48 tiles (24px art at 2x)
+	# Grid: 1280 / 48 ≈ 27 columns, 700 / 48 ≈ 15 rows
 	# Level layout: '#' = solid tile, '.' = empty
 	var layout := [
-		".......................................................",  # row 0
-		".......................................................",  # row 1
-		".......................................................",  # row 2
-		".......................................................",  # row 3
-		"...........########.................########...........",  # row 4
-		".......................................................",  # row 5
-		".......................................................",  # row 6
-		".......................................................",  # row 7
-		"###..............................##...............#####",  # row 8 (side ledges)
-		".......................................................",  # row 9
-		".......................................................",  # row 10
-		"..............########.......########..................",  # row 11
-		".......................................................",  # row 12
-		".......................................................",  # row 13
-		".......................................................",  # row 14
-		"####.............................................######",  # row 15
-		".......................................................",  # row 16
-		".......................................................",  # row 17
-		"...........########.................########...........",  # row 18
-		".......................................................",  # row 19
-		".......................................................",  # row 20
-		".......................................................",  # row 21
-		"###.......................##........................####",  # row 22 (side ledges)
-		".......................................................",  # row 23
-		".......................................................",  # row 24
-		"..............########.......########..................",  # row 25
-		".......................................................",  # row 26
-		"#######################################################",  # row 27 (floor)
-		"#######################################################",  # row 28 (floor depth)
+		"...........................",  # row 0
+		"....#####.......#####.....",  # row 1
+		"...........................",  # row 2
+		"...........................",  # row 3
+		"##...................##..##",  # row 4 (side ledges)
+		"...........................",  # row 5
+		"........#####.####........",  # row 6
+		"...........................",  # row 7
+		"...........................",  # row 8
+		"###...................#####",  # row 9 (side ledges)
+		"...........................",  # row 10
+		"....#####.......#####.....",  # row 11
+		"...........................",  # row 12
+		"########.........#########",  # row 13 (floor with center hole)
+		"########.........#########",  # row 14 (floor depth)
 	]
 
 	for row_i in layout.size():
@@ -641,6 +624,7 @@ func _place_tile(col: int, row: int) -> void:
 
 	var spr := Sprite2D.new()
 	spr.texture = TEX_TILE
+	spr.scale = Vector2(2.0, 2.0)  # 24px art at 2x = 48px, matching snail shell
 	tile_body.add_child(spr)
 
 
@@ -716,31 +700,24 @@ func _wrap_shell(player: Bollard) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _create_bar_polygons() -> void:
-	p1_bar_bg = Polygon2D.new()
-	p1_bar_bg.color = Color(0.15, 0.15, 0.15, 0.8)
-	p1_bar_bg.polygon = PackedVector2Array([
-		Vector2(P1_BAR_LEFT, BAR_OUTER_TOP),
-		Vector2(P1_BAR_RIGHT, BAR_INNER_TOP),
-		Vector2(P1_BAR_RIGHT, BAR_BOTTOM),
-		Vector2(P1_BAR_LEFT, BAR_BOTTOM)])
-	p1_group.add_child(p1_bar_bg)
+	# Create 5 HP squares for each player
+	var p1_start_x := P1_BAR_LEFT
+	for i in 5:
+		var sq := ColorRect.new()
+		sq.size = Vector2(HP_SQUARE_SIZE, HP_SQUARE_SIZE)
+		sq.position = Vector2(p1_start_x + i * (HP_SQUARE_SIZE + HP_SQUARE_GAP), HP_SQUARE_Y)
+		sq.color = HP_FULL_COLOR
+		p1_group.add_child(sq)
+		p1_hp_squares.append(sq)
 
-	p1_bar_fill = Polygon2D.new()
-	p1_bar_fill.color = Color(0.3, 0.8, 0.3)
-	p1_group.add_child(p1_bar_fill)
-
-	p2_bar_bg = Polygon2D.new()
-	p2_bar_bg.color = Color(0.15, 0.15, 0.15, 0.8)
-	p2_bar_bg.polygon = PackedVector2Array([
-		Vector2(P2_BAR_LEFT, BAR_INNER_TOP),
-		Vector2(P2_BAR_RIGHT, BAR_OUTER_TOP),
-		Vector2(P2_BAR_RIGHT, BAR_BOTTOM),
-		Vector2(P2_BAR_LEFT, BAR_BOTTOM)])
-	p2_group.add_child(p2_bar_bg)
-
-	p2_bar_fill = Polygon2D.new()
-	p2_bar_fill.color = Color(0.3, 0.8, 0.3)
-	p2_group.add_child(p2_bar_fill)
+	var p2_start_x := P2_BAR_RIGHT - 5.0 * (HP_SQUARE_SIZE + HP_SQUARE_GAP) + HP_SQUARE_GAP
+	for i in 5:
+		var sq := ColorRect.new()
+		sq.size = Vector2(HP_SQUARE_SIZE, HP_SQUARE_SIZE)
+		sq.position = Vector2(p2_start_x + i * (HP_SQUARE_SIZE + HP_SQUARE_GAP), HP_SQUARE_Y)
+		sq.color = HP_FULL_COLOR
+		p2_group.add_child(sq)
+		p2_hp_squares.append(sq)
 
 
 func _create_countdown_label() -> void:
@@ -1498,7 +1475,7 @@ func _restart_game(go_to_select: bool = true) -> void:
 				p.remove_collision_exception_with(dt.body)
 		p.drop_through_bodies.clear()
 		p.hit_points = p.MAX_HIT_POINTS
-		p.damage_percent = 0.0
+
 		p.extend_amount = 0.5
 		p.linear_velocity = Vector2.ZERO
 		p.angular_velocity = 0.0
@@ -1657,42 +1634,18 @@ func _check_damage_effects(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_hud() -> void:
-	# HP bar — fills based on remaining hit points
-	var p1_pct := clampf(float(player1.hit_points) / float(player1.MAX_HIT_POINTS), 0.0, 1.0)
-	if p1_pct > 0.005:
-		var fill_left: float = P1_BAR_RIGHT - p1_pct * BAR_MAX_WIDTH
-		var t_left: float = (fill_left - P1_BAR_LEFT) / BAR_MAX_WIDTH
-		var top_at_left: float = lerpf(BAR_OUTER_TOP, BAR_INNER_TOP, t_left)
-		p1_bar_fill.polygon = PackedVector2Array([
-			Vector2(fill_left, top_at_left),
-			Vector2(P1_BAR_RIGHT, BAR_INNER_TOP),
-			Vector2(P1_BAR_RIGHT, BAR_BOTTOM),
-			Vector2(fill_left, BAR_BOTTOM)])
-		p1_bar_fill.color = _hp_color(player1.hit_points)
-	else:
-		p1_bar_fill.polygon = PackedVector2Array()
-
-	var p2_pct := clampf(float(player2.hit_points) / float(player2.MAX_HIT_POINTS), 0.0, 1.0)
-	if p2_pct > 0.005:
-		var fill_right: float = P2_BAR_LEFT + p2_pct * BAR_MAX_WIDTH
-		var t_right: float = (fill_right - P2_BAR_LEFT) / BAR_MAX_WIDTH
-		var top_at_right: float = lerpf(BAR_INNER_TOP, BAR_OUTER_TOP, t_right)
-		p2_bar_fill.polygon = PackedVector2Array([
-			Vector2(P2_BAR_LEFT, BAR_INNER_TOP),
-			Vector2(fill_right, top_at_right),
-			Vector2(fill_right, BAR_BOTTOM),
-			Vector2(P2_BAR_LEFT, BAR_BOTTOM)])
-		p2_bar_fill.color = _hp_color(player2.hit_points)
-	else:
-		p2_bar_fill.polygon = PackedVector2Array()
+	# HP squares — light up for remaining HP, dark for lost HP
+	for i in 5:
+		p1_hp_squares[i].color = HP_FULL_COLOR if i < player1.hit_points else HP_EMPTY_COLOR
+		p2_hp_squares[i].color = HP_FULL_COLOR if i < player2.hit_points else HP_EMPTY_COLOR
 
 	# Stocks
 	p1_stock_label.text = _stock_display(player1.stocks)
 	p2_stock_label.text = _stock_display(player2.stocks)
 
-	# HP text display
-	p1_dmg_label.text = "%d HP" % player1.hit_points
-	p2_dmg_label.text = "%d HP" % player2.hit_points
+	# Hide damage label (using squares instead)
+	p1_dmg_label.visible = false
+	p2_dmg_label.visible = false
 
 	# Shake
 	if p1_shake_timer > 0.0:
@@ -1713,17 +1666,6 @@ func _stock_display(count: int) -> String:
 	for i in 3:
 		s += "O " if i < count else "X "
 	return s.strip_edges()
-
-
-func _hp_color(hp: int) -> Color:
-	if hp >= 4:
-		return Color(0.3, 0.8, 0.3)
-	elif hp == 3:
-		return Color(0.9, 0.8, 0.2)
-	elif hp == 2:
-		return Color(0.9, 0.5, 0.1)
-	else:
-		return Color(0.9, 0.15, 0.15)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗

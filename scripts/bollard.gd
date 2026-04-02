@@ -22,9 +22,9 @@ const DAMAGE_SHELLED := 1         # HP lost when hit WITH shell on
 const DAMAGE_UNSHELLED := 2       # HP lost when hit WITHOUT shell (exposed)
 
 # ── Physics Tuning ──────────────────────────────────────────────────────────
-const LEAN_TORQUE := 100000.0
+const LEAN_TORQUE := 80000.0
 const EXTEND_SPEED := 8.0
-const ANGULAR_DAMP_AMOUNT := 1.5
+const ANGULAR_DAMP_AMOUNT := 2.5
 const LAUNCH_BOOST := 200.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
@@ -107,7 +107,6 @@ const EMERGE_DURATION := 0.6
 # ── Runtime State ───────────────────────────────────────────────────────────
 var extend_amount: float = 0.5
 var hit_points: int = MAX_HIT_POINTS
-var damage_percent: float = 0.0    # Legacy — kept for knockback scaling
 var stocks: int = 3
 var is_dead: bool = false
 var was_hit_by_shell: bool = false  # Set when hit by a shell toss (for death phrases)
@@ -256,7 +255,7 @@ func _ready() -> void:
 
 	if not physics_material_override:
 		physics_material_override = PhysicsMaterial.new()
-	physics_material_override.friction = 0.6
+	physics_material_override.friction = 0.85
 	physics_material_override.bounce = 0.15
 
 	center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
@@ -289,8 +288,8 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Anti-tunneling: detect if snail teleported through floor since last frame
-	# Skip check during emerge and for a few frames after spawn (invincibility period)
-	if _prev_global_pos.y > 0.0 and not is_emerging and not is_invincible:
+	# Skip during emerge, invincibility, and phase dash (intentionally passing through)
+	if _prev_global_pos.y > 0.0 and not is_emerging and not is_invincible and not is_phase_dashing:
 		var dy := global_position.y - _prev_global_pos.y
 		var expected_dy := maxf(linear_velocity.y * delta, 0.0)
 		if dy > expected_dy + 80.0 and dy > 60.0:
@@ -1008,7 +1007,14 @@ func _check_charge_hits() -> void:
 		return
 
 func _is_dash_blocked() -> bool:
-	# Check if dashing into a wall, ground, or platform — end dash if so
+	# Check if dashing into a wall or platform — end dash if so
+	# Give a brief grace period (first few frames) so dashes can start from ground
+	if is_dashing and dash_timer < 0.08:
+		return false
+	if is_bolt_dashing and bolt_dash_timer < 0.08:
+		return false
+	if is_goo_dashing and goo_dash_timer < 0.08:
+		return false
 	for body in get_colliding_bodies():
 		if body is StaticBody2D:
 			return true
@@ -1069,38 +1075,63 @@ func _update_shell_toss(delta: float) -> void:
 	if not shell_stuck:
 		# Apply gravity
 		shell_toss_vel.y += SHELL_GRAVITY * delta
-		var prev_pos := shell_toss_pos
-		shell_toss_pos += shell_toss_vel * delta
+		# Cap max velocity to prevent tunneling
+		if shell_toss_vel.length() > 1500.0:
+			shell_toss_vel = shell_toss_vel.normalized() * 1500.0
+		var move := shell_toss_vel * delta
+		var shell_radius := BASE_RADIUS * 0.5  # Visual bounce radius (smaller than physics)
 
-		# Bounce off surfaces using raycast
+		# Shape-cast: sweep a circle along the movement path
 		var space := get_world_2d().direct_space_state
-		var query := PhysicsRayQueryParameters2D.create(prev_pos, shell_toss_pos)
-		query.exclude = [get_rid()]
-		var result := space.intersect_ray(query)
-		if result:
-			# Pass through one-way platforms from below (like snails do)
-			# Goopy's shell does NOT pass through — he needs to grapple to platforms
+		var motion_params := PhysicsShapeQueryParameters2D.new()
+		var circle := CircleShape2D.new()
+		circle.radius = shell_radius
+		motion_params.shape = circle
+		motion_params.transform = Transform2D(0.0, shell_toss_pos)
+		motion_params.motion = move
+		motion_params.exclude = [get_rid()]
+		var cast_result := space.cast_motion(motion_params)
+		# cast_result = [safe_fraction, unsafe_fraction]
+		# safe_fraction: how far along 'move' we can go without collision
+		var safe_frac: float = cast_result[0]
+		var hit_surface := safe_frac < 1.0
+
+		if hit_surface:
+			# Move to the safe position (just before contact)
+			shell_toss_pos += move * safe_frac
+			# Find the collision normal using a rest query at the contact point
+			motion_params.transform = Transform2D(0.0, shell_toss_pos)
+			motion_params.motion = Vector2.ZERO
+			var rest := space.get_rest_info(motion_params)
+			var bounce_normal := Vector2.UP  # fallback
 			var skip_bounce := false
-			if character_type != CharacterType.GOOPY and result.collider is StaticBody2D:
-				var hit_body: StaticBody2D = result.collider
-				for child in hit_body.get_children():
-					if child is CollisionShape2D and child.one_way_collision:
-						if shell_toss_vel.y < 0.0:
-							skip_bounce = true
-						break
-			if not skip_bounce:
-				# Push shell out of surface with extra margin to prevent re-collision
-				shell_toss_pos = result.position + result.normal * (BASE_RADIUS + 4.0)
-				# Proper bounce: reflect velocity off the surface normal
-				shell_toss_vel = shell_toss_vel.reflect(result.normal) * SHELL_BOUNCE
-				# Ensure minimum bounce speed to prevent getting stuck
-				if shell_toss_vel.length() < 150.0 and character_type != CharacterType.GOOPY:
-					shell_toss_vel = shell_toss_vel.normalized() * 150.0
+			if rest.size() > 0:
+				bounce_normal = rest.normal
+				# Pass through one-way platforms from below (except Goopy)
+				if character_type != CharacterType.GOOPY and rest.collider_id > 0:
+					var collider_obj = instance_from_id(rest.collider_id)
+					if collider_obj is StaticBody2D:
+						for child in collider_obj.get_children():
+							if child is CollisionShape2D and child.one_way_collision:
+								if shell_toss_vel.y < 0.0:
+									skip_bounce = true
+								break
+			if skip_bounce:
+				# Pass through — continue full movement
+				shell_toss_pos += move * (1.0 - safe_frac)
+			else:
+				# Push out from surface
+				shell_toss_pos += bounce_normal * 2.0
+				# Reflect velocity off the surface normal
+				shell_toss_vel = shell_toss_vel.reflect(bounce_normal) * SHELL_BOUNCE
 				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
 					shell_toss_vel = Vector2.ZERO
 					shell_toss_hit = true
+		else:
+			# No collision — apply full movement
+			shell_toss_pos += move
 
 	# Zappy max range: stop shell after traveling max distance
 	if character_type == CharacterType.ZAPPY and not shell_toss_hit:
@@ -1298,7 +1329,7 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	rotation = 0.0
 	extend_amount = 0.0
 	hit_points = MAX_HIT_POINTS
-	damage_percent = 0.0
+
 	was_hit_by_shell = false
 	is_charging = false
 	charge_amount = 0.0
@@ -1378,9 +1409,9 @@ func _update_invincibility(delta: float) -> void:
 # ║ All other pixel colors pass through unchanged (outlines, eyes, etc.)     ║
 # ║                                                                           ║
 # ║ Per-character sprites in sprites/snail/<blink|goopy|zappy>/:             ║
-# ║   shell.png   22x22  — spiral shell (rendered at 2x = 44px)             ║
-# ║   neck.png    10x4   — neck tile segment (rendered at 2x = 20x8)        ║
-# ║   head.png    12x10  — head with eye stalks (rendered at 2x = 24x20)    ║
+# ║   shell.png   24x24  — spiral shell (rendered at 2x = 48px)             ║
+# ║   neck.png    12x4   — neck tile segment (rendered at 2x = 24x8)        ║
+# ║   head.png    14x12  — head with eye stalks (rendered at 2x = 28x24)    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_sprites() -> void:
