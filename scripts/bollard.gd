@@ -989,7 +989,7 @@ func _check_charge_hits() -> void:
 		# Parry deflects dash
 		if body is Bollard and (body as Bollard).is_parrying:
 			linear_velocity = linear_velocity.reflect(dir) * 0.5
-			var hit_pos := (global_position + body.global_position) * 0.5
+			var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, true)
 			SFX.play_sfx("parry_deflect")
 			_end_any_dash()
@@ -1239,7 +1239,7 @@ func _on_body_entered(body: Node) -> void:
 		var reverse_dir: Vector2 = -dir
 		take_damage(0.0, reverse_dir)
 		apply_central_impulse(reverse_dir * KNOCKBACK_BASE * 2.0)
-		var hit_pos := (global_position + other.global_position) * 0.5
+		var hit_pos: Vector2 = (global_position + other.global_position) * 0.5
 		big_hit.emit(hit_pos, true)
 		SFX.play_sfx("parry_deflect")
 		_end_any_dash()
@@ -1249,7 +1249,7 @@ func _on_body_entered(body: Node) -> void:
 	if is_bolt_dashing and character_type == CharacterType.ZAPPY:
 		impact_force *= 0.54
 	other.apply_central_impulse(dir * impact_force)
-	var hit_pos := (global_position + other.global_position) * 0.5
+	var hit_pos: Vector2 = (global_position + other.global_position) * 0.5
 	big_hit.emit(hit_pos, false)
 	if is_dashing:
 		is_dashing = false
