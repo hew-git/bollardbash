@@ -62,28 +62,6 @@ shape = SubResource("circle_shape")
 texture = ExtResource("2_rock")
 scale = Vector2(0.9375, 0.9375)
 
-[node name="WallLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(-30, 340)
-visible = false
-
-[node name="CollisionPolygon" type="CollisionPolygon2D" parent="WallLeft"]
-polygon = PackedVector2Array(-10, -80, 10, -80, 40, 80, 20, 80)
-
-[node name="Visual" type="Polygon2D" parent="WallLeft"]
-color = Color(0.45, 0.35, 0.28, 1)
-polygon = PackedVector2Array(-10, -80, 10, -80, 40, 80, 20, 80)
-
-[node name="WallRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(1310, 340)
-visible = false
-
-[node name="CollisionPolygon" type="CollisionPolygon2D" parent="WallRight"]
-polygon = PackedVector2Array(-10, -80, 10, -80, -20, 80, -40, 80)
-
-[node name="Visual" type="Polygon2D" parent="WallRight"]
-color = Color(0.45, 0.35, 0.28, 1)
-polygon = PackedVector2Array(-10, -80, 10, -80, -20, 80, -40, 80)
-
 [node name="CornerTopLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
 position = Vector2(5, 70)
 rotation = 2.356

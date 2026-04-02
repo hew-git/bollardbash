@@ -56,6 +56,7 @@ const SLIME_MAX_DOTS := 200
 @onready var player1: Bollard = $Player1
 @onready var player2: Bollard = $Player2
 var hud_layer: CanvasLayer
+var border_frame: CanvasLayer
 var p1_group: Control
 var p2_group: Control
 var p1_effect: Label
@@ -124,10 +125,10 @@ const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
 
 # ── Screen Wrapping ────────────────────────────────────────────────────────
 var screen_wrap_enabled: bool = false
-const WRAP_LEFT := 0.0
-const WRAP_RIGHT := 1280.0
-const WRAP_TOP := 0.0
-const WRAP_BOTTOM := 720.0
+const WRAP_LEFT := 16.0
+const WRAP_RIGHT := 1264.0
+const WRAP_TOP := 16.0
+const WRAP_BOTTOM := 640.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
@@ -160,8 +161,10 @@ func _ready() -> void:
 	add_child(hud_layer)
 	_bind_hud_refs()
 
-	# Load border frame from scene
-	add_child(BORDER_SCENE.instantiate())
+	# Load border frame from scene (hidden until gameplay starts)
+	border_frame = BORDER_SCENE.instantiate()
+	border_frame.visible = false
+	add_child(border_frame)
 
 	_create_countdown_label()
 	_create_death_phrase_label()
@@ -489,6 +492,7 @@ func _show_select_screen() -> void:
 	stage_index = 0
 	select_input_cooldown = 0.0
 	select_layer.visible = true
+	border_frame.visible = false
 	stage_label.visible = false
 	_update_select_display()
 
@@ -686,9 +690,10 @@ func _confirm_selections() -> void:
 		# Pick a random non-Random stage
 		final_stage = randi() % (STAGE_NAMES.size() - 1)
 	_apply_stage(final_stage)
-	# Hide select screen, start the game
+	# Hide select screen, show border frame, start the game
 	select_active = false
 	select_layer.visible = false
+	border_frame.visible = true
 	player1.visible = true
 	player2.visible = true
 	_start_countdown()

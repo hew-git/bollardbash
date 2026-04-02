@@ -39,8 +39,8 @@ const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
 const CHARGE_MAX_DASHES := 2        # Number of dashes before cooldown
 
 # ── Shell Toss (all characters) ────────────────────────────────────────────
-const SHELL_TOSS_SPEED := 1200.0    # Max speed of thrown shell (at full charge)
-const SHELL_TOSS_MIN_SPEED := 450.0 # Min speed (quick tap)
+const SHELL_TOSS_SPEED := 1680.0    # Max speed of thrown shell (at full charge) — 40% faster
+const SHELL_TOSS_MIN_SPEED := 630.0 # Min speed (quick tap) — 40% faster
 const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit (Blink base)
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
@@ -318,7 +318,7 @@ func _physics_process(delta: float) -> void:
 	# Reset Blink abilities when touching ground
 	if character_type == CharacterType.BLINK and (blink_toss_used or blink_teleport_used or blink_phase_used):
 		for body in get_colliding_bodies():
-			if body is StaticBody2D:
+			if body is StaticBody2D or body is TileMapLayer:
 				blink_toss_used = false
 				blink_teleport_used = false
 				blink_phase_used = false
@@ -1018,7 +1018,7 @@ func _is_dash_blocked() -> bool:
 	if is_phase_dashing and phase_dash_timer < 0.08:
 		return false
 	for body in get_colliding_bodies():
-		if body is StaticBody2D:
+		if body is StaticBody2D or body is TileMapLayer:
 			return true
 	return false
 
