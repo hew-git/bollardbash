@@ -11,15 +11,20 @@ enum CharacterType { BLINK, GOOPY, ZAPPY }
 @export var accent_color: Color = Color("A06830")    ## Shell color (warm brown)
 
 # ── Dimensions ──────────────────────────────────────────────────────────────
-const BASE_RADIUS := 22.0
+const BASE_RADIUS := 24.0
 const POST_HALF_WIDTH := 16.0
 const MIN_HEIGHT := 2.0
 const MAX_HEIGHT := 90.0
 
+# ── Health ─────────────────────────────────────────────────────────────────
+const MAX_HIT_POINTS := 5
+const DAMAGE_SHELLED := 1         # HP lost when hit WITH shell on
+const DAMAGE_UNSHELLED := 2       # HP lost when hit WITHOUT shell (exposed)
+
 # ── Physics Tuning ──────────────────────────────────────────────────────────
-const LEAN_TORQUE := 100000.0
+const LEAN_TORQUE := 80000.0
 const EXTEND_SPEED := 8.0
-const ANGULAR_DAMP_AMOUNT := 1.5
+const ANGULAR_DAMP_AMOUNT := 2.5
 const LAUNCH_BOOST := 200.0
 const KNOCKBACK_BASE := 300.0
 const HIT_SPEED_THRESHOLD := 80.0
@@ -34,13 +39,13 @@ const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
 const CHARGE_MAX_DASHES := 2        # Number of dashes before cooldown
 
 # ── Shell Toss (all characters) ────────────────────────────────────────────
-const SHELL_TOSS_SPEED := 1800.0    # Max speed of thrown shell (at full charge)
-const SHELL_TOSS_MIN_SPEED := 600.0 # Min speed (quick tap)
+const SHELL_TOSS_SPEED := 1200.0    # Max speed of thrown shell (at full charge)
+const SHELL_TOSS_MIN_SPEED := 450.0 # Min speed (quick tap)
 const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit (Blink base)
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
-const SHELL_BOUNCE := 0.75          # Bounce factor off surfaces (firm bounces)
+const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
 const SHELL_PICKUP_RADIUS := 35.0   # Walk over shell to pick it up
@@ -51,13 +56,13 @@ const PARRY_COOLDOWN := 0.8         # Cooldown after parry ends
 const PARRY_RETRACT_SPEED := 12.0   # How fast body retracts into shell
 
 # ── Blink: Phase Dash ──────────────────────────────────────────────────────
-const PHASE_DASH_IMPULSE := 1400.0
-const PHASE_DASH_TIME := 0.315       # 5% longer
+const PHASE_DASH_IMPULSE := 1190.0   # 15% shorter
+const PHASE_DASH_TIME := 0.27        # 15% shorter
 const PHASE_DASH_COOLDOWN := 0.8
 
 # ── Goopy: Slime Shell Toss + Tether Swing + Goo Dash ──────────────────────
 const GOOPY_TOSS_KNOCKBACK_MULT := 0.3  # 30% of Blink's shell knockback
-const GOOPY_ZIP_IMPULSE := 2200.0    # Impulse when zipping to shell
+const GOOPY_ZIP_IMPULSE := 3300.0    # Impulse when zipping to shell (strong pull)
 const GOOPY_SWING_PULL := 1200.0     # Looser swing force (lower = looser)
 const GOOPY_TETHER_DURATION := 6.0   # Max tether swing time (long for strategic use)
 const GOO_DASH_IMPULSE := 1785.0     # Max dash impulse (15% shorter)
@@ -73,38 +78,35 @@ const GOO_TRAIL_DURATION := 3.0      # How long goo puddles last
 # ── Zappy: Electric Shell Toss + 3x Bolt Dash ─────────────────────────────
 const ZAPPY_TOSS_SPEED := 1200.0     # Fixed speed (unchargeable, 33% less range)
 const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage (nerfed 40%)
-const ZAPPY_TOSS_KNOCKBACK := 120.0  # Light knockback (nerfed 40%)
+const ZAPPY_TOSS_KNOCKBACK := 108.0  # Light knockback (nerfed 40%, then 10% weaker)
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
 const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
 const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
-const BOLT_DASH_SPEED := 1800.0      # Fixed dash speed (pixels/sec)
-const BOLT_DASH_DISTANCE := 200.0    # Fixed dash distance (pixels)
+const BOLT_DASH_SPEED := 2250.0      # Fixed dash speed (pixels/sec) — 25% faster
+const BOLT_DASH_DISTANCE := 425.0    # Fixed dash distance (pixels) — 15% shorter
 const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
 # ── Visual Constants ────────────────────────────────────────────────────────
-const EYE_RADIUS := 5.5
-const STALK_LENGTH := 22.0
-const STALK_SPREAD := 7.0
+const SPRITE_SCALE := 2.0       # Art drawn at half res, rendered at 2x for pixel-perfect look
+const NECK_TILE_HEIGHT := 8.0   # Display height of each neck tile (4px art * 2x scale)
+const NECK_MAX_TILES := 12      # Max tiles needed (MAX_HEIGHT / NECK_TILE_HEIGHT, rounded up)
 
-# ── Sprite Textures (preloaded — swap these PNGs for custom art) ──────────
-const TEX_SHELL := preload("res://sprites/snail/shell.png")
-const TEX_SPIRAL := preload("res://sprites/snail/shell_spiral.png")
-const TEX_BODY := preload("res://sprites/snail/body.png")   # Body tile segment (tiles vertically)
-const TEX_DOME := preload("res://sprites/snail/dome.png")
-const BODY_TILE_HEIGHT := 8.0    # Display height of each body tile (pixels)
-const BODY_MAX_TILES := 12       # Max tiles needed (MAX_HEIGHT / BODY_TILE_HEIGHT, rounded up)
-const TEX_EYE := preload("res://sprites/snail/eye.png")
-const TEX_PUPIL := preload("res://sprites/snail/pupil.png")
-const TEX_EYE_HL := preload("res://sprites/snail/eye_highlight.png")
-const TEX_STALK := preload("res://sprites/snail/stalk.png")
+# ── Sprite Textures ─────────────────────────────────────────────────────────
+# Per-character textures (loaded dynamically in _ready based on character_type)
+var TEX_SHELL: Texture2D
+var TEX_INNER_BODY: Texture2D
+var TEX_NECK: Texture2D
+var TEX_HEAD: Texture2D
+# Palette-swap shader (replaces self_modulate for key-color recoloring)
+const PALETTE_SHADER := preload("res://shaders/palette_swap.gdshader")
 # ── Emerge Constants ────────────────────────────────────────────────────────
 const EMERGE_DURATION := 0.6
 
 # ── Runtime State ───────────────────────────────────────────────────────────
 var extend_amount: float = 0.5
-var damage_percent: float = 0.0
+var hit_points: int = MAX_HIT_POINTS
 var stocks: int = 3
 var is_dead: bool = false
 var was_hit_by_shell: bool = false  # Set when hit by a shell toss (for death phrases)
@@ -188,15 +190,9 @@ var bolt_dash_origin: Vector2 = Vector2.ZERO
 # ── Slime ───────────────────────────────────────────────────────────────────
 var slime_color: Color = Color(0.5, 0.8, 0.3, 0.6)
 
-# ── Eye Blink Animation ─────────────────────────────────────────────────────
-var is_blinking: bool = false
-var blink_timer: float = 0.0
-var next_blink_time: float = 3.0
+# ── Anti-tunneling (floor glitch prevention) ────────────────────────────────
+var _prev_global_pos: Vector2 = Vector2.ZERO
 
-# ── Eye Look State (replaces sine-wave nervous eyes) ──────────────────────
-var eye_look_target: float = 0.0     # Where pupil wants to be (-1..1)
-var eye_look_current: float = 0.0    # Smoothed current offset
-var eye_look_hold_timer: float = 2.0 # Time left holding current gaze
 
 # ── AI State ────────────────────────────────────────────────────────────────
 var ai_target: Bollard = null
@@ -222,23 +218,23 @@ var dome_shape: CollisionShape2D  # Created at runtime for dome cap
 
 # ── Sprite Node References (created in _ready) ────────────────────────────
 var spr_shell: Sprite2D
-var spr_spiral: Sprite2D
-var spr_body_tiles: Array[Sprite2D] = []  # Tiling body segments
-var spr_dome: Sprite2D
-var spr_stalk_l: Sprite2D
-var spr_stalk_r: Sprite2D
-var spr_eye_l: Sprite2D
-var spr_eye_r: Sprite2D
-var spr_pupil_l: Sprite2D
-var spr_pupil_r: Sprite2D
-var spr_eye_hl_l: Sprite2D
-var spr_eye_hl_r: Sprite2D
+var spr_neck_tiles: Array[Sprite2D] = []  # Tiling neck segments
+var spr_head: Sprite2D
 var spr_body_circle: Sprite2D    # Body-colored circle behind shell (visible when shell tossed)
 var spr_thrown_shell: Sprite2D   # The shell projectile when tossed
-var spr_thrown_spiral: Sprite2D  # Spiral overlay on thrown shell
-# Blink lines drawn over eyes (Line2D since there's no blink sprite)
-var blink_line_l: Line2D
-var blink_line_r: Line2D
+
+
+func _load_character_sprites() -> void:
+	var folder: String
+	match character_type:
+		CharacterType.BLINK: folder = "blink"
+		CharacterType.GOOPY: folder = "goopy"
+		CharacterType.ZAPPY: folder = "zappy"
+	var base_path := "res://sprites/snail/%s/" % folder
+	TEX_SHELL = load(base_path + "shell.png")
+	TEX_INNER_BODY = load(base_path + "inner_body.png")
+	TEX_NECK = load(base_path + "neck.png")
+	TEX_HEAD = load(base_path + "head.png")
 
 
 func _ready() -> void:
@@ -259,7 +255,7 @@ func _ready() -> void:
 
 	if not physics_material_override:
 		physics_material_override = PhysicsMaterial.new()
-	physics_material_override.friction = 0.6
+	physics_material_override.friction = 0.85
 	physics_material_override.bounce = 0.15
 
 	center_of_mass_mode = RigidBody2D.CENTER_OF_MASS_MODE_CUSTOM
@@ -283,7 +279,7 @@ func _ready() -> void:
 	$GrabArea.monitoring = false
 	$GrabArea.monitorable = false
 
-	next_blink_time = randf_range(1.5, 5.0)
+	_load_character_sprites()
 	_setup_sprites()
 
 
@@ -291,15 +287,24 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
+	# Anti-tunneling: detect if snail teleported through floor since last frame
+	# Skip during emerge, invincibility, and phase dash (intentionally passing through)
+	if _prev_global_pos.y > 0.0 and not is_emerging and not is_phase_dashing:
+		var dy := global_position.y - _prev_global_pos.y
+		var expected_dy := maxf(linear_velocity.y * delta, 0.0)
+		if dy > expected_dy + 80.0 and dy > 60.0:
+			global_position.y = _prev_global_pos.y
+			linear_velocity.y = 0.0
+
 	if is_emerging:
 		_update_emerge(delta)
+		_prev_global_pos = global_position
 		return
 
 	if is_frozen:
 		_update_collision_shape()
-		_update_blink(delta)
-		_update_eye_look(delta)
 		_update_sprites()
+		_prev_global_pos = global_position
 		return
 
 	prev_extend = extend_amount
@@ -330,9 +335,8 @@ func _physics_process(delta: float) -> void:
 	_update_bolt_dash(delta)
 	_check_launch()
 	_update_invincibility(delta)
-	_update_blink(delta)
-	_update_eye_look(delta)
 	_update_sprites()
+	_prev_global_pos = global_position
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -533,6 +537,7 @@ func _start_phase_dash() -> void:
 		dash_dir = last_aim_dir
 	is_phase_dashing = true
 	phase_dash_timer = 0.0
+	extend_amount = 0.0
 	SFX.play_sfx("dash_phase")
 	# Add collision exceptions for non-ground structures (platforms, center rock, etc.)
 	# Ground is NOT excluded — you can't phase through the ground
@@ -540,22 +545,21 @@ func _start_phase_dash() -> void:
 	apply_central_impulse(dash_dir * PHASE_DASH_IMPULSE)
 
 func _phase_set_exceptions(enable: bool) -> void:
-	# Phase through non-ground StaticBody2D AND other players (RigidBody2D snails)
+	# Phase through ALL StaticBody2D (including ground) and other players
+	# Ground is included so Blink can phase dash while standing on a surface
+	# The dash is short enough (0.27s) that they won't fall through
 	var main_node := get_tree().current_scene
 	if not main_node:
 		return
-	var ground_node: Node = main_node.get_node_or_null("Ground")
-	var slab_node: Node = main_node.get_node_or_null("Slab")
 	for child in main_node.get_children():
 		if child == self:
 			continue
-		if child is StaticBody2D and child != ground_node and child != slab_node:
+		if child is StaticBody2D:
 			if enable:
 				add_collision_exception_with(child)
 			else:
 				remove_collision_exception_with(child)
 		elif child is RigidBody2D and child != self and child.has_method("take_damage"):
-			# Phase through opponents
 			if enable:
 				add_collision_exception_with(child)
 			else:
@@ -575,10 +579,9 @@ func _update_phase_dash(delta: float) -> void:
 	if not is_phase_dashing:
 		return
 	phase_dash_timer += delta
-	if phase_dash_timer >= PHASE_DASH_TIME:
+	if phase_dash_timer >= PHASE_DASH_TIME or _is_dash_blocked():
 		is_phase_dashing = false
 		phase_dash_cooldown = PHASE_DASH_COOLDOWN
-		# Remove collision exceptions
 		_phase_set_exceptions(false)
 
 
@@ -653,6 +656,8 @@ func _update_goopy_zip(_delta: float) -> void:
 			_goopy_release_tether()
 			return
 		if body is RigidBody2D and body.has_method("take_damage"):
+			if body is Bollard and (body as Bollard).is_dead:
+				continue
 			var dir: Vector2 = (body.global_position - global_position).normalized()
 			# Shell blocks the zip hit
 			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
@@ -705,6 +710,7 @@ func _start_goo_dash() -> void:
 		dash_dir = last_aim_dir
 	is_goo_dashing = true
 	goo_dash_timer = 0.0
+	extend_amount = 0.0
 	var impulse := lerpf(GOO_DASH_MIN_IMPULSE, GOO_DASH_IMPULSE, goo_charge_amount)
 	linear_velocity = Vector2.ZERO
 	apply_central_impulse(dash_dir * impulse)
@@ -720,7 +726,7 @@ func _update_goo_dash(delta: float) -> void:
 	goo_trails.append({"pos": global_position, "timer": GOO_TRAIL_DURATION})
 	# Check for dash hits
 	_check_goo_dash_hits()
-	if goo_dash_timer >= GOO_DASH_TIME:
+	if goo_dash_timer >= GOO_DASH_TIME or _is_dash_blocked():
 		is_goo_dashing = false
 		goo_dash_cooldown = GOO_DASH_COOLDOWN
 
@@ -746,6 +752,8 @@ func _check_goo_dash_hits() -> void:
 			if not targets.has(col):
 				targets.append(col)
 	for body in targets:
+		if body is Bollard and (body as Bollard).is_dead:
+			continue
 		var dir: Vector2 = (body.global_position - global_position).normalized()
 		# Shell blocks goo dash
 		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
@@ -843,6 +851,7 @@ func _start_bolt_dash() -> void:
 	is_bolt_charging = false
 	is_bolt_dashing = true
 	bolt_dash_timer = 0.0
+	extend_amount = 0.0
 	SFX.play_sfx("dash_bolt")
 	bolt_dashes_remaining -= 1
 	bolt_dash_dir = aim_dir
@@ -866,14 +875,13 @@ func _update_bolt_dash(delta: float) -> void:
 	linear_velocity = bolt_dash_dir * BOLT_DASH_SPEED
 	# Check for hits — ends dash on contact
 	_check_charge_hits()
-	# Stop after fixed distance or if dash was ended by hit
+	# Stop after fixed distance, hitting something, or dash ended by player hit
 	var traveled := bolt_dash_origin.distance_to(global_position)
-	if not is_bolt_dashing or traveled >= BOLT_DASH_DISTANCE:
+	if not is_bolt_dashing or traveled >= BOLT_DASH_DISTANCE or _is_dash_blocked():
 		is_bolt_dashing = false
 		linear_velocity = bolt_dash_dir * BOLT_DASH_SPEED * 0.15  # Small residual
 		if bolt_dashes_remaining <= 0:
 			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
-
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -922,6 +930,7 @@ func _start_charge_dash() -> void:
 	is_dashing = true
 	dash_timer = 0.0
 	dashes_remaining -= 1
+	extend_amount = 0.0
 	SFX.play_sfx("dash")
 	# Dash in aimed direction; fallback to last aimed direction
 	var dash_dir := aim_dir
@@ -950,9 +959,8 @@ func _update_charge(delta: float) -> void:
 	if is_dashing:
 		dash_timer += delta
 		_check_charge_hits()
-		if dash_timer >= CHARGE_DASH_TIME:
+		if dash_timer >= CHARGE_DASH_TIME or _is_dash_blocked():
 			is_dashing = false
-			# Only start cooldown when all dashes used
 			if dashes_remaining <= 0:
 				charge_cooldown = CHARGE_COOLDOWN
 
@@ -980,24 +988,45 @@ func _check_charge_hits() -> void:
 			if not targets.has(col):
 				targets.append(col)
 	for body in targets:
+		if body is Bollard and (body as Bollard).is_dead:
+			continue
 		var dir: Vector2 = (body.global_position - global_position).normalized()
-		# Shell blocks charge too
-		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
+		# Parry deflects dash
+		if body is Bollard and (body as Bollard).is_parrying:
 			linear_velocity = linear_velocity.reflect(dir) * 0.5
+			var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
+			big_hit.emit(hit_pos, true)
+			SFX.play_sfx("parry_deflect")
 			_end_any_dash()
 			return
-		var dash_dmg := CHARGE_DAMAGE
+		# Dashing target = mutual immunity
+		if body is Bollard and (body as Bollard)._is_in_any_dash():
+			continue
 		var impact_force := linear_velocity.length() * 3.0
-		# Zappy bolt dash: 40% less impact
 		if character_type == CharacterType.ZAPPY and is_bolt_dashing:
-			dash_dmg *= 0.6
-			impact_force *= 0.6
-		body.take_damage(dash_dmg, dir)
+			impact_force *= 0.54
+		body.take_damage(0.0, dir)
 		body.apply_central_impulse(dir * impact_force)
 		var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 		big_hit.emit(hit_pos, false)
 		_end_any_dash()
 		return
+
+func _is_dash_blocked() -> bool:
+	# Check if dashing into a wall or platform — end dash if so
+	# Give a brief grace period (first few frames) so dashes can start from ground
+	if is_dashing and dash_timer < 0.08:
+		return false
+	if is_bolt_dashing and bolt_dash_timer < 0.08:
+		return false
+	if is_goo_dashing and goo_dash_timer < 0.08:
+		return false
+	if is_phase_dashing and phase_dash_timer < 0.08:
+		return false
+	for body in get_colliding_bodies():
+		if body is StaticBody2D:
+			return true
+	return false
 
 func _end_any_dash() -> void:
 	if is_dashing:
@@ -1054,37 +1083,63 @@ func _update_shell_toss(delta: float) -> void:
 	if not shell_stuck:
 		# Apply gravity
 		shell_toss_vel.y += SHELL_GRAVITY * delta
-		var prev_pos := shell_toss_pos
-		shell_toss_pos += shell_toss_vel * delta
+		# Cap max velocity to prevent tunneling
+		if shell_toss_vel.length() > 1500.0:
+			shell_toss_vel = shell_toss_vel.normalized() * 1500.0
+		var move := shell_toss_vel * delta
+		var shell_radius := BASE_RADIUS * 0.5  # Visual bounce radius (smaller than physics)
 
-		# Bounce off surfaces using raycast
+		# Shape-cast: sweep a circle along the movement path
 		var space := get_world_2d().direct_space_state
-		var query := PhysicsRayQueryParameters2D.create(prev_pos, shell_toss_pos)
-		query.exclude = [get_rid()]
-		var result := space.intersect_ray(query)
-		if result:
-			# Pass through one-way platforms from below (like snails do)
-			# Goopy's shell does NOT pass through — he needs to grapple to platforms
+		var motion_params := PhysicsShapeQueryParameters2D.new()
+		var circle := CircleShape2D.new()
+		circle.radius = shell_radius
+		motion_params.shape = circle
+		motion_params.transform = Transform2D(0.0, shell_toss_pos)
+		motion_params.motion = move
+		motion_params.exclude = [get_rid()]
+		var cast_result := space.cast_motion(motion_params)
+		# cast_result = [safe_fraction, unsafe_fraction]
+		# safe_fraction: how far along 'move' we can go without collision
+		var safe_frac: float = cast_result[0]
+		var hit_surface := safe_frac < 1.0
+
+		if hit_surface:
+			# Move to the safe position (just before contact)
+			shell_toss_pos += move * safe_frac
+			# Find the collision normal using a rest query at the contact point
+			motion_params.transform = Transform2D(0.0, shell_toss_pos)
+			motion_params.motion = Vector2.ZERO
+			var rest := space.get_rest_info(motion_params)
+			var bounce_normal := Vector2.UP  # fallback
 			var skip_bounce := false
-			if character_type != CharacterType.GOOPY and result.collider is StaticBody2D:
-				var hit_body: StaticBody2D = result.collider
-				for child in hit_body.get_children():
-					if child is CollisionShape2D and child.one_way_collision:
-						if shell_toss_vel.y < 0.0:
-							skip_bounce = true
-						break
-			if not skip_bounce:
-				shell_toss_pos = result.position + result.normal * (BASE_RADIUS * 0.8)
-				# Proper bounce: reflect velocity off the surface normal
-				shell_toss_vel = shell_toss_vel.reflect(result.normal) * SHELL_BOUNCE
-				# Ensure minimum bounce speed to prevent getting stuck
-				if shell_toss_vel.length() < 80.0 and character_type != CharacterType.GOOPY:
-					shell_toss_vel = shell_toss_vel.normalized() * 80.0
+			if rest.size() > 0:
+				bounce_normal = rest.normal
+				# Pass through one-way platforms from below (except Goopy)
+				if character_type != CharacterType.GOOPY and rest.collider_id > 0:
+					var collider_obj = instance_from_id(rest.collider_id)
+					if collider_obj is StaticBody2D:
+						for child in collider_obj.get_children():
+							if child is CollisionShape2D and child.one_way_collision:
+								if shell_toss_vel.y < 0.0:
+									skip_bounce = true
+								break
+			if skip_bounce:
+				# Pass through — continue full movement
+				shell_toss_pos += move * (1.0 - safe_frac)
+			else:
+				# Push out from surface
+				shell_toss_pos += bounce_normal * 2.0
+				# Reflect velocity off the surface normal
+				shell_toss_vel = shell_toss_vel.reflect(bounce_normal) * SHELL_BOUNCE
 				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
 					shell_toss_vel = Vector2.ZERO
 					shell_toss_hit = true
+		else:
+			# No collision — apply full movement
+			shell_toss_pos += move
 
 	# Zappy max range: stop shell after traveling max distance
 	if character_type == CharacterType.ZAPPY and not shell_toss_hit:
@@ -1117,6 +1172,8 @@ func _update_shell_toss(delta: float) -> void:
 			var target_body: RigidBody2D = collider
 			if target_body == self and not shell_deflected:
 				continue
+			if target_body is Bollard and (target_body as Bollard).is_dead:
+				continue
 			# DEFLECT: if the target is dashing OR parrying, they smack the shell back
 			var is_target_dashing := false
 			var is_target_parrying := false
@@ -1139,27 +1196,18 @@ func _update_shell_toss(delta: float) -> void:
 				shell_toss_vel = shell_toss_vel.reflect((shell_toss_pos - target_body.global_position).normalized()) * SHELL_BOUNCE
 				break
 			var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
-			# Per-character damage and knockback
-			var dmg := SHELL_TOSS_DAMAGE
-			var kb_mult := 1.0
-			match character_type:
-				CharacterType.BLINK:
-					dmg = SHELL_TOSS_DAMAGE * 0.9  # 10% softer
-					kb_mult = 0.9
-				CharacterType.GOOPY:
-					dmg = SHELL_TOSS_DAMAGE * 0.3  # 30% of Blink
-					kb_mult = 0.3
-				CharacterType.ZAPPY:
-					dmg = ZAPPY_TOSS_DAMAGE
-					kb_mult = 0.0  # Use fixed knockback below
-			target_body.take_damage(dmg, dir)
+			# Shell toss hit — deals HP damage via take_damage
+			target_body.take_damage(0.0, dir)
 			if target_body is Bollard:
 				(target_body as Bollard).was_hit_by_shell = true
+			# Knockback from shell impact
+			var shell_impact := shell_toss_vel.length() * 2.0
 			if character_type == CharacterType.ZAPPY:
 				target_body.apply_central_impulse(dir * ZAPPY_TOSS_KNOCKBACK)
+			elif character_type == CharacterType.GOOPY:
+				target_body.apply_central_impulse(dir * shell_impact * GOOPY_TOSS_KNOCKBACK_MULT)
 			else:
-				var shell_impact := shell_toss_vel.length() * 2.0 * kb_mult
-				target_body.apply_central_impulse(dir * shell_impact)
+				target_body.apply_central_impulse(dir * shell_impact * 0.9)
 			big_hit.emit(shell_toss_pos, false)
 			if character_type == CharacterType.GOOPY:
 				# Goopy shell sticks where it hit
@@ -1199,81 +1247,60 @@ func _return_shell() -> void:
 # ║ COMBAT                                                                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-const SHELLLESS_DAMAGE_MULT := 1.5    # 50% more damage when shell-less
-
 func take_damage(amount: float, knockback_dir: Vector2) -> void:
-	if is_invincible:
+	if is_invincible or is_dead:
 		return
-	# Shell-less = extra vulnerable. With shell attached, normal damage applies
-	# (shell AREA protection is handled by is_shell_hit() at the call site)
-	if shell_missing:
-		amount *= SHELLLESS_DAMAGE_MULT
-	if amount <= 0.0:
-		var knockback_mult := 1.0 + damage_percent / 50.0
-		apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult * 0.3)
-		return
-	damage_percent += amount
-	var knockback_mult := 1.0 + damage_percent / 50.0
-	apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult)
+	# Only shell toss and dash hits deal damage — amount is ignored, HP system used instead
+	var hp_loss: int = DAMAGE_SHELLED if not shell_missing else DAMAGE_UNSHELLED
+	hit_points = maxi(hit_points - hp_loss, 0)
+	# Fixed knockback (no scaling with damage)
+	apply_central_impulse(knockback_dir * KNOCKBACK_BASE)
 	SFX.play_sfx_varied("hit")
+	if hit_points <= 0:
+		die()
 
 func _is_in_any_dash() -> bool:
 	return is_dashing or is_phase_dashing or is_bolt_dashing or is_goo_dashing
 
 func _on_body_entered(body: Node) -> void:
-	if is_invincible:
+	if is_dead or is_invincible:
 		return
 	if not (body is RigidBody2D) or body == self or not body.has_method("take_damage"):
 		return
 	var other: RigidBody2D = body as RigidBody2D
-	# If the other snail is dashing, they have hit immunity — don't damage them
+	# Only dashes deal damage — regular collisions just bump
+	if not _is_in_any_dash():
+		return
+	# If the other snail is also dashing, mutual immunity
 	if other is Bollard and (other as Bollard)._is_in_any_dash():
 		return
-	var rel_vel: Vector2 = linear_velocity - other.linear_velocity
-	var impact: float = rel_vel.length()
-	if impact > HIT_SPEED_THRESHOLD:
-		var my_speed: float = linear_velocity.length()
-		var other_speed: float = other.linear_velocity.length()
-		var total: float = my_speed + other_speed
-		if total < 1.0:
-			return
-		var my_ratio: float = my_speed / total
-		var dmg: float = impact * DAMAGE_MULTIPLIER * my_ratio * 2.0
-		var dir: Vector2 = (other.global_position - global_position).normalized()
-		# Shell blocks damage — if we're hitting the other snail's shell
-		# (base area), the hit is deflected and no damage is dealt.
-		if other.has_method("is_shell_hit") and other.is_shell_hit(global_position):
-			return
-		# Parry deflect: if the target is parrying, the attack bounces back to us
-		if other is Bollard and (other as Bollard).is_parrying:
-			var reverse_dir: Vector2 = -dir
-			take_damage(dmg, reverse_dir)
-			apply_central_impulse(reverse_dir * KNOCKBACK_BASE * 2.0)
-			var hit_pos := (global_position + other.global_position) * 0.5
-			big_hit.emit(hit_pos, true)
-			SFX.play_sfx("parry_deflect")
-			_end_any_dash()
-			return
-		# Dashing into another snail = big hit (same impact as shell toss)
-		if is_dashing or is_bolt_dashing:
-			dmg = maxf(dmg, CHARGE_DAMAGE)
-			var impact_force := linear_velocity.length() * 3.0
-			# Zappy bolt dash: 40% less impact
-			if is_bolt_dashing and character_type == CharacterType.ZAPPY:
-				dmg *= 0.6
-				impact_force *= 0.6
-			other.apply_central_impulse(dir * impact_force)
-			var hit_pos := (global_position + other.global_position) * 0.5
-			big_hit.emit(hit_pos, false)
-			if is_dashing:
-				is_dashing = false
-				if dashes_remaining <= 0:
-					charge_cooldown = CHARGE_COOLDOWN
-			if is_bolt_dashing:
-				is_bolt_dashing = false
-				if bolt_dashes_remaining <= 0:
-					bolt_dash_cooldown = BOLT_DASH_COOLDOWN
-		other.take_damage(dmg, dir)
+	var dir: Vector2 = (other.global_position - global_position).normalized()
+	# Parry deflect: if the target is parrying, the attack bounces back to us
+	if other is Bollard and (other as Bollard).is_parrying:
+		var reverse_dir: Vector2 = -dir
+		take_damage(0.0, reverse_dir)
+		apply_central_impulse(reverse_dir * KNOCKBACK_BASE * 2.0)
+		var hit_pos: Vector2 = (global_position + other.global_position) * 0.5
+		big_hit.emit(hit_pos, true)
+		SFX.play_sfx("parry_deflect")
+		_end_any_dash()
+		return
+	# Dash hit — deal HP damage
+	var impact_force := linear_velocity.length() * 3.0
+	if is_bolt_dashing and character_type == CharacterType.ZAPPY:
+		impact_force *= 0.54
+	other.apply_central_impulse(dir * impact_force)
+	var hit_pos: Vector2 = (global_position + other.global_position) * 0.5
+	big_hit.emit(hit_pos, false)
+	if is_dashing:
+		is_dashing = false
+		if dashes_remaining <= 0:
+			charge_cooldown = CHARGE_COOLDOWN
+	if is_bolt_dashing:
+		is_bolt_dashing = false
+		if bolt_dashes_remaining <= 0:
+			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
+	other.take_damage(0.0, dir)
 
 
 func is_shell_hit(attacker_pos: Vector2) -> bool:
@@ -1292,6 +1319,8 @@ func is_shell_hit(attacker_pos: Vector2) -> bool:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func die() -> void:
+	if is_dead:
+		return
 	stocks -= 1
 	is_dead = true
 	SFX.play_sfx("ko")
@@ -1311,7 +1340,8 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	global_position = spawn_pos
 	rotation = 0.0
 	extend_amount = 0.0
-	damage_percent = 0.0
+	hit_points = MAX_HIT_POINTS
+
 	was_hit_by_shell = false
 	is_charging = false
 	charge_amount = 0.0
@@ -1350,6 +1380,7 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	bolt_dashes_remaining = BOLT_DASH_MAX
 	bolt_dash_dir = Vector2.ZERO
 	bolt_dash_origin = Vector2.ZERO
+	_prev_global_pos = spawn_pos
 	# Clear drop-through exceptions
 	for dt in drop_through_bodies:
 		if is_instance_valid(dt.body):
@@ -1360,8 +1391,6 @@ func _update_emerge(delta: float) -> void:
 	emerge_progress = minf(emerge_progress + delta / EMERGE_DURATION, 1.0)
 	extend_amount = lerpf(0.0, 0.5, emerge_progress)
 	_update_collision_shape()
-	_update_blink(delta)
-	_update_eye_look(delta)
 	_update_sprites()
 	if emerge_progress >= 1.0:
 		is_emerging = false
@@ -1381,163 +1410,85 @@ func _update_invincibility(delta: float) -> void:
 # ║ EYE BLINK (animation)                                                    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-func _update_blink(delta: float) -> void:
-	blink_timer += delta
-	if is_blinking:
-		if blink_timer > 0.15:
-			is_blinking = false
-			blink_timer = 0.0
-			next_blink_time = randf_range(2.0, 6.0)
-	else:
-		if blink_timer > next_blink_time:
-			is_blinking = true
-			blink_timer = 0.0
-
-
-func _update_eye_look(delta: float) -> void:
-	eye_look_hold_timer -= delta
-	if eye_look_hold_timer <= 0.0:
-		# Pick new gaze direction: left, center, or right
-		var roll := randf()
-		if roll < 0.25:
-			eye_look_target = 0.0
-		elif roll < 0.625:
-			eye_look_target = 1.0
-		else:
-			eye_look_target = -1.0
-		# Hold duration: shorter when more damaged (more nervous)
-		var nervousness := clampf(damage_percent / 100.0, 0.0, 1.5)
-		var min_hold := lerpf(1.5, 0.15, nervousness)
-		var max_hold := lerpf(3.5, 0.5, nervousness)
-		eye_look_hold_timer = randf_range(min_hold, max_hold)
-	# Smoothly move pupils toward target — faster when more damaged
-	var nervousness := clampf(damage_percent / 100.0, 0.0, 1.5)
-	var move_speed := 4.0 + nervousness * 10.0
-	eye_look_current = move_toward(eye_look_current, eye_look_target, move_speed * delta)
-
-
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║ SPRITE SYSTEM                                                            ║
 # ║                                                                           ║
-# ║ All visuals use Sprite2D nodes with PNG textures from sprites/snail/.    ║
-# ║ To replace any part with custom art:                                     ║
-# ║   1. Open the PNG listed for that part in sprites/snail/                 ║
-# ║   2. Paint your replacement at the same pixel size                       ║
-# ║   3. Save — the game picks it up automatically on next run               ║
+# ║ PALETTE-SWAP SPRITE SYSTEM (side-view snail shape)                       ║
 # ║                                                                           ║
-# ║ Snail sprites use self_modulate for per-player coloring.                 ║
-# ║ Shell uses accent_color, body/dome/stalks use bollard_color.             ║
+# ║ Sprites use key colors that the palette_swap shader remaps at runtime:   ║
+# ║   Body:  #FF00FF (highlight)  #CC00CC (midtone)  #990099 (shadow)       ║
+# ║   Shell: #00FFFF (highlight)  #00CCCC (midtone)  #009999 (shadow)       ║
+# ║ All other pixel colors pass through unchanged (outlines, eyes, etc.)     ║
 # ║                                                                           ║
-# ║ PARTS AND FILES:                                                          ║
-# ║   shell.png          48x48  — shell sphere                               ║
-# ║   shell_spiral.png   48x48  — spiral overlay (drawn on top of shell)     ║
-# ║   body.png           32x90  — body tile segment (tiles vertically)       ║
-# ║   dome.png           32x18  — dome cap on top of body                    ║
-# ║   stalk.png           4x16  — eye stalk (used twice)                     ║
-# ║   eye.png            12x12  — eyeball (used twice)                       ║
-# ║   pupil.png           8x8   — pupil (used twice)                        ║
-# ║   eye_highlight.png   6x6   — white reflection dot (used twice)         ║
-# ║   (grab_dot.png      10x10  — unused, grab removed)                     ║
+# ║ Per-character sprites in sprites/snail/<blink|goopy|zappy>/:             ║
+# ║   shell.png   24x24  — spiral shell (rendered at 2x = 48px)             ║
+# ║   neck.png    12x4   — neck tile segment (rendered at 2x = 24x8)        ║
+# ║   head.png    14x12  — head with eye stalks (rendered at 2x = 28x24)    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_sprites() -> void:
-	# Shell (bottom layer, behind body)
-	spr_shell = _make_sprite(TEX_SHELL, Vector2.ZERO, -1)
-	spr_shell.self_modulate = accent_color
-	# Scale shell sprite to match BASE_RADIUS
-	var shell_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
-	spr_shell.scale = Vector2(shell_scale, shell_scale)
+	# Shell (rendered at 2x scale to match BASE_RADIUS * 2 = 44px)
+	spr_shell = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -1)
+	spr_shell.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
-	spr_spiral = _make_sprite(TEX_SPIRAL, Vector2.ZERO, -1)
-	spr_spiral.self_modulate = accent_color.darkened(0.15)
-	spr_spiral.scale = Vector2(shell_scale, shell_scale)
+	# Inner body — behind shell, exposed when shell is tossed (body-colored, not shell-shaped)
+	spr_body_circle = _make_recolorable_sprite(TEX_INNER_BODY, Vector2.ZERO, -2)
+	spr_body_circle.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
-	# Body circle — body-colored circle behind shell, visible when shell is tossed
-	var body_circle_scale := (BASE_RADIUS * 1.7) / TEX_SHELL.get_width()
-	spr_body_circle = _make_sprite(TEX_SHELL, Vector2.ZERO, -2)
-	spr_body_circle.self_modulate = bollard_color
-	spr_body_circle.scale = Vector2(body_circle_scale, body_circle_scale)
-
-	# Body tiles (stack vertically instead of stretching)
-	for i in BODY_MAX_TILES:
-		var tile := _make_sprite(TEX_BODY, Vector2.ZERO, 0)
-		tile.self_modulate = bollard_color
+	# Neck tiles (stack vertically from shell upward, offset toward facing direction)
+	for i in NECK_MAX_TILES:
+		var tile := _make_recolorable_sprite(TEX_NECK, Vector2.ZERO, 0)
 		tile.visible = false
-		spr_body_tiles.append(tile)
+		spr_neck_tiles.append(tile)
 
-	# Dome (on top of body)
-	spr_dome = _make_sprite(TEX_DOME, Vector2.ZERO, 0)
-	spr_dome.self_modulate = bollard_color
-
-	# Stalks
-	spr_stalk_l = _make_sprite(TEX_STALK, Vector2.ZERO, 1)
-	spr_stalk_l.self_modulate = bollard_color
-	spr_stalk_r = _make_sprite(TEX_STALK, Vector2.ZERO, 1)
-	spr_stalk_r.self_modulate = bollard_color
-
-	# Eyes
-	spr_eye_l = _make_sprite(TEX_EYE, Vector2.ZERO, 2)
-	spr_eye_r = _make_sprite(TEX_EYE, Vector2.ZERO, 2)
-
-	# Pupils
-	spr_pupil_l = _make_sprite(TEX_PUPIL, Vector2.ZERO, 3)
-	spr_pupil_r = _make_sprite(TEX_PUPIL, Vector2.ZERO, 3)
-
-	# Eye highlights
-	spr_eye_hl_l = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
-	spr_eye_hl_r = _make_sprite(TEX_EYE_HL, Vector2.ZERO, 4)
+	# Head (caps the neck at the top, with baked-in eye stalks)
+	spr_head = _make_recolorable_sprite(TEX_HEAD, Vector2.ZERO, 1)
+	spr_head.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
 	# Thrown shell (global coords — not attached to snail body)
 	spr_thrown_shell = Sprite2D.new()
 	spr_thrown_shell.texture = TEX_SHELL
-	spr_thrown_shell.self_modulate = accent_color
-	var ts_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
-	spr_thrown_shell.scale = Vector2(ts_scale, ts_scale)
+	spr_thrown_shell.material = _make_palette_material()
+	spr_thrown_shell.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 	spr_thrown_shell.z_index = 5
-	spr_thrown_shell.top_level = true  # Positioned in world space
+	spr_thrown_shell.top_level = true
 	spr_thrown_shell.visible = false
 	add_child(spr_thrown_shell)
 
-	spr_thrown_spiral = Sprite2D.new()
-	spr_thrown_spiral.texture = TEX_SPIRAL
-	spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
-	spr_thrown_spiral.scale = Vector2(ts_scale, ts_scale)
-	spr_thrown_spiral.z_index = 5
-	spr_thrown_spiral.top_level = true
-	spr_thrown_spiral.visible = false
-	add_child(spr_thrown_spiral)
 
-	# Blink lines (Line2D since they're just flat lines)
-	blink_line_l = Line2D.new()
-	blink_line_l.width = 2.5
-	blink_line_l.default_color = Color.BLACK
-	blink_line_l.z_index = 3
-	blink_line_l.visible = false
-	add_child(blink_line_l)
-
-	blink_line_r = Line2D.new()
-	blink_line_r.width = 2.5
-	blink_line_r.default_color = Color.BLACK
-	blink_line_r.z_index = 3
-	blink_line_r.visible = false
-	add_child(blink_line_r)
+func _make_palette_material() -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = PALETTE_SHADER
+	mat.set_shader_parameter("body_color", Vector3(bollard_color.r, bollard_color.g, bollard_color.b))
+	mat.set_shader_parameter("shell_color", Vector3(accent_color.r, accent_color.g, accent_color.b))
+	return mat
 
 
-func _make_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
+func _make_recolorable_sprite(tex: Texture2D, pos: Vector2, z: int) -> Sprite2D:
 	var s := Sprite2D.new()
 	s.texture = tex
 	s.position = pos
 	s.z_index = z
+	s.material = _make_palette_material()
 	add_child(s)
 	return s
 
 
+func _set_sprite_colors(sprite: Sprite2D, body_c: Color, shell_c: Color) -> void:
+	if sprite.material is ShaderMaterial:
+		var mat: ShaderMaterial = sprite.material
+		mat.set_shader_parameter("body_color", Vector3(body_c.r, body_c.g, body_c.b))
+		mat.set_shader_parameter("shell_color", Vector3(shell_c.r, shell_c.g, shell_c.b))
+
+
 func update_shell_colors() -> void:
-	# Call after changing accent_color to update thrown shell sprite tints
-	spr_shell.self_modulate = accent_color
-	spr_spiral.self_modulate = accent_color.darkened(0.15)
-	spr_thrown_shell.self_modulate = accent_color
-	spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
+	_load_character_sprites()
+	for child in get_children():
+		if child is Sprite2D:
+			child.queue_free()
+	spr_neck_tiles.clear()
+	_setup_sprites()
+
 
 func _update_sprites() -> void:
 	var post_h: float = lerpf(MIN_HEIGHT, MAX_HEIGHT, extend_amount)
@@ -1569,16 +1520,16 @@ func _update_sprites() -> void:
 		body_c = Color(1.0, 0.4, 0.2)
 		shell_c = Color(1.0, 0.6, 0.2)
 	if is_phase_dashing:
-		body_c = Color(0.6, 0.3, 1.0, 0.4)  # Ghostly purple, semi-transparent
+		body_c = Color(0.6, 0.3, 1.0, 0.4)
 		shell_c = Color(0.7, 0.4, 1.0, 0.4)
 	if is_bolt_dashing:
-		body_c = Color(0.3, 0.9, 1.0)  # Electric blue
+		body_c = Color(0.3, 0.9, 1.0)
 		shell_c = Color(0.5, 1.0, 1.0)
 	if is_goo_dashing:
-		body_c = Color(0.3, 0.9, 0.2)  # Bright green
+		body_c = Color(0.3, 0.9, 0.2)
 		shell_c = Color(0.4, 1.0, 0.3)
 	if is_parrying:
-		shell_c = Color(1.0, 1.0, 0.6)  # Bright shield flash
+		shell_c = Color(1.0, 1.0, 0.6)
 		body_c = body_c.lerp(Color(1.0, 1.0, 0.8), 0.5)
 
 	# ── FACING DIRECTION ─────────────────────────────────────────────────
@@ -1589,130 +1540,77 @@ func _update_sprites() -> void:
 	var face_sign: float = 1.0 if facing_right else -1.0
 
 	# ── BODY CIRCLE (behind shell — visible when shell is tossed) ────────
-	spr_body_circle.self_modulate = body_c
+	_set_sprite_colors(spr_body_circle, body_c, shell_c)
 
 	# ── SHELL ────────────────────────────────────────────────────────────
 	spr_shell.visible = not shell_missing
-	spr_spiral.visible = not shell_missing
-	spr_shell.self_modulate = shell_c
-	spr_spiral.self_modulate = shell_c.darkened(0.15)
-	var shell_scale := (BASE_RADIUS * 2.0) / TEX_SHELL.get_width()
-	spr_shell.scale = Vector2(shell_scale * face_sign, shell_scale)
-	spr_spiral.scale = Vector2(shell_scale * face_sign, shell_scale)
+	_set_sprite_colors(spr_shell, body_c, shell_c)
+	spr_shell.scale = Vector2(SPRITE_SCALE * face_sign, SPRITE_SCALE)
+	if is_phase_dashing:
+		spr_shell.self_modulate.a = 0.4
+	else:
+		spr_shell.self_modulate.a = 1.0
 
 	# ── THROWN SHELL (world-space projectile) ─────────────────────────────
 	spr_thrown_shell.visible = shell_missing
-	spr_thrown_spiral.visible = shell_missing
 	if shell_missing:
 		spr_thrown_shell.global_position = shell_toss_pos
-		spr_thrown_spiral.global_position = shell_toss_pos
-		# Zappy electrified shell: pulsing blue glow when stuck in place
 		if character_type == CharacterType.ZAPPY and shell_toss_hit:
 			var pulse := (sin(shell_toss_timer * 12.0) + 1.0) * 0.5
-			spr_thrown_shell.self_modulate = accent_color.lerp(Color(0.4, 0.85, 1.0), pulse * 0.7)
-			spr_thrown_spiral.self_modulate = accent_color.darkened(0.15).lerp(Color(0.3, 0.7, 1.0), pulse * 0.7)
+			var pulse_shell: Color = accent_color.lerp(Color(0.4, 0.85, 1.0), pulse * 0.7)
+			_set_sprite_colors(spr_thrown_shell, body_c, pulse_shell)
 		else:
-			spr_thrown_shell.self_modulate = accent_color
-			spr_thrown_spiral.self_modulate = accent_color.darkened(0.15)
-		# Spin the thrown shell
+			_set_sprite_colors(spr_thrown_shell, body_c, accent_color)
 		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
-		spr_thrown_spiral.rotation = spr_thrown_shell.rotation
 
-	# ── BODY (tiling segments) ───────────────────────────────────────────
-	var tile_sx: float = (hw * 2.0) / TEX_BODY.get_width()
-	var tile_sy: float = BODY_TILE_HEIGHT / TEX_BODY.get_height()
-	var tiles_needed: int = ceili(post_h / BODY_TILE_HEIGHT) if post_h > 3.0 else 0
-	tiles_needed = mini(tiles_needed, BODY_MAX_TILES)
-	for i in BODY_MAX_TILES:
+	# ── NECK (tiling segments — offset toward facing direction) ──────────
+	# Neck extends from shell center upward, offset slightly in facing direction
+	var neck_offset_x: float = face_sign * BASE_RADIUS * 0.35 + body_shake_x
+	var tile_sx: float = SPRITE_SCALE * face_sign
+	var tile_sy: float = SPRITE_SCALE
+	var tiles_needed: int = ceili(post_h / NECK_TILE_HEIGHT) if post_h > 3.0 else 0
+	tiles_needed = mini(tiles_needed, NECK_MAX_TILES)
+	for i in NECK_MAX_TILES:
 		if i < tiles_needed:
-			var tile := spr_body_tiles[i]
+			var tile := spr_neck_tiles[i]
 			tile.visible = true
-			# Stack from bottom (y=0) upward; each tile's center is offset
-			var tile_bottom_y: float = -float(i) * BODY_TILE_HEIGHT
-			tile.position = Vector2(body_shake_x, tile_bottom_y - BODY_TILE_HEIGHT * 0.5)
-			tile.scale = Vector2(tile_sx * face_sign, tile_sy)
-			tile.self_modulate = body_c
+			var tile_bottom_y: float = -float(i) * NECK_TILE_HEIGHT
+			tile.position = Vector2(neck_offset_x, tile_bottom_y - NECK_TILE_HEIGHT * 0.5)
+			tile.scale = Vector2(tile_sx, tile_sy)
+			_set_sprite_colors(tile, body_c, shell_c)
+			if is_phase_dashing:
+				tile.self_modulate.a = 0.4
+			else:
+				tile.self_modulate.a = 1.0
 		else:
-			spr_body_tiles[i].visible = false
-	# Clip the topmost tile if body height isn't a perfect multiple
+			spr_neck_tiles[i].visible = false
+	# Clip the topmost tile if neck height isn't a perfect multiple
 	if tiles_needed > 0:
-		var remainder := fmod(post_h, BODY_TILE_HEIGHT)
+		var remainder := fmod(post_h, NECK_TILE_HEIGHT)
 		if remainder > 0.01:
-			var top_tile := spr_body_tiles[tiles_needed - 1]
-			var clip_sy: float = remainder / TEX_BODY.get_height()
-			top_tile.scale = Vector2(tile_sx * face_sign, clip_sy)
-			var tile_bottom_y: float = -float(tiles_needed - 1) * BODY_TILE_HEIGHT
-			top_tile.position = Vector2(body_shake_x, tile_bottom_y - remainder * 0.5)
+			var top_tile := spr_neck_tiles[tiles_needed - 1]
+			var clip_sy: float = (remainder / NECK_TILE_HEIGHT) * SPRITE_SCALE
+			top_tile.scale = Vector2(tile_sx, clip_sy)
+			var tile_bottom_y: float = -float(tiles_needed - 1) * NECK_TILE_HEIGHT
+			top_tile.position = Vector2(neck_offset_x, tile_bottom_y - remainder * 0.5)
 
-	# ── DOME ─────────────────────────────────────────────────────────────
-	# Dome sits on top of body: flat bottom on body top, curve faces up
+	# ── HEAD (caps the neck at the top) ──────────────────────────────────
 	var tip_y := -post_h
-	var dome_sx: float = (hw * 2.0) / TEX_DOME.get_width()
-	var dome_sy: float = (hw) / TEX_DOME.get_height()
-	spr_dome.scale = Vector2(dome_sx * face_sign, dome_sy)
-	# Position: dome center is half its scaled height above the body top
-	var dome_h: float = TEX_DOME.get_height() * dome_sy
-	spr_dome.position = Vector2(body_shake_x, tip_y - dome_h * 0.5)
-	spr_dome.self_modulate = body_c
-
-	# ── STALKS ───────────────────────────────────────────────────────────
-	# Stalks extend from dome top to eye positions — no gap
-	var dome_top_y: float = tip_y - dome_h
-	var left_eye_pos := Vector2(-STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
-	var right_eye_pos := Vector2(STALK_SPREAD + body_shake_x, dome_top_y - STALK_LENGTH)
-
-	# Stalk base starts inside the dome (2px overlap) so there's no gap
-	var stalk_base_y := dome_top_y + 2.0
-	var stalk_total_l := stalk_base_y - left_eye_pos.y
-	var stalk_total_r := stalk_base_y - right_eye_pos.y
-	spr_stalk_l.position = Vector2(-STALK_SPREAD + body_shake_x, (stalk_base_y + left_eye_pos.y) * 0.5)
-	spr_stalk_r.position = Vector2(STALK_SPREAD + body_shake_x, (stalk_base_y + right_eye_pos.y) * 0.5)
-	spr_stalk_l.self_modulate = body_c
-	spr_stalk_r.self_modulate = body_c
-	spr_stalk_l.scale = Vector2(1.0, stalk_total_l / TEX_STALK.get_height())
-	spr_stalk_r.scale = Vector2(1.0, stalk_total_r / TEX_STALK.get_height())
-
-	# ── EYES + PUPILS ────────────────────────────────────────────────────
-	var eye_shift_amount: float = 2.0 + clampf(damage_percent / 100.0, 0.0, 1.5) * 2.5
-	var pupil_offset_x: float = eye_look_current * eye_shift_amount
-
-	if is_blinking:
-		spr_eye_l.visible = false
-		spr_eye_r.visible = false
-		spr_pupil_l.visible = false
-		spr_pupil_r.visible = false
-		spr_eye_hl_l.visible = false
-		spr_eye_hl_r.visible = false
-		blink_line_l.visible = true
-		blink_line_r.visible = true
-		blink_line_l.points = PackedVector2Array([
-			left_eye_pos + Vector2(-5, 0), left_eye_pos + Vector2(5, 0)])
-		blink_line_r.points = PackedVector2Array([
-			right_eye_pos + Vector2(-5, 0), right_eye_pos + Vector2(5, 0)])
+	var head_h: float = TEX_HEAD.get_height() * SPRITE_SCALE
+	spr_head.scale = Vector2(SPRITE_SCALE * face_sign, SPRITE_SCALE)
+	spr_head.position = Vector2(neck_offset_x, tip_y - head_h * 0.5)
+	_set_sprite_colors(spr_head, body_c, shell_c)
+	if is_phase_dashing:
+		spr_head.self_modulate.a = 0.4
 	else:
-		spr_eye_l.visible = true
-		spr_eye_r.visible = true
-		spr_pupil_l.visible = true
-		spr_pupil_r.visible = true
-		spr_eye_hl_l.visible = true
-		spr_eye_hl_r.visible = true
-		blink_line_l.visible = false
-		blink_line_r.visible = false
-
-		spr_eye_l.position = left_eye_pos
-		spr_eye_r.position = right_eye_pos
-
-		spr_pupil_l.position = left_eye_pos + Vector2(pupil_offset_x, 0)
-		spr_pupil_r.position = right_eye_pos + Vector2(pupil_offset_x, 0)
-
-		spr_eye_hl_l.position = left_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
-		spr_eye_hl_r.position = right_eye_pos + Vector2(-1.2 + pupil_offset_x * 0.5, -1.2)
+		spr_head.self_modulate.a = 1.0
 
 	# Character ability visuals need redraw
 	if character_type == CharacterType.GOOPY:
 		queue_redraw()
 	if character_type == CharacterType.ZAPPY and (is_bolt_dashing or shell_missing):
 		queue_redraw()
+
 
 func _draw() -> void:
 	# Goopy tether line (shell to body while shell is flying)
@@ -1736,7 +1634,6 @@ func _draw() -> void:
 	# Zappy electric beam between body and shell
 	if shell_missing and character_type == CharacterType.ZAPPY:
 		var shell_local := to_local(shell_toss_pos)
-		# Jagged electric beam
 		var beam_segs := 6
 		var prev_pt := Vector2.ZERO
 		for seg_i in beam_segs:
@@ -1820,7 +1717,7 @@ func _ai_pick_action() -> void:
 	ai_timer = 0.0
 	var abs_dist := absf(ai_target.global_position.x - global_position.x)
 	var roll := randf()
-	if damage_percent > 100.0 and roll < 0.25:
+	if hit_points <= 1 and roll < 0.25:
 		ai_state = "retreat"
 		ai_action_duration = randf_range(0.5, 1.5)
 	elif abs_dist > 250.0:
