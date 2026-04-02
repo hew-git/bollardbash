@@ -1,6 +1,9 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="FontFile" path="res://fonts/PressStart2P-Regular.ttf" id="1_font"]
+[ext_resource type="Texture2D" path="res://sprites/hud/hp_full.png" id="2_hp_full"]
+[ext_resource type="Texture2D" path="res://sprites/hud/hp_empty.png" id="3_hp_empty"]
+[ext_resource type="Texture2D" path="res://sprites/hud/stock.png" id="4_stock"]
 
 [node name="HUD" type="CanvasLayer"]
 layer = 91
@@ -27,50 +30,77 @@ text = "P1"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="P1HpSquare1" type="ColorRect" parent="P1Group"]
+[node name="P1Hp1" type="TextureRect" parent="P1Group"]
 offset_left = 180.0
 offset_top = 652.0
 offset_right = 198.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P1HpSquare2" type="ColorRect" parent="P1Group"]
+[node name="P1Hp2" type="TextureRect" parent="P1Group"]
 offset_left = 202.0
 offset_top = 652.0
 offset_right = 220.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P1HpSquare3" type="ColorRect" parent="P1Group"]
+[node name="P1Hp3" type="TextureRect" parent="P1Group"]
 offset_left = 224.0
 offset_top = 652.0
 offset_right = 242.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P1HpSquare4" type="ColorRect" parent="P1Group"]
+[node name="P1Hp4" type="TextureRect" parent="P1Group"]
 offset_left = 246.0
 offset_top = 652.0
 offset_right = 264.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P1HpSquare5" type="ColorRect" parent="P1Group"]
+[node name="P1Hp5" type="TextureRect" parent="P1Group"]
 offset_left = 268.0
 offset_top = 652.0
 offset_right = 286.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P1Stocks" type="Label" parent="P1Group"]
-offset_left = 180.0
-offset_top = 678.0
-offset_right = 300.0
-offset_bottom = 703.0
-theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 10
-text = "O O O"
-horizontal_alignment = 1
+[node name="P1Stock1" type="TextureRect" parent="P1Group"]
+offset_left = 186.0
+offset_top = 680.0
+offset_right = 202.0
+offset_bottom = 696.0
+texture = ExtResource("4_stock")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="P1Stock2" type="TextureRect" parent="P1Group"]
+offset_left = 210.0
+offset_top = 680.0
+offset_right = 226.0
+offset_bottom = 696.0
+texture = ExtResource("4_stock")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="P1Stock3" type="TextureRect" parent="P1Group"]
+offset_left = 234.0
+offset_top = 680.0
+offset_right = 250.0
+offset_bottom = 696.0
+texture = ExtResource("4_stock")
+expand_mode = 1
+stretch_mode = 2
 
 [node name="P1Effect" type="Label" parent="P1Group"]
 visible = false
@@ -99,50 +129,77 @@ text = "P2"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="P2HpSquare1" type="ColorRect" parent="P2Group"]
+[node name="P2Hp1" type="TextureRect" parent="P2Group"]
 offset_left = 990.0
 offset_top = 652.0
 offset_right = 1008.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P2HpSquare2" type="ColorRect" parent="P2Group"]
+[node name="P2Hp2" type="TextureRect" parent="P2Group"]
 offset_left = 1012.0
 offset_top = 652.0
 offset_right = 1030.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P2HpSquare3" type="ColorRect" parent="P2Group"]
+[node name="P2Hp3" type="TextureRect" parent="P2Group"]
 offset_left = 1034.0
 offset_top = 652.0
 offset_right = 1052.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P2HpSquare4" type="ColorRect" parent="P2Group"]
+[node name="P2Hp4" type="TextureRect" parent="P2Group"]
 offset_left = 1056.0
 offset_top = 652.0
 offset_right = 1074.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P2HpSquare5" type="ColorRect" parent="P2Group"]
+[node name="P2Hp5" type="TextureRect" parent="P2Group"]
 offset_left = 1078.0
 offset_top = 652.0
 offset_right = 1096.0
 offset_bottom = 670.0
-color = Color(0.3, 0.85, 0.35, 1)
+texture = ExtResource("2_hp_full")
+expand_mode = 1
+stretch_mode = 2
 
-[node name="P2Stocks" type="Label" parent="P2Group"]
-offset_left = 980.0
-offset_top = 678.0
-offset_right = 1100.0
-offset_bottom = 703.0
-theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 10
-text = "O O O"
-horizontal_alignment = 1
+[node name="P2Stock1" type="TextureRect" parent="P2Group"]
+offset_left = 996.0
+offset_top = 680.0
+offset_right = 1012.0
+offset_bottom = 696.0
+texture = ExtResource("4_stock")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="P2Stock2" type="TextureRect" parent="P2Group"]
+offset_left = 1020.0
+offset_top = 680.0
+offset_right = 1036.0
+offset_bottom = 696.0
+texture = ExtResource("4_stock")
+expand_mode = 1
+stretch_mode = 2
+
+[node name="P2Stock3" type="TextureRect" parent="P2Group"]
+offset_left = 1044.0
+offset_top = 680.0
+offset_right = 1060.0
+offset_bottom = 696.0
+texture = ExtResource("4_stock")
+expand_mode = 1
+stretch_mode = 2
 
 [node name="P2Effect" type="Label" parent="P2Group"]
 visible = false

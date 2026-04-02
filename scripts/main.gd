@@ -61,16 +61,18 @@ var p1_group: Control
 var p2_group: Control
 var p1_effect: Label
 var p2_effect: Label
-var p1_stock_label: Label
-var p2_stock_label: Label
 var game_over_label: Label
 var controls_label: Label
 
-# ── HP Squares (from HUD scene) ────────────────────────────────────────────
-var p1_hp_squares: Array[ColorRect] = []
-var p2_hp_squares: Array[ColorRect] = []
-const HP_FULL_COLOR := Color(0.3, 0.85, 0.35)
-const HP_EMPTY_COLOR := Color(0.18, 0.18, 0.2, 0.8)
+# ── HP Icons (TextureRect — swap texture for full/empty) ───────────────────
+var p1_hp_icons: Array[TextureRect] = []
+var p2_hp_icons: Array[TextureRect] = []
+var hp_full_tex: Texture2D
+var hp_empty_tex: Texture2D
+
+# ── Stock Icons (TextureRect — hide when lost) ─────────────────────────────
+var p1_stock_icons: Array[TextureRect] = []
+var p2_stock_icons: Array[TextureRect] = []
 
 # ── Countdown Label (created at runtime) ───────────────────────────────────
 var countdown_label: Label
@@ -210,14 +212,19 @@ func _bind_hud_refs() -> void:
 	p2_group = hud_layer.get_node("P2Group")
 	p1_effect = hud_layer.get_node("P1Group/P1Effect")
 	p2_effect = hud_layer.get_node("P2Group/P2Effect")
-	p1_stock_label = hud_layer.get_node("P1Group/P1Stocks")
-	p2_stock_label = hud_layer.get_node("P2Group/P2Stocks")
 	game_over_label = hud_layer.get_node("GameOver")
 	controls_label = hud_layer.get_node("Controls")
-	# Collect HP squares from scene
+	# Load HP textures for swapping
+	hp_full_tex = load("res://sprites/hud/hp_full.png")
+	hp_empty_tex = load("res://sprites/hud/hp_empty.png")
+	# Collect HP icons from scene
 	for i in range(1, 6):
-		p1_hp_squares.append(hud_layer.get_node("P1Group/P1HpSquare%d" % i))
-		p2_hp_squares.append(hud_layer.get_node("P2Group/P2HpSquare%d" % i))
+		p1_hp_icons.append(hud_layer.get_node("P1Group/P1Hp%d" % i))
+		p2_hp_icons.append(hud_layer.get_node("P2Group/P2Hp%d" % i))
+	# Collect stock icons from scene
+	for i in range(1, 4):
+		p1_stock_icons.append(hud_layer.get_node("P1Group/P1Stock%d" % i))
+		p2_stock_icons.append(hud_layer.get_node("P2Group/P2Stock%d" % i))
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1256,14 +1263,15 @@ func _check_damage_effects(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_hud() -> void:
-	# HP squares — light up for remaining HP, dark for lost HP
+	# HP icons — swap texture for remaining/lost HP
 	for i in 5:
-		p1_hp_squares[i].color = HP_FULL_COLOR if i < player1.hit_points else HP_EMPTY_COLOR
-		p2_hp_squares[i].color = HP_FULL_COLOR if i < player2.hit_points else HP_EMPTY_COLOR
+		p1_hp_icons[i].texture = hp_full_tex if i < player1.hit_points else hp_empty_tex
+		p2_hp_icons[i].texture = hp_full_tex if i < player2.hit_points else hp_empty_tex
 
-	# Stocks
-	p1_stock_label.text = _stock_display(player1.stocks)
-	p2_stock_label.text = _stock_display(player2.stocks)
+	# Stock icons — visible for remaining stocks, hidden when lost
+	for i in 3:
+		p1_stock_icons[i].visible = i < player1.stocks
+		p2_stock_icons[i].visible = i < player2.stocks
 
 	# Shake
 	if p1_shake_timer > 0.0:
@@ -1278,12 +1286,6 @@ func _update_hud() -> void:
 	else:
 		p2_group.position = Vector2.ZERO
 
-
-func _stock_display(count: int) -> String:
-	var s := ""
-	for i in 3:
-		s += "O " if i < count else "X "
-	return s.strip_edges()
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
