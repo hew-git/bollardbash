@@ -24,7 +24,7 @@ offset_bottom = 1300.0
 color = Color(0.529, 0.808, 0.922, 1)
 
 [node name="Camera2D" type="Camera2D" parent="."]
-position = Vector2(640, 350)
+position = Vector2(640, 360)
 
 [node name="Ground" type="StaticBody2D" parent="."]
 position = Vector2(640, 520)
@@ -96,9 +96,9 @@ accent_color = Color(0.314, 0.502, 0.314, 1)
 
 [node name="P1DmgLabel" type="Label" parent="HUD/P1Group"]
 offset_left = 126.0
-offset_top = 636.0
+offset_top = 656.0
 offset_right = 172.0
-offset_bottom = 660.0
+offset_bottom = 680.0
 theme_override_font_sizes/font_size = 14
 text = "dmg."
 horizontal_alignment = 1
@@ -118,9 +118,9 @@ vertical_alignment = 1
 
 [node name="P1Stocks" type="Label" parent="HUD/P1Group"]
 offset_left = 240.0
-offset_top = 664.0
+offset_top = 676.0
 offset_right = 540.0
-offset_bottom = 688.0
+offset_bottom = 700.0
 theme_override_font_sizes/font_size = 16
 text = "O O O"
 horizontal_alignment = 1
@@ -129,9 +129,9 @@ horizontal_alignment = 1
 
 [node name="P2DmgLabel" type="Label" parent="HUD/P2Group"]
 offset_left = 1108.0
-offset_top = 636.0
+offset_top = 656.0
 offset_right = 1158.0
-offset_bottom = 660.0
+offset_bottom = 680.0
 theme_override_font_sizes/font_size = 14
 text = "dmg."
 horizontal_alignment = 1
@@ -151,9 +151,9 @@ vertical_alignment = 1
 
 [node name="P2Stocks" type="Label" parent="HUD/P2Group"]
 offset_left = 740.0
-offset_top = 664.0
+offset_top = 676.0
 offset_right = 1040.0
-offset_bottom = 688.0
+offset_bottom = 700.0
 theme_override_font_sizes/font_size = 16
 text = "O O O"
 horizontal_alignment = 1
