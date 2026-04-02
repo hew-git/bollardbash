@@ -3,49 +3,70 @@
 [ext_resource type="FontFile" path="res://fonts/PressStart2P-Regular.ttf" id="1_font"]
 
 [node name="HUD" type="CanvasLayer"]
+layer = 91
+
+[node name="HudBackground" type="ColorRect" parent="."]
+offset_left = 16.0
+offset_top = 644.0
+offset_right = 1264.0
+offset_bottom = 716.0
+mouse_filter = 2
+color = Color(0.06, 0.05, 0.08, 0.92)
 
 [node name="P1Group" type="Control" parent="."]
 
+[node name="P1Label" type="Label" parent="P1Group"]
+offset_left = 120.0
+offset_top = 650.0
+offset_right = 170.0
+offset_bottom = 670.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.7, 0.75, 0.9, 1)
+text = "P1"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="P1HpSquare1" type="ColorRect" parent="P1Group"]
 offset_left = 180.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 198.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P1HpSquare2" type="ColorRect" parent="P1Group"]
 offset_left = 202.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 220.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P1HpSquare3" type="ColorRect" parent="P1Group"]
 offset_left = 224.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 242.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P1HpSquare4" type="ColorRect" parent="P1Group"]
 offset_left = 246.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 264.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P1HpSquare5" type="ColorRect" parent="P1Group"]
 offset_left = 268.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 286.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P1Stocks" type="Label" parent="P1Group"]
 offset_left = 180.0
-offset_top = 677.0
+offset_top = 678.0
 offset_right = 300.0
-offset_bottom = 702.0
+offset_bottom = 703.0
 theme_override_fonts/font = ExtResource("1_font")
 theme_override_font_sizes/font_size = 10
 text = "O O O"
@@ -66,46 +87,58 @@ vertical_alignment = 1
 
 [node name="P2Group" type="Control" parent="."]
 
+[node name="P2Label" type="Label" parent="P2Group"]
+offset_left = 930.0
+offset_top = 650.0
+offset_right = 980.0
+offset_bottom = 670.0
+theme_override_fonts/font = ExtResource("1_font")
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.7, 0.75, 0.9, 1)
+text = "P2"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="P2HpSquare1" type="ColorRect" parent="P2Group"]
 offset_left = 990.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 1008.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P2HpSquare2" type="ColorRect" parent="P2Group"]
 offset_left = 1012.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 1030.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P2HpSquare3" type="ColorRect" parent="P2Group"]
 offset_left = 1034.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 1052.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P2HpSquare4" type="ColorRect" parent="P2Group"]
 offset_left = 1056.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 1074.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P2HpSquare5" type="ColorRect" parent="P2Group"]
 offset_left = 1078.0
-offset_top = 650.0
+offset_top = 652.0
 offset_right = 1096.0
-offset_bottom = 668.0
+offset_bottom = 670.0
 color = Color(0.3, 0.85, 0.35, 1)
 
 [node name="P2Stocks" type="Label" parent="P2Group"]
 offset_left = 980.0
-offset_top = 677.0
+offset_top = 678.0
 offset_right = 1100.0
-offset_bottom = 702.0
+offset_bottom = 703.0
 theme_override_fonts/font = ExtResource("1_font")
 theme_override_font_sizes/font_size = 10
 text = "O O O"
