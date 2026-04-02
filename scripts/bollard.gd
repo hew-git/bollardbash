@@ -62,7 +62,7 @@ const PHASE_DASH_COOLDOWN := 0.8
 
 # ── Goopy: Slime Shell Toss + Tether Swing + Goo Dash ──────────────────────
 const GOOPY_TOSS_KNOCKBACK_MULT := 0.3  # 30% of Blink's shell knockback
-const GOOPY_ZIP_IMPULSE := 2200.0    # Impulse when zipping to shell
+const GOOPY_ZIP_IMPULSE := 3300.0    # Impulse when zipping to shell (strong pull)
 const GOOPY_SWING_PULL := 1200.0     # Looser swing force (lower = looser)
 const GOOPY_TETHER_DURATION := 6.0   # Max tether swing time (long for strategic use)
 const GOO_DASH_IMPULSE := 1785.0     # Max dash impulse (15% shorter)
@@ -83,8 +83,8 @@ const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
 const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
 const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
-const BOLT_DASH_SPEED := 1800.0      # Fixed dash speed (pixels/sec)
-const BOLT_DASH_DISTANCE := 500.0    # Fixed dash distance (pixels) — long-range bolt
+const BOLT_DASH_SPEED := 2250.0      # Fixed dash speed (pixels/sec) — 25% faster
+const BOLT_DASH_DISTANCE := 425.0    # Fixed dash distance (pixels) — 15% shorter
 const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
@@ -289,7 +289,7 @@ func _physics_process(delta: float) -> void:
 
 	# Anti-tunneling: detect if snail teleported through floor since last frame
 	# Skip during emerge, invincibility, and phase dash (intentionally passing through)
-	if _prev_global_pos.y > 0.0 and not is_emerging and not is_invincible and not is_phase_dashing:
+	if _prev_global_pos.y > 0.0 and not is_emerging and not is_phase_dashing:
 		var dy := global_position.y - _prev_global_pos.y
 		var expected_dy := maxf(linear_velocity.y * delta, 0.0)
 		if dy > expected_dy + 80.0 and dy > 60.0:
@@ -656,6 +656,8 @@ func _update_goopy_zip(_delta: float) -> void:
 			_goopy_release_tether()
 			return
 		if body is RigidBody2D and body.has_method("take_damage"):
+			if body is Bollard and (body as Bollard).is_dead:
+				continue
 			var dir: Vector2 = (body.global_position - global_position).normalized()
 			# Shell blocks the zip hit
 			if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
@@ -750,6 +752,8 @@ func _check_goo_dash_hits() -> void:
 			if not targets.has(col):
 				targets.append(col)
 	for body in targets:
+		if body is Bollard and (body as Bollard).is_dead:
+			continue
 		var dir: Vector2 = (body.global_position - global_position).normalized()
 		# Shell blocks goo dash
 		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
@@ -984,6 +988,8 @@ func _check_charge_hits() -> void:
 			if not targets.has(col):
 				targets.append(col)
 	for body in targets:
+		if body is Bollard and (body as Bollard).is_dead:
+			continue
 		var dir: Vector2 = (body.global_position - global_position).normalized()
 		# Parry deflects dash
 		if body is Bollard and (body as Bollard).is_parrying:
@@ -1014,6 +1020,8 @@ func _is_dash_blocked() -> bool:
 	if is_bolt_dashing and bolt_dash_timer < 0.08:
 		return false
 	if is_goo_dashing and goo_dash_timer < 0.08:
+		return false
+	if is_phase_dashing and phase_dash_timer < 0.08:
 		return false
 	for body in get_colliding_bodies():
 		if body is StaticBody2D:
@@ -1164,6 +1172,8 @@ func _update_shell_toss(delta: float) -> void:
 			var target_body: RigidBody2D = collider
 			if target_body == self and not shell_deflected:
 				continue
+			if target_body is Bollard and (target_body as Bollard).is_dead:
+				continue
 			# DEFLECT: if the target is dashing OR parrying, they smack the shell back
 			var is_target_dashing := false
 			var is_target_parrying := false
@@ -1238,7 +1248,7 @@ func _return_shell() -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func take_damage(amount: float, knockback_dir: Vector2) -> void:
-	if is_invincible:
+	if is_invincible or is_dead:
 		return
 	# Only shell toss and dash hits deal damage — amount is ignored, HP system used instead
 	var hp_loss: int = DAMAGE_SHELLED if not shell_missing else DAMAGE_UNSHELLED
@@ -1253,7 +1263,7 @@ func _is_in_any_dash() -> bool:
 	return is_dashing or is_phase_dashing or is_bolt_dashing or is_goo_dashing
 
 func _on_body_entered(body: Node) -> void:
-	if is_invincible:
+	if is_dead or is_invincible:
 		return
 	if not (body is RigidBody2D) or body == self or not body.has_method("take_damage"):
 		return
@@ -1309,6 +1319,8 @@ func is_shell_hit(attacker_pos: Vector2) -> bool:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func die() -> void:
+	if is_dead:
+		return
 	stocks -= 1
 	is_dead = true
 	SFX.play_sfx("ko")

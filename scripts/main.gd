@@ -366,7 +366,7 @@ func _setup_center_circle() -> void:
 
 
 func _clay_platforms() -> void:
-	# Restyle floating platforms with sprite
+	# Restyle floating platforms with sprite + one-way collision (pass through from below)
 	for plat_info in [
 		{node = $PlatformLeft, visual = "PlatLeftVisual"},
 		{node = $PlatformRight, visual = "PlatRightVisual"}
@@ -375,6 +375,11 @@ func _clay_platforms() -> void:
 		var old_vis = plat.get_node_or_null(plat_info.visual)
 		if old_vis:
 			old_vis.queue_free()
+
+		# Set collision shapes to one-way (shells and players pass through from below)
+		for child in plat.get_children():
+			if child is CollisionShape2D:
+				child.one_way_collision = true
 
 		# ── VISUAL: platform sprite ───────────────────────────────────
 		# Replace: swap sprites/arena/platform.png (180x20)
@@ -585,7 +590,7 @@ func _setup_tower_stage() -> void:
 		"...........................",  # row 0
 		"....#####.......#####.....",  # row 1
 		"...........................",  # row 2
-		"...........................",  # row 3
+		"............#..............",  # row 3 (center blocker — prevents continuous fall)
 		"##...................##..##",  # row 4 (side ledges)
 		"...........................",  # row 5
 		"........#####.####........",  # row 6
@@ -599,33 +604,86 @@ func _setup_tower_stage() -> void:
 		"########.........#########",  # row 14 (floor depth)
 	]
 
+	# First pass: find horizontal runs per row
+	# Each run = {col, row, count} — a contiguous horizontal strip of '#' tiles
+	var runs: Array = []  # [{col: int, row: int, count: int}]
 	for row_i in layout.size():
 		var row_str: String = layout[row_i]
-		for col_i in row_str.length():
+		var col_i := 0
+		while col_i < row_str.length():
 			if row_str[col_i] == "#":
-				_place_tile(col_i, row_i)
+				var run_start := col_i
+				while col_i < row_str.length() and row_str[col_i] == "#":
+					col_i += 1
+				runs.append({"col": run_start, "row": row_i, "count": col_i - run_start, "height": 1})
+			else:
+				col_i += 1
+
+	# Second pass: merge vertically adjacent runs with same col and count
+	# This prevents shells getting stuck between rows (e.g. floor rows 13-14)
+	var merged: Array = []
+	var used: Array = []
+	for i in runs.size():
+		used.append(false)
+	for i in runs.size():
+		if used[i]:
+			continue
+		var run = runs[i]
+		var cur_col: int = run.col
+		var cur_count: int = run.count
+		var cur_row: int = run.row
+		var cur_height: int = 1
+		# Look for matching runs in subsequent rows
+		for j in range(i + 1, runs.size()):
+			if used[j]:
+				continue
+			var other = runs[j]
+			if other.col == cur_col and other.count == cur_count and other.row == cur_row + cur_height:
+				cur_height += 1
+				used[j] = true
+		merged.append({"col": cur_col, "row": cur_row, "count": cur_count, "height": cur_height})
+		used[i] = true
+
+	# Place merged tile regions
+	for region in merged:
+		_place_tile_region(region.col, region.row, region.count, region.height)
 
 	$Background.color = Color(0.12, 0.10, 0.15)  # Dark purple-black
 
 
-func _place_tile(col: int, row: int) -> void:
-	var pos := Vector2(col * TILE_SIZE + TILE_SIZE * 0.5, row * TILE_SIZE + TILE_SIZE * 0.5)
+func _place_tile_region(start_col: int, start_row: int, count: int, height: int) -> void:
+	# Create one StaticBody2D with a single collision rect spanning count x height tiles,
+	# then overlay individual tile sprites for the visual
+	var region_width := TILE_SIZE * count
+	var region_height := TILE_SIZE * height
+	var center_x := start_col * TILE_SIZE + region_width * 0.5
+	var center_y := start_row * TILE_SIZE + region_height * 0.5
+	var pos := Vector2(center_x, center_y)
+
 	var tile_body := StaticBody2D.new()
-	tile_body.name = "Tile_%d_%d" % [col, row]
+	tile_body.name = "TileRegion_%d_%d_%dx%d" % [start_col, start_row, count, height]
 	tile_body.position = pos
 	add_child(tile_body)
 	stage_extra_nodes.append(tile_body)
 
+	# Single collision shape spanning the full region
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
-	rect.size = Vector2(TILE_SIZE, TILE_SIZE)
+	rect.size = Vector2(region_width, region_height)
 	shape.shape = rect
 	tile_body.add_child(shape)
 
-	var spr := Sprite2D.new()
-	spr.texture = TEX_TILE
-	spr.scale = Vector2(2.0, 2.0)  # 24px art at 2x = 48px, matching snail shell
-	tile_body.add_child(spr)
+	# Individual tile sprites for visual
+	for r in height:
+		for c in count:
+			var spr := Sprite2D.new()
+			spr.texture = TEX_TILE
+			spr.scale = Vector2(2.0, 2.0)  # 24px art at 2x = 48px
+			spr.position = Vector2(
+				(c - (count - 1) * 0.5) * TILE_SIZE,
+				(r - (height - 1) * 0.5) * TILE_SIZE
+			)
+			tile_body.add_child(spr)
 
 
 func _hide_all_arena_nodes() -> void:
