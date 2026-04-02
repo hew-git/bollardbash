@@ -11,10 +11,15 @@ enum CharacterType { BLINK, GOOPY, ZAPPY }
 @export var accent_color: Color = Color("A06830")    ## Shell color (warm brown)
 
 # ── Dimensions ──────────────────────────────────────────────────────────────
-const BASE_RADIUS := 22.0
+const BASE_RADIUS := 24.0
 const POST_HALF_WIDTH := 16.0
 const MIN_HEIGHT := 2.0
 const MAX_HEIGHT := 90.0
+
+# ── Health ─────────────────────────────────────────────────────────────────
+const MAX_HIT_POINTS := 5
+const DAMAGE_SHELLED := 1         # HP lost when hit WITH shell on
+const DAMAGE_UNSHELLED := 2       # HP lost when hit WITHOUT shell (exposed)
 
 # ── Physics Tuning ──────────────────────────────────────────────────────────
 const LEAN_TORQUE := 100000.0
@@ -34,13 +39,13 @@ const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
 const CHARGE_MAX_DASHES := 2        # Number of dashes before cooldown
 
 # ── Shell Toss (all characters) ────────────────────────────────────────────
-const SHELL_TOSS_SPEED := 1800.0    # Max speed of thrown shell (at full charge)
-const SHELL_TOSS_MIN_SPEED := 600.0 # Min speed (quick tap)
+const SHELL_TOSS_SPEED := 1200.0    # Max speed of thrown shell (at full charge)
+const SHELL_TOSS_MIN_SPEED := 450.0 # Min speed (quick tap)
 const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit (Blink base)
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
-const SHELL_BOUNCE := 0.75          # Bounce factor off surfaces (firm bounces)
+const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
 const SHELL_PICKUP_RADIUS := 35.0   # Walk over shell to pick it up
@@ -101,7 +106,8 @@ const EMERGE_DURATION := 0.6
 
 # ── Runtime State ───────────────────────────────────────────────────────────
 var extend_amount: float = 0.5
-var damage_percent: float = 0.0
+var hit_points: int = MAX_HIT_POINTS
+var damage_percent: float = 0.0    # Legacy — kept for knockback scaling
 var stocks: int = 3
 var is_dead: bool = false
 var was_hit_by_shell: bool = false  # Set when hit by a shell toss (for death phrases)
@@ -283,10 +289,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Anti-tunneling: detect if snail teleported through floor since last frame
-	if _prev_global_pos.y > 0.0:
+	# Skip check during emerge and for a few frames after spawn (invincibility period)
+	if _prev_global_pos.y > 0.0 and not is_emerging and not is_invincible:
 		var dy := global_position.y - _prev_global_pos.y
 		var expected_dy := maxf(linear_velocity.y * delta, 0.0)
-		# If snail jumped downward much further than velocity explains, snap back
 		if dy > expected_dy + 80.0 and dy > 60.0:
 			global_position.y = _prev_global_pos.y
 			linear_velocity.y = 0.0
@@ -980,18 +986,21 @@ func _check_charge_hits() -> void:
 				targets.append(col)
 	for body in targets:
 		var dir: Vector2 = (body.global_position - global_position).normalized()
-		# Shell blocks charge too
-		if body.has_method("is_shell_hit") and body.is_shell_hit(global_position):
+		# Parry deflects dash
+		if body is Bollard and (body as Bollard).is_parrying:
 			linear_velocity = linear_velocity.reflect(dir) * 0.5
+			var hit_pos := (global_position + body.global_position) * 0.5
+			big_hit.emit(hit_pos, true)
+			SFX.play_sfx("parry_deflect")
 			_end_any_dash()
 			return
-		var dash_dmg := CHARGE_DAMAGE
+		# Dashing target = mutual immunity
+		if body is Bollard and (body as Bollard)._is_in_any_dash():
+			continue
 		var impact_force := linear_velocity.length() * 3.0
-		# Zappy bolt dash: 40% less impact + 10% weaker knockback
 		if character_type == CharacterType.ZAPPY and is_bolt_dashing:
-			dash_dmg *= 0.6
 			impact_force *= 0.54
-		body.take_damage(dash_dmg, dir)
+		body.take_damage(0.0, dir)
 		body.apply_central_impulse(dir * impact_force)
 		var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 		big_hit.emit(hit_pos, false)
@@ -1146,27 +1155,18 @@ func _update_shell_toss(delta: float) -> void:
 				shell_toss_vel = shell_toss_vel.reflect((shell_toss_pos - target_body.global_position).normalized()) * SHELL_BOUNCE
 				break
 			var dir: Vector2 = (target_body.global_position - shell_toss_pos).normalized()
-			# Per-character damage and knockback
-			var dmg := SHELL_TOSS_DAMAGE
-			var kb_mult := 1.0
-			match character_type:
-				CharacterType.BLINK:
-					dmg = SHELL_TOSS_DAMAGE * 0.9  # 10% softer
-					kb_mult = 0.9
-				CharacterType.GOOPY:
-					dmg = SHELL_TOSS_DAMAGE * GOOPY_TOSS_KNOCKBACK_MULT
-					kb_mult = GOOPY_TOSS_KNOCKBACK_MULT
-				CharacterType.ZAPPY:
-					dmg = ZAPPY_TOSS_DAMAGE
-					kb_mult = 0.0  # Use fixed knockback below
-			target_body.take_damage(dmg, dir)
+			# Shell toss hit — deals HP damage via take_damage
+			target_body.take_damage(0.0, dir)
 			if target_body is Bollard:
 				(target_body as Bollard).was_hit_by_shell = true
+			# Knockback from shell impact
+			var shell_impact := shell_toss_vel.length() * 2.0
 			if character_type == CharacterType.ZAPPY:
 				target_body.apply_central_impulse(dir * ZAPPY_TOSS_KNOCKBACK)
+			elif character_type == CharacterType.GOOPY:
+				target_body.apply_central_impulse(dir * shell_impact * GOOPY_TOSS_KNOCKBACK_MULT)
 			else:
-				var shell_impact := shell_toss_vel.length() * 2.0 * kb_mult
-				target_body.apply_central_impulse(dir * shell_impact)
+				target_body.apply_central_impulse(dir * shell_impact * 0.9)
 			big_hit.emit(shell_toss_pos, false)
 			if character_type == CharacterType.GOOPY:
 				# Goopy shell sticks where it hit
@@ -1206,23 +1206,17 @@ func _return_shell() -> void:
 # ║ COMBAT                                                                   ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
-const SHELLLESS_DAMAGE_MULT := 1.5    # 50% more damage when shell-less
-
 func take_damage(amount: float, knockback_dir: Vector2) -> void:
 	if is_invincible:
 		return
-	# Shell-less = extra vulnerable. With shell attached, normal damage applies
-	# (shell AREA protection is handled by is_shell_hit() at the call site)
-	if shell_missing:
-		amount *= SHELLLESS_DAMAGE_MULT
-	if amount <= 0.0:
-		var knockback_mult := 1.0 + damage_percent / 50.0
-		apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult * 0.3)
-		return
-	damage_percent += amount
-	var knockback_mult := 1.0 + damage_percent / 50.0
-	apply_central_impulse(knockback_dir * KNOCKBACK_BASE * knockback_mult)
+	# Only shell toss and dash hits deal damage — amount is ignored, HP system used instead
+	var hp_loss: int = DAMAGE_SHELLED if not shell_missing else DAMAGE_UNSHELLED
+	hit_points = maxi(hit_points - hp_loss, 0)
+	# Fixed knockback (no scaling with damage)
+	apply_central_impulse(knockback_dir * KNOCKBACK_BASE)
 	SFX.play_sfx_varied("hit")
+	if hit_points <= 0:
+		die()
 
 func _is_in_any_dash() -> bool:
 	return is_dashing or is_phase_dashing or is_bolt_dashing or is_goo_dashing
@@ -1233,54 +1227,39 @@ func _on_body_entered(body: Node) -> void:
 	if not (body is RigidBody2D) or body == self or not body.has_method("take_damage"):
 		return
 	var other: RigidBody2D = body as RigidBody2D
-	# If the other snail is dashing, they have hit immunity — don't damage them
+	# Only dashes deal damage — regular collisions just bump
+	if not _is_in_any_dash():
+		return
+	# If the other snail is also dashing, mutual immunity
 	if other is Bollard and (other as Bollard)._is_in_any_dash():
 		return
-	var rel_vel: Vector2 = linear_velocity - other.linear_velocity
-	var impact: float = rel_vel.length()
-	if impact > HIT_SPEED_THRESHOLD:
-		var my_speed: float = linear_velocity.length()
-		var other_speed: float = other.linear_velocity.length()
-		var total: float = my_speed + other_speed
-		if total < 1.0:
-			return
-		var my_ratio: float = my_speed / total
-		var dmg: float = impact * DAMAGE_MULTIPLIER * my_ratio * 2.0
-		var dir: Vector2 = (other.global_position - global_position).normalized()
-		# Shell blocks damage — if we're hitting the other snail's shell
-		# (base area), the hit is deflected and no damage is dealt.
-		if other.has_method("is_shell_hit") and other.is_shell_hit(global_position):
-			return
-		# Parry deflect: if the target is parrying, the attack bounces back to us
-		if other is Bollard and (other as Bollard).is_parrying:
-			var reverse_dir: Vector2 = -dir
-			take_damage(dmg, reverse_dir)
-			apply_central_impulse(reverse_dir * KNOCKBACK_BASE * 2.0)
-			var hit_pos := (global_position + other.global_position) * 0.5
-			big_hit.emit(hit_pos, true)
-			SFX.play_sfx("parry_deflect")
-			_end_any_dash()
-			return
-		# Dashing into another snail = big hit (same impact as shell toss)
-		if is_dashing or is_bolt_dashing:
-			dmg = maxf(dmg, CHARGE_DAMAGE)
-			var impact_force := linear_velocity.length() * 3.0
-			# Zappy bolt dash: 40% less impact + 10% weaker knockback
-			if is_bolt_dashing and character_type == CharacterType.ZAPPY:
-				dmg *= 0.6
-				impact_force *= 0.54
-			other.apply_central_impulse(dir * impact_force)
-			var hit_pos := (global_position + other.global_position) * 0.5
-			big_hit.emit(hit_pos, false)
-			if is_dashing:
-				is_dashing = false
-				if dashes_remaining <= 0:
-					charge_cooldown = CHARGE_COOLDOWN
-			if is_bolt_dashing:
-				is_bolt_dashing = false
-				if bolt_dashes_remaining <= 0:
-					bolt_dash_cooldown = BOLT_DASH_COOLDOWN
-		other.take_damage(dmg, dir)
+	var dir: Vector2 = (other.global_position - global_position).normalized()
+	# Parry deflect: if the target is parrying, the attack bounces back to us
+	if other is Bollard and (other as Bollard).is_parrying:
+		var reverse_dir: Vector2 = -dir
+		take_damage(0.0, reverse_dir)
+		apply_central_impulse(reverse_dir * KNOCKBACK_BASE * 2.0)
+		var hit_pos := (global_position + other.global_position) * 0.5
+		big_hit.emit(hit_pos, true)
+		SFX.play_sfx("parry_deflect")
+		_end_any_dash()
+		return
+	# Dash hit — deal HP damage
+	var impact_force := linear_velocity.length() * 3.0
+	if is_bolt_dashing and character_type == CharacterType.ZAPPY:
+		impact_force *= 0.54
+	other.apply_central_impulse(dir * impact_force)
+	var hit_pos := (global_position + other.global_position) * 0.5
+	big_hit.emit(hit_pos, false)
+	if is_dashing:
+		is_dashing = false
+		if dashes_remaining <= 0:
+			charge_cooldown = CHARGE_COOLDOWN
+	if is_bolt_dashing:
+		is_bolt_dashing = false
+		if bolt_dashes_remaining <= 0:
+			bolt_dash_cooldown = BOLT_DASH_COOLDOWN
+	other.take_damage(0.0, dir)
 
 
 func is_shell_hit(attacker_pos: Vector2) -> bool:
@@ -1318,6 +1297,7 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	global_position = spawn_pos
 	rotation = 0.0
 	extend_amount = 0.0
+	hit_points = MAX_HIT_POINTS
 	damage_percent = 0.0
 	was_hit_by_shell = false
 	is_charging = false
@@ -1694,7 +1674,7 @@ func _ai_pick_action() -> void:
 	ai_timer = 0.0
 	var abs_dist := absf(ai_target.global_position.x - global_position.x)
 	var roll := randf()
-	if damage_percent > 100.0 and roll < 0.25:
+	if hit_points <= 1 and roll < 0.25:
 		ai_state = "retreat"
 		ai_action_duration = randf_range(0.5, 1.5)
 	elif abs_dist > 250.0:

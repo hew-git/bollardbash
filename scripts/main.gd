@@ -3,6 +3,8 @@ extends Node2D
 # ── Arena Sprite Textures (swap these PNGs for custom art) ─────────────────
 const TEX_PLATFORM := preload("res://sprites/arena/platform.png")
 const TEX_ROCK := preload("res://sprites/arena/center_rock.png")
+const TEX_TILE := preload("res://sprites/arena/tile.png")
+const TILE_SIZE := 24.0          # Towerfall-style tile grid size
 
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
@@ -141,7 +143,14 @@ const CHAR_ABILITY2_DESC := [
 	"Bolt Dash (snappy, x3)",
 	"???",
 ]
-const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Random"]
+const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
+
+# ── Screen Wrapping ────────────────────────────────────────────────────────
+var screen_wrap_enabled: bool = false
+const WRAP_LEFT := 0.0
+const WRAP_RIGHT := 1280.0
+const WRAP_TOP := 0.0
+const WRAP_BOTTOM := 700.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
@@ -152,8 +161,8 @@ var game_active: bool = false
 var countdown_active: bool = true
 var countdown_timer: float = 0.0
 var controls_visible_timer: float = 0.0
-var prev_p1_dmg: float = 0.0
-var prev_p2_dmg: float = 0.0
+var prev_p1_dmg: float = 5.0   # Tracks HP for damage effect detection
+var prev_p2_dmg: float = 5.0
 var p1_effect_timer: float = 0.0
 var p2_effect_timer: float = 0.0
 var p1_shake_timer: float = 0.0
@@ -450,12 +459,16 @@ func _apply_stage(idx: int) -> void:
 			node.queue_free()
 	stage_extra_nodes.clear()
 
+	screen_wrap_enabled = false
+
 	var stage_name: String = STAGE_NAMES[idx]
 	match stage_name:
 		"Meadow":
 			_setup_meadow_stage()
 		"Oops, All Slab":
 			_setup_slab_stage()
+		"Tower":
+			_setup_tower_stage()
 
 func _setup_meadow_stage() -> void:
 	# Default stage — restore normal arena elements
@@ -557,6 +570,143 @@ func _setup_slab_stage() -> void:
 
 	# Light gray background (swapped with platform)
 	$Background.color = Color(0.7, 0.7, 0.72)
+
+
+func _setup_tower_stage() -> void:
+	# Towerfall Ascension-style enclosed arena with screen wrapping
+	screen_wrap_enabled = true
+
+	# Hide all normal arena geometry
+	_hide_all_arena_nodes()
+
+	# Build the level from 24x24 tiles
+	# Grid: 1280 / 24 ≈ 53 columns, 700 / 24 ≈ 29 rows
+	# Level layout: '#' = solid tile, '.' = empty
+	var layout := [
+		".......................................................",  # row 0
+		".......................................................",  # row 1
+		".......................................................",  # row 2
+		".......................................................",  # row 3
+		"...........########.................########...........",  # row 4
+		".......................................................",  # row 5
+		".......................................................",  # row 6
+		".......................................................",  # row 7
+		"###..............................##...............#####",  # row 8 (side ledges)
+		".......................................................",  # row 9
+		".......................................................",  # row 10
+		"..............########.......########..................",  # row 11
+		".......................................................",  # row 12
+		".......................................................",  # row 13
+		".......................................................",  # row 14
+		"####.............................................######",  # row 15
+		".......................................................",  # row 16
+		".......................................................",  # row 17
+		"...........########.................########...........",  # row 18
+		".......................................................",  # row 19
+		".......................................................",  # row 20
+		".......................................................",  # row 21
+		"###.......................##........................####",  # row 22 (side ledges)
+		".......................................................",  # row 23
+		".......................................................",  # row 24
+		"..............########.......########..................",  # row 25
+		".......................................................",  # row 26
+		"#######################################################",  # row 27 (floor)
+		"#######################################################",  # row 28 (floor depth)
+	]
+
+	for row_i in layout.size():
+		var row_str: String = layout[row_i]
+		for col_i in row_str.length():
+			if row_str[col_i] == "#":
+				_place_tile(col_i, row_i)
+
+	$Background.color = Color(0.12, 0.10, 0.15)  # Dark purple-black
+
+
+func _place_tile(col: int, row: int) -> void:
+	var pos := Vector2(col * TILE_SIZE + TILE_SIZE * 0.5, row * TILE_SIZE + TILE_SIZE * 0.5)
+	var tile_body := StaticBody2D.new()
+	tile_body.name = "Tile_%d_%d" % [col, row]
+	tile_body.position = pos
+	add_child(tile_body)
+	stage_extra_nodes.append(tile_body)
+
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(TILE_SIZE, TILE_SIZE)
+	shape.shape = rect
+	tile_body.add_child(shape)
+
+	var spr := Sprite2D.new()
+	spr.texture = TEX_TILE
+	tile_body.add_child(spr)
+
+
+func _hide_all_arena_nodes() -> void:
+	# Hide all default arena nodes (ground, platforms, center circle, walls, corners)
+	center_circle.visible = false
+	for child in center_circle.get_children():
+		if child is CollisionShape2D:
+			child.disabled = true
+	$PlatformLeft.visible = false
+	$PlatformRight.visible = false
+	for child in $PlatformLeft.get_children():
+		if child is CollisionShape2D:
+			child.disabled = true
+	for child in $PlatformRight.get_children():
+		if child is CollisionShape2D:
+			child.disabled = true
+	ground.visible = false
+	for child in ground.get_children():
+		if child is CollisionPolygon2D:
+			child.disabled = true
+		if child is Polygon2D:
+			child.visible = false
+	var hide_names := ["WallLeft", "WallRight",
+		"CornerTopLeft", "CornerTopRight", "CornerBottomLeft", "CornerBottomRight"]
+	for name_str in hide_names:
+		var node: Node = get_node_or_null(name_str)
+		if node:
+			node.visible = false
+			for child in node.get_children():
+				if child is CollisionShape2D or child is CollisionPolygon2D:
+					child.disabled = true
+
+
+func _wrap_position(player: Bollard) -> void:
+	if not screen_wrap_enabled or player.is_dead:
+		return
+	var pos := player.global_position
+	var wrapped := false
+	if pos.x < WRAP_LEFT - player.BASE_RADIUS:
+		pos.x = WRAP_RIGHT + player.BASE_RADIUS
+		wrapped = true
+	elif pos.x > WRAP_RIGHT + player.BASE_RADIUS:
+		pos.x = WRAP_LEFT - player.BASE_RADIUS
+		wrapped = true
+	if pos.y < WRAP_TOP - player.BASE_RADIUS:
+		pos.y = WRAP_BOTTOM + player.BASE_RADIUS
+		wrapped = true
+	elif pos.y > WRAP_BOTTOM + player.BASE_RADIUS:
+		pos.y = WRAP_TOP - player.BASE_RADIUS
+		wrapped = true
+	if wrapped:
+		PhysicsServer2D.body_set_state(player.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(player.rotation, pos))
+		player.global_position = pos
+		player._prev_global_pos = pos
+
+
+func _wrap_shell(player: Bollard) -> void:
+	if not screen_wrap_enabled or not player.shell_missing:
+		return
+	if player.shell_toss_pos.x < WRAP_LEFT - player.BASE_RADIUS:
+		player.shell_toss_pos.x = WRAP_RIGHT + player.BASE_RADIUS
+	elif player.shell_toss_pos.x > WRAP_RIGHT + player.BASE_RADIUS:
+		player.shell_toss_pos.x = WRAP_LEFT - player.BASE_RADIUS
+	if player.shell_toss_pos.y < WRAP_TOP - player.BASE_RADIUS:
+		player.shell_toss_pos.y = WRAP_BOTTOM + player.BASE_RADIUS
+	elif player.shell_toss_pos.y > WRAP_BOTTOM + player.BASE_RADIUS:
+		player.shell_toss_pos.y = WRAP_TOP - player.BASE_RADIUS
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1027,8 +1177,15 @@ func _physics_process(delta: float) -> void:
 		_update_death_phrase(delta)
 		return
 
-	_check_blast_zone(player1)
-	_check_blast_zone(player2)
+	# Screen wrapping (Tower stage) — wraps before blast zone check
+	if screen_wrap_enabled:
+		_wrap_position(player1)
+		_wrap_position(player2)
+		_wrap_shell(player1)
+		_wrap_shell(player2)
+	else:
+		_check_blast_zone(player1)
+		_check_blast_zone(player2)
 	_handle_respawn(player1, SPAWN_P1, delta)
 	_handle_respawn(player2, SPAWN_P2, delta)
 	_check_damage_effects(delta)
@@ -1282,8 +1439,8 @@ func _restart_game(go_to_select: bool = true) -> void:
 	game_over_label.visible = false
 	controls_label.visible = true
 	controls_visible_timer = 0.0
-	prev_p1_dmg = 0.0
-	prev_p2_dmg = 0.0
+	prev_p1_dmg = 5.0
+	prev_p2_dmg = 5.0
 	p1_effect.visible = false
 	p2_effect.visible = false
 	p1_shake_timer = 0.0
@@ -1338,6 +1495,7 @@ func _restart_game(go_to_select: bool = true) -> void:
 			if is_instance_valid(dt.body):
 				p.remove_collision_exception_with(dt.body)
 		p.drop_through_bodies.clear()
+		p.hit_points = p.MAX_HIT_POINTS
 		p.damage_percent = 0.0
 		p.extend_amount = 0.5
 		p.linear_velocity = Vector2.ZERO
@@ -1448,34 +1606,34 @@ func _draw() -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _check_damage_effects(delta: float) -> void:
-	var d1 := player1.damage_percent
-	var d2 := player2.damage_percent
+	var hp1 := float(player1.hit_points)
+	var hp2 := float(player2.hit_points)
 
-	if d1 > prev_p1_dmg + 0.1:
+	if hp1 < prev_p1_dmg - 0.1:
 		p1_shake_timer = SHAKE_DURATION
-	if d2 > prev_p2_dmg + 0.1:
+	if hp2 < prev_p2_dmg - 0.1:
 		p2_shake_timer = SHAKE_DURATION
 
-	if d1 >= 100.0 and prev_p1_dmg < 100.0:
+	if hp1 <= 1.0 and prev_p1_dmg > 1.0:
 		p1_effect.text = "CRITICAL!"
 		p1_effect.visible = true
 		p1_effect_timer = EFFECT_DURATION
-	elif d1 >= 50.0 and prev_p1_dmg < 50.0:
+	elif hp1 <= 2.0 and prev_p1_dmg > 2.0:
 		p1_effect.text = "OOF!"
 		p1_effect.visible = true
 		p1_effect_timer = EFFECT_DURATION
 
-	if d2 >= 100.0 and prev_p2_dmg < 100.0:
+	if hp2 <= 1.0 and prev_p2_dmg > 1.0:
 		p2_effect.text = "CRITICAL!"
 		p2_effect.visible = true
 		p2_effect_timer = EFFECT_DURATION
-	elif d2 >= 50.0 and prev_p2_dmg < 50.0:
+	elif hp2 <= 2.0 and prev_p2_dmg > 2.0:
 		p2_effect.text = "OOF!"
 		p2_effect.visible = true
 		p2_effect_timer = EFFECT_DURATION
 
-	prev_p1_dmg = d1
-	prev_p2_dmg = d2
+	prev_p1_dmg = hp1
+	prev_p2_dmg = hp2
 
 	if p1_effect_timer > 0.0:
 		p1_effect_timer -= delta
@@ -1497,8 +1655,8 @@ func _check_damage_effects(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _update_hud() -> void:
-	# P1 bar fills RIGHT to LEFT
-	var p1_pct := clampf(player1.damage_percent / 150.0, 0.0, 1.0)
+	# HP bar — fills based on remaining hit points
+	var p1_pct := clampf(float(player1.hit_points) / float(player1.MAX_HIT_POINTS), 0.0, 1.0)
 	if p1_pct > 0.005:
 		var fill_left: float = P1_BAR_RIGHT - p1_pct * BAR_MAX_WIDTH
 		var t_left: float = (fill_left - P1_BAR_LEFT) / BAR_MAX_WIDTH
@@ -1508,12 +1666,11 @@ func _update_hud() -> void:
 			Vector2(P1_BAR_RIGHT, BAR_INNER_TOP),
 			Vector2(P1_BAR_RIGHT, BAR_BOTTOM),
 			Vector2(fill_left, BAR_BOTTOM)])
-		p1_bar_fill.color = _damage_color(player1.damage_percent)
+		p1_bar_fill.color = _hp_color(player1.hit_points)
 	else:
 		p1_bar_fill.polygon = PackedVector2Array()
 
-	# P2 bar fills LEFT to RIGHT
-	var p2_pct := clampf(player2.damage_percent / 150.0, 0.0, 1.0)
+	var p2_pct := clampf(float(player2.hit_points) / float(player2.MAX_HIT_POINTS), 0.0, 1.0)
 	if p2_pct > 0.005:
 		var fill_right: float = P2_BAR_LEFT + p2_pct * BAR_MAX_WIDTH
 		var t_right: float = (fill_right - P2_BAR_LEFT) / BAR_MAX_WIDTH
@@ -1523,7 +1680,7 @@ func _update_hud() -> void:
 			Vector2(fill_right, top_at_right),
 			Vector2(fill_right, BAR_BOTTOM),
 			Vector2(P2_BAR_LEFT, BAR_BOTTOM)])
-		p2_bar_fill.color = _damage_color(player2.damage_percent)
+		p2_bar_fill.color = _hp_color(player2.hit_points)
 	else:
 		p2_bar_fill.polygon = PackedVector2Array()
 
@@ -1531,22 +1688,20 @@ func _update_hud() -> void:
 	p1_stock_label.text = _stock_display(player1.stocks)
 	p2_stock_label.text = _stock_display(player2.stocks)
 
-	# Shake — intensity scales with damage (1x at 0%, up to 3x at 150%+)
+	# HP text display
+	p1_dmg_label.text = "%d HP" % player1.hit_points
+	p2_dmg_label.text = "%d HP" % player2.hit_points
+
+	# Shake
 	if p1_shake_timer > 0.0:
-		var p1_mult := 1.0 + 2.0 * clampf(player1.damage_percent / 150.0, 0.0, 1.0)
-		var p1_s := SHAKE_INTENSITY * p1_mult
-		p1_group.position = Vector2(
-			randf_range(-p1_s, p1_s),
-			randf_range(-p1_s, p1_s))
+		var p1_s := SHAKE_INTENSITY * 2.0
+		p1_group.position = Vector2(randf_range(-p1_s, p1_s), randf_range(-p1_s, p1_s))
 	else:
 		p1_group.position = Vector2.ZERO
 
 	if p2_shake_timer > 0.0:
-		var p2_mult := 1.0 + 2.0 * clampf(player2.damage_percent / 150.0, 0.0, 1.0)
-		var p2_s := SHAKE_INTENSITY * p2_mult
-		p2_group.position = Vector2(
-			randf_range(-p2_s, p2_s),
-			randf_range(-p2_s, p2_s))
+		var p2_s := SHAKE_INTENSITY * 2.0
+		p2_group.position = Vector2(randf_range(-p2_s, p2_s), randf_range(-p2_s, p2_s))
 	else:
 		p2_group.position = Vector2.ZERO
 
@@ -1558,12 +1713,12 @@ func _stock_display(count: int) -> String:
 	return s.strip_edges()
 
 
-func _damage_color(pct: float) -> Color:
-	if pct < 40.0:
+func _hp_color(hp: int) -> Color:
+	if hp >= 4:
 		return Color(0.3, 0.8, 0.3)
-	elif pct < 80.0:
+	elif hp == 3:
 		return Color(0.9, 0.8, 0.2)
-	elif pct < 120.0:
+	elif hp == 2:
 		return Color(0.9, 0.5, 0.1)
 	else:
 		return Color(0.9, 0.15, 0.15)
