@@ -155,6 +155,8 @@ var slime_dots: Array = []   # [{pos: Vector2, color: Color, age: float}]
 func _ready() -> void:
 	# Higher physics tick rate prevents tunneling through ground/structures
 	Engine.physics_ticks_per_second = 60
+	# Force nearest-neighbor filtering on the root viewport for crisp pixel upscaling
+	get_viewport().canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	pixel_font = load("res://fonts/PressStart2P-Regular.ttf")
 	_setup_input()
 
