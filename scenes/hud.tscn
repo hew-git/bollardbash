@@ -11,116 +11,116 @@ layer = 91
 
 [node name="HudBackground" type="ColorRect" parent="."]
 offset_left = 0.0
-offset_top = 230.0
-offset_right = 480.0
-offset_bottom = 270.0
+offset_top = 640.0
+offset_right = 1280.0
+offset_bottom = 720.0
 mouse_filter = 2
 color = Color(0.06, 0.05, 0.08, 0.92)
 
 [node name="P1Group" type="Control" parent="."]
 
 [node name="P1Box" type="TextureRect" parent="P1Group"]
-offset_left = 16.0
-offset_top = 232.0
-offset_right = 140.0
-offset_bottom = 268.0
+offset_left = 8.0
+offset_top = 644.0
+offset_right = 256.0
+offset_bottom = 716.0
 mouse_filter = 2
 texture = ExtResource("5_hud_box")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Label" type="Label" parent="P1Group"]
-offset_left = 20.0
-offset_top = 234.0
-offset_right = 44.0
-offset_bottom = 246.0
+offset_left = 16.0
+offset_top = 648.0
+offset_right = 64.0
+offset_bottom = 672.0
 theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 8
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.7, 0.75, 0.9, 1)
 text = "P1"
 horizontal_alignment = 0
 vertical_alignment = 1
 
 [node name="P1Hp1" type="TextureRect" parent="P1Group"]
-offset_left = 46.0
-offset_top = 234.0
-offset_right = 58.0
-offset_bottom = 246.0
+offset_left = 68.0
+offset_top = 648.0
+offset_right = 92.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp2" type="TextureRect" parent="P1Group"]
-offset_left = 60.0
-offset_top = 234.0
-offset_right = 72.0
-offset_bottom = 246.0
+offset_left = 96.0
+offset_top = 648.0
+offset_right = 120.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp3" type="TextureRect" parent="P1Group"]
-offset_left = 74.0
-offset_top = 234.0
-offset_right = 86.0
-offset_bottom = 246.0
+offset_left = 124.0
+offset_top = 648.0
+offset_right = 148.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp4" type="TextureRect" parent="P1Group"]
-offset_left = 88.0
-offset_top = 234.0
-offset_right = 100.0
-offset_bottom = 246.0
+offset_left = 152.0
+offset_top = 648.0
+offset_right = 176.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp5" type="TextureRect" parent="P1Group"]
-offset_left = 102.0
-offset_top = 234.0
-offset_right = 114.0
-offset_bottom = 246.0
+offset_left = 180.0
+offset_top = 648.0
+offset_right = 204.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Stock1" type="TextureRect" parent="P1Group"]
-offset_left = 46.0
-offset_top = 252.0
-offset_right = 58.0
-offset_bottom = 264.0
+offset_left = 68.0
+offset_top = 684.0
+offset_right = 92.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Stock2" type="TextureRect" parent="P1Group"]
-offset_left = 60.0
-offset_top = 252.0
-offset_right = 72.0
-offset_bottom = 264.0
+offset_left = 96.0
+offset_top = 684.0
+offset_right = 120.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Stock3" type="TextureRect" parent="P1Group"]
-offset_left = 74.0
-offset_top = 252.0
-offset_right = 86.0
-offset_bottom = 264.0
+offset_left = 124.0
+offset_top = 684.0
+offset_right = 148.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Effect" type="Label" parent="P1Group"]
 visible = false
-offset_left = 60.0
-offset_top = 180.0
-offset_right = 200.0
-offset_bottom = 200.0
+offset_left = 120.0
+offset_top = 400.0
+offset_right = 400.0
+offset_bottom = 440.0
 theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 8
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(1, 0.3, 0.1, 1)
 text = "OOF!"
 horizontal_alignment = 1
@@ -129,107 +129,107 @@ vertical_alignment = 1
 [node name="P2Group" type="Control" parent="."]
 
 [node name="P2Box" type="TextureRect" parent="P2Group"]
-offset_left = 340.0
-offset_top = 232.0
-offset_right = 464.0
-offset_bottom = 268.0
+offset_left = 1024.0
+offset_top = 644.0
+offset_right = 1272.0
+offset_bottom = 716.0
 mouse_filter = 2
 texture = ExtResource("5_hud_box")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Label" type="Label" parent="P2Group"]
-offset_left = 344.0
-offset_top = 234.0
-offset_right = 368.0
-offset_bottom = 246.0
+offset_left = 1032.0
+offset_top = 648.0
+offset_right = 1080.0
+offset_bottom = 672.0
 theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 8
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(0.7, 0.75, 0.9, 1)
 text = "P2"
 horizontal_alignment = 0
 vertical_alignment = 1
 
 [node name="P2Hp1" type="TextureRect" parent="P2Group"]
-offset_left = 370.0
-offset_top = 234.0
-offset_right = 382.0
-offset_bottom = 246.0
+offset_left = 1084.0
+offset_top = 648.0
+offset_right = 1108.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp2" type="TextureRect" parent="P2Group"]
-offset_left = 384.0
-offset_top = 234.0
-offset_right = 396.0
-offset_bottom = 246.0
+offset_left = 1112.0
+offset_top = 648.0
+offset_right = 1136.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp3" type="TextureRect" parent="P2Group"]
-offset_left = 398.0
-offset_top = 234.0
-offset_right = 410.0
-offset_bottom = 246.0
+offset_left = 1140.0
+offset_top = 648.0
+offset_right = 1164.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp4" type="TextureRect" parent="P2Group"]
-offset_left = 412.0
-offset_top = 234.0
-offset_right = 424.0
-offset_bottom = 246.0
+offset_left = 1168.0
+offset_top = 648.0
+offset_right = 1192.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp5" type="TextureRect" parent="P2Group"]
-offset_left = 426.0
-offset_top = 234.0
-offset_right = 438.0
-offset_bottom = 246.0
+offset_left = 1196.0
+offset_top = 648.0
+offset_right = 1220.0
+offset_bottom = 672.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Stock1" type="TextureRect" parent="P2Group"]
-offset_left = 370.0
-offset_top = 252.0
-offset_right = 382.0
-offset_bottom = 264.0
+offset_left = 1084.0
+offset_top = 684.0
+offset_right = 1108.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Stock2" type="TextureRect" parent="P2Group"]
-offset_left = 384.0
-offset_top = 252.0
-offset_right = 396.0
-offset_bottom = 264.0
+offset_left = 1112.0
+offset_top = 684.0
+offset_right = 1136.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Stock3" type="TextureRect" parent="P2Group"]
-offset_left = 398.0
-offset_top = 252.0
-offset_right = 410.0
-offset_bottom = 264.0
+offset_left = 1140.0
+offset_top = 684.0
+offset_right = 1164.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Effect" type="Label" parent="P2Group"]
 visible = false
-offset_left = 280.0
-offset_top = 180.0
-offset_right = 420.0
-offset_bottom = 200.0
+offset_left = 880.0
+offset_top = 400.0
+offset_right = 1160.0
+offset_bottom = 440.0
 theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 8
+theme_override_font_sizes/font_size = 16
 theme_override_colors/font_color = Color(1, 0.3, 0.1, 1)
 text = "OOF!"
 horizontal_alignment = 1
@@ -237,21 +237,21 @@ vertical_alignment = 1
 
 [node name="GameOver" type="Label" parent="."]
 visible = false
-offset_left = 90.0
-offset_top = 60.0
-offset_right = 390.0
-offset_bottom = 130.0
+offset_left = 240.0
+offset_top = 160.0
+offset_right = 1040.0
+offset_bottom = 340.0
 theme_override_fonts/font = ExtResource("1_font")
-theme_override_font_sizes/font_size = 8
+theme_override_font_sizes/font_size = 16
 text = "GAME OVER"
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="Controls" type="Label" parent="."]
-offset_left = 20.0
-offset_top = 2.0
-offset_right = 460.0
-offset_bottom = 26.0
+offset_left = 40.0
+offset_top = 4.0
+offset_right = 1240.0
+offset_bottom = 52.0
 theme_override_fonts/font = ExtResource("1_font")
 theme_override_font_sizes/font_size = 8
 text = "P1: WASD Q F E | Ctrl: L-Stick Sq X L1

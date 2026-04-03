@@ -4,32 +4,32 @@
 [ext_resource type="Texture2D" path="res://sprites/arena/center_rock.png" id="2_rock"]
 
 [sub_resource type="RectangleShape2D" id="plat_shape"]
-size = Vector2(90, 8)
+size = Vector2(180, 16)
 
 [sub_resource type="CircleShape2D" id="circle_shape"]
-radius = 15.0
+radius = 30.0
 
 [sub_resource type="RectangleShape2D" id="corner_shape"]
-size = Vector2(135, 7)
+size = Vector2(270, 14)
 
 [node name="Meadow" type="Node2D"]
 
 [node name="Ground" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(240, 194)
+position = Vector2(640, 516)
 
 [node name="GroundCollision" type="CollisionPolygon2D" parent="Ground"]
-polygon = PackedVector2Array(-185, -10, -166, -9.4, -148, -8.8, -130, -8.3, -111, -7.9, -93, -7.5, -74, -7.2, -56, -7.0, -37, -6.8, -19, -6.7, 0, -6.7, 19, -6.7, 37, -6.8, 56, -7.0, 74, -7.2, 93, -7.5, 111, -7.9, 130, -8.3, 148, -8.8, 166, -9.4, 185, -10.0, 185, 120, -185, 120)
+polygon = PackedVector2Array(-495, -20, -445, -18.8, -396, -17.6, -346, -16.6, -297, -15.8, -247, -15.0, -198, -14.4, -148, -14.0, -99, -13.6, -49, -13.4, 0, -13.4, 49, -13.4, 99, -13.6, 148, -14.0, 198, -14.4, 247, -15.0, 297, -15.8, 346, -16.6, 396, -17.6, 445, -18.8, 495, -20.0, 495, 240, -495, 240)
 
 [node name="DirtBody" type="Polygon2D" parent="Ground"]
 color = Color(0.376, 0.263, 0.208, 1)
-polygon = PackedVector2Array(-185, -10, -166, -9.4, -148, -8.8, -130, -8.3, -111, -7.9, -93, -7.5, -74, -7.2, -56, -7.0, -37, -6.8, -19, -6.7, 0, -6.7, 19, -6.7, 37, -6.8, 56, -7.0, 74, -7.2, 93, -7.5, 111, -7.9, 130, -8.3, 148, -8.8, 166, -9.4, 185, -10.0, 185, 120, -185, 120)
+polygon = PackedVector2Array(-495, -20, -445, -18.8, -396, -17.6, -346, -16.6, -297, -15.8, -247, -15.0, -198, -14.4, -148, -14.0, -99, -13.6, -49, -13.4, 0, -13.4, 49, -13.4, 99, -13.6, 148, -14.0, 198, -14.4, 247, -15.0, 297, -15.8, 346, -16.6, 396, -17.6, 445, -18.8, 495, -20.0, 495, 240, -495, 240)
 
 [node name="GrassStrip" type="Polygon2D" parent="Ground"]
 color = Color(0.416, 0.659, 0.31, 1)
-polygon = PackedVector2Array(-185, -10, -166, -9.4, -148, -8.8, -130, -8.3, -111, -7.9, -93, -7.5, -74, -7.2, -56, -7.0, -37, -6.8, -19, -6.7, 0, -6.7, 19, -6.7, 37, -6.8, 56, -7.0, 74, -7.2, 93, -7.5, 111, -7.9, 130, -8.3, 148, -8.8, 166, -9.4, 185, -10.0, 185, -8.0, 166, -7.4, 148, -6.8, 130, -6.3, 111, -5.9, 93, -5.5, 74, -5.2, 56, -5.0, 37, -4.8, 19, -4.7, 0, -4.7, -19, -4.7, -37, -4.8, -56, -5.0, -74, -5.2, -93, -5.5, -111, -5.9, -130, -6.3, -148, -6.8, -166, -7.4, -185, -8.0)
+polygon = PackedVector2Array(-495, -20, -445, -18.8, -396, -17.6, -346, -16.6, -297, -15.8, -247, -15.0, -198, -14.4, -148, -14.0, -99, -13.6, -49, -13.4, 0, -13.4, 49, -13.4, 99, -13.6, 148, -14.0, 198, -14.4, 247, -15.0, 297, -15.8, 346, -16.6, 396, -17.6, 445, -18.8, 495, -20.0, 495, -16.0, 445, -14.8, 396, -13.6, 346, -12.6, 297, -11.8, 247, -11.0, 198, -10.4, 148, -10.0, 99, -9.6, 49, -9.4, 0, -9.4, -49, -9.4, -99, -9.6, -148, -10.0, -198, -10.4, -247, -11.0, -297, -11.8, -346, -12.6, -396, -13.6, -445, -14.8, -495, -16.0)
 
 [node name="PlatformLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(130, 122)
+position = Vector2(346, 326)
 rotation = -0.105
 
 [node name="CollisionShape" type="CollisionShape2D" parent="PlatformLeft"]
@@ -38,10 +38,10 @@ one_way_collision = true
 
 [node name="Sprite" type="Sprite2D" parent="PlatformLeft"]
 texture = ExtResource("1_plat")
-scale = Vector2(0.5, 0.4)
+scale = Vector2(1, 0.8)
 
 [node name="PlatformRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(350, 122)
+position = Vector2(934, 326)
 rotation = 0.105
 
 [node name="CollisionShape" type="CollisionShape2D" parent="PlatformRight"]
@@ -50,20 +50,20 @@ one_way_collision = true
 
 [node name="Sprite" type="Sprite2D" parent="PlatformRight"]
 texture = ExtResource("1_plat")
-scale = Vector2(0.5, 0.4)
+scale = Vector2(1, 0.8)
 
 [node name="CenterCircle" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(240, 93)
+position = Vector2(640, 248)
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CenterCircle"]
 shape = SubResource("circle_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CenterCircle"]
 texture = ExtResource("2_rock")
-scale = Vector2(0.47, 0.47)
+scale = Vector2(0.9375, 0.9375)
 
 [node name="CornerTopLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(2, 26)
+position = Vector2(5, 70)
 rotation = 2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerTopLeft"]
@@ -71,10 +71,10 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerTopLeft"]
 texture = ExtResource("1_plat")
-scale = Vector2(0.75, 0.35)
+scale = Vector2(1.5, 0.7)
 
 [node name="CornerTopRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(478, 26)
+position = Vector2(1275, 70)
 rotation = -2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerTopRight"]
@@ -82,10 +82,10 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerTopRight"]
 texture = ExtResource("1_plat")
-scale = Vector2(0.75, 0.35)
+scale = Vector2(1.5, 0.7)
 
 [node name="CornerBottomLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(2, 180)
+position = Vector2(5, 480)
 rotation = -2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerBottomLeft"]
@@ -93,10 +93,10 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerBottomLeft"]
 texture = ExtResource("1_plat")
-scale = Vector2(0.75, 0.35)
+scale = Vector2(1.5, 0.7)
 
 [node name="CornerBottomRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(478, 180)
+position = Vector2(1275, 480)
 rotation = 2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerBottomRight"]
@@ -104,4 +104,4 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerBottomRight"]
 texture = ExtResource("1_plat")
-scale = Vector2(0.75, 0.35)
+scale = Vector2(1.5, 0.7)

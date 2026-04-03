@@ -9,10 +9,8 @@ config/icon="res://icon.svg"
 
 [display]
 
-window/size/viewport_width=480
-window/size/viewport_height=270
-window/size/window_width_override=1920
-window/size/window_height_override=1080
+window/size/viewport_width=1280
+window/size/viewport_height=720
 window/stretch/mode="viewport"
 window/stretch/aspect="keep"
 window/stretch/scale_mode="integer"
@@ -23,7 +21,7 @@ SFX="*res://scripts/audio_manager.gd"
 
 [physics]
 
-2d/default_gravity=490.0
+2d/default_gravity=980.0
 
 [rendering]
 
