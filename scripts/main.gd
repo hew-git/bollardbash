@@ -127,10 +127,10 @@ const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
 
 # ── Screen Wrapping ────────────────────────────────────────────────────────
 var screen_wrap_enabled: bool = false
-const WRAP_LEFT := 0.0
-const WRAP_RIGHT := 1280.0
-const WRAP_TOP := 0.0
-const WRAP_BOTTOM := 640.0
+const WRAP_LEFT := -160.0
+const WRAP_RIGHT := 1440.0
+const WRAP_TOP := -90.0
+const WRAP_BOTTOM := 810.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
