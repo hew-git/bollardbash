@@ -15,21 +15,21 @@ size = Vector2(135, 7)
 [node name="Meadow" type="Node2D"]
 
 [node name="Ground" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(192, 155)
+position = Vector2(240, 194)
 
 [node name="GroundCollision" type="CollisionPolygon2D" parent="Ground"]
-polygon = PackedVector2Array(-148, -10, -132, -9.4, -118, -8.8, -104, -8.3, -89, -7.9, -74, -7.5, -59, -7.2, -44, -7.0, -30, -6.8, -15, -6.7, 0, -6.7, 15, -6.7, 30, -6.8, 44, -7.0, 59, -7.2, 74, -7.5, 89, -7.9, 104, -8.3, 118, -8.8, 132, -9.4, 148, -10.0, 148, 100, -148, 100)
+polygon = PackedVector2Array(-185, -10, -166, -9.4, -148, -8.8, -130, -8.3, -111, -7.9, -93, -7.5, -74, -7.2, -56, -7.0, -37, -6.8, -19, -6.7, 0, -6.7, 19, -6.7, 37, -6.8, 56, -7.0, 74, -7.2, 93, -7.5, 111, -7.9, 130, -8.3, 148, -8.8, 166, -9.4, 185, -10.0, 185, 120, -185, 120)
 
 [node name="DirtBody" type="Polygon2D" parent="Ground"]
 color = Color(0.376, 0.263, 0.208, 1)
-polygon = PackedVector2Array(-148, -10, -132, -9.4, -118, -8.8, -104, -8.3, -89, -7.9, -74, -7.5, -59, -7.2, -44, -7.0, -30, -6.8, -15, -6.7, 0, -6.7, 15, -6.7, 30, -6.8, 44, -7.0, 59, -7.2, 74, -7.5, 89, -7.9, 104, -8.3, 118, -8.8, 132, -9.4, 148, -10.0, 148, 100, -148, 100)
+polygon = PackedVector2Array(-185, -10, -166, -9.4, -148, -8.8, -130, -8.3, -111, -7.9, -93, -7.5, -74, -7.2, -56, -7.0, -37, -6.8, -19, -6.7, 0, -6.7, 19, -6.7, 37, -6.8, 56, -7.0, 74, -7.2, 93, -7.5, 111, -7.9, 130, -8.3, 148, -8.8, 166, -9.4, 185, -10.0, 185, 120, -185, 120)
 
 [node name="GrassStrip" type="Polygon2D" parent="Ground"]
 color = Color(0.416, 0.659, 0.31, 1)
-polygon = PackedVector2Array(-148, -10, -132, -9.4, -118, -8.8, -104, -8.3, -89, -7.9, -74, -7.5, -59, -7.2, -44, -7.0, -30, -6.8, -15, -6.7, 0, -6.7, 15, -6.7, 30, -6.8, 44, -7.0, 59, -7.2, 74, -7.5, 89, -7.9, 104, -8.3, 118, -8.8, 132, -9.4, 148, -10.0, 148, -8.0, 132, -7.4, 118, -6.8, 104, -6.3, 89, -5.9, 74, -5.5, 59, -5.2, 44, -5.0, 30, -4.8, 15, -4.7, 0, -4.7, -15, -4.7, -30, -4.8, -44, -5.0, -59, -5.2, -74, -5.5, -89, -5.9, -104, -6.3, -118, -6.8, -132, -7.4, -148, -8.0)
+polygon = PackedVector2Array(-185, -10, -166, -9.4, -148, -8.8, -130, -8.3, -111, -7.9, -93, -7.5, -74, -7.2, -56, -7.0, -37, -6.8, -19, -6.7, 0, -6.7, 19, -6.7, 37, -6.8, 56, -7.0, 74, -7.2, 93, -7.5, 111, -7.9, 130, -8.3, 148, -8.8, 166, -9.4, 185, -10.0, 185, -8.0, 166, -7.4, 148, -6.8, 130, -6.3, 111, -5.9, 93, -5.5, 74, -5.2, 56, -5.0, 37, -4.8, 19, -4.7, 0, -4.7, -19, -4.7, -37, -4.8, -56, -5.0, -74, -5.2, -93, -5.5, -111, -5.9, -130, -6.3, -148, -6.8, -166, -7.4, -185, -8.0)
 
 [node name="PlatformLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(105, 98)
+position = Vector2(130, 122)
 rotation = -0.105
 
 [node name="CollisionShape" type="CollisionShape2D" parent="PlatformLeft"]
@@ -41,7 +41,7 @@ texture = ExtResource("1_plat")
 scale = Vector2(0.5, 0.4)
 
 [node name="PlatformRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(279, 98)
+position = Vector2(350, 122)
 rotation = 0.105
 
 [node name="CollisionShape" type="CollisionShape2D" parent="PlatformRight"]
@@ -53,7 +53,7 @@ texture = ExtResource("1_plat")
 scale = Vector2(0.5, 0.4)
 
 [node name="CenterCircle" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(192, 75)
+position = Vector2(240, 93)
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CenterCircle"]
 shape = SubResource("circle_shape")
@@ -63,7 +63,7 @@ texture = ExtResource("2_rock")
 scale = Vector2(0.47, 0.47)
 
 [node name="CornerTopLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(2, 21)
+position = Vector2(2, 26)
 rotation = 2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerTopLeft"]
@@ -74,7 +74,7 @@ texture = ExtResource("1_plat")
 scale = Vector2(0.75, 0.35)
 
 [node name="CornerTopRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(382, 21)
+position = Vector2(478, 26)
 rotation = -2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerTopRight"]
@@ -85,7 +85,7 @@ texture = ExtResource("1_plat")
 scale = Vector2(0.75, 0.35)
 
 [node name="CornerBottomLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(2, 144)
+position = Vector2(2, 180)
 rotation = -2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerBottomLeft"]
@@ -96,7 +96,7 @@ texture = ExtResource("1_plat")
 scale = Vector2(0.75, 0.35)
 
 [node name="CornerBottomRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(382, 144)
+position = Vector2(478, 180)
 rotation = 2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerBottomRight"]

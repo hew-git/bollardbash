@@ -10,9 +10,9 @@ const HUD_SCENE := preload("res://scenes/hud.tscn")
 const BORDER_SCENE := preload("res://scenes/border_frame.tscn")
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
-const BLAST_ZONE := Rect2(-200, -200, 784, 616)
-const SPAWN_P1 := Vector2(130, 130)
-const SPAWN_P2 := Vector2(254, 130)
+const BLAST_ZONE := Rect2(-250, -250, 980, 770)
+const SPAWN_P1 := Vector2(160, 165)
+const SPAWN_P2 := Vector2(320, 165)
 const RESPAWN_DELAY := 2.0
 const EFFECT_DURATION := 1.0
 const SHAKE_DURATION := 0.35
@@ -128,9 +128,9 @@ const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
 # ── Screen Wrapping ────────────────────────────────────────────────────────
 var screen_wrap_enabled: bool = false
 const WRAP_LEFT := 12.0
-const WRAP_RIGHT := 372.0
+const WRAP_RIGHT := 468.0
 const WRAP_TOP := 8.0
-const WRAP_BOTTOM := 176.0
+const WRAP_BOTTOM := 230.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
@@ -358,16 +358,16 @@ func _create_countdown_label() -> void:
 	countdown_label = Label.new()
 	if pixel_font:
 		countdown_label.add_theme_font_override("font", pixel_font)
-	countdown_label.add_theme_font_size_override("font_size", 12)
+	countdown_label.add_theme_font_size_override("font_size", 16)
 	countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	countdown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	countdown_label.add_theme_constant_override("outline_size", 2)
 	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	countdown_label.offset_left = 0.0
-	countdown_label.offset_top = 60.0
-	countdown_label.offset_right = 384.0
-	countdown_label.offset_bottom = 100.0
+	countdown_label.offset_top = 80.0
+	countdown_label.offset_right = 480.0
+	countdown_label.offset_bottom = 130.0
 	countdown_label.visible = false
 	hud_layer.add_child(countdown_label)
 
@@ -376,16 +376,16 @@ func _create_death_phrase_label() -> void:
 	death_phrase_label = Label.new()
 	if pixel_font:
 		death_phrase_label.add_theme_font_override("font", pixel_font)
-	death_phrase_label.add_theme_font_size_override("font_size", 6)
+	death_phrase_label.add_theme_font_size_override("font_size", 8)
 	death_phrase_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 	death_phrase_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	death_phrase_label.add_theme_constant_override("outline_size", 1)
+	death_phrase_label.add_theme_constant_override("outline_size", 2)
 	death_phrase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	death_phrase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	death_phrase_label.offset_left = 40.0
-	death_phrase_label.offset_top = 40.0
-	death_phrase_label.offset_right = 344.0
-	death_phrase_label.offset_bottom = 60.0
+	death_phrase_label.offset_left = 60.0
+	death_phrase_label.offset_top = 50.0
+	death_phrase_label.offset_right = 420.0
+	death_phrase_label.offset_bottom = 75.0
 	death_phrase_label.visible = false
 	hud_layer.add_child(death_phrase_label)
 
@@ -413,21 +413,21 @@ func _create_select_screen() -> void:
 	select_layer.add_child(bg)
 
 	# Title
-	select_title_label = _make_select_label("P1: CHOOSE YOUR SNAIL", 6, Color(1.0, 0.9, 0.3))
+	select_title_label = _make_select_label("P1: CHOOSE YOUR SNAIL", 8, Color(1.0, 0.9, 0.3))
 	select_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_title_label.offset_left = 0
-	select_title_label.offset_top = 4
-	select_title_label.offset_right = 384
-	select_title_label.offset_bottom = 18
+	select_title_label.offset_top = 8
+	select_title_label.offset_right = 480
+	select_title_label.offset_bottom = 26
 	select_layer.add_child(select_title_label)
 
 	# Character panels — 4 panels side by side (BLINK, GOOPY, ZAPPY, RANDOM)
-	var panel_w := 80.0
-	var panel_h := 120.0
-	var panel_gap := 8.0
+	var panel_w := 100.0
+	var panel_h := 150.0
+	var panel_gap := 12.0
 	var total_w := panel_w * 4.0 + panel_gap * 3.0
-	var start_x := floorf((384.0 - total_w) / 2.0)
-	var panel_y := 22.0
+	var start_x := floorf((480.0 - total_w) / 2.0)
+	var panel_y := 32.0
 
 	for ci in 4:
 		var px := start_x + float(ci) * (panel_w + panel_gap)
@@ -441,51 +441,51 @@ func _create_select_screen() -> void:
 		select_layer.add_child(panel_bg)
 
 		# Character name at top of panel
-		var name_lbl := _make_select_label(CHAR_NAMES[ci], 5, CHAR_COLORS[ci])
+		var name_lbl := _make_select_label(CHAR_NAMES[ci], 8, CHAR_COLORS[ci])
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_lbl.offset_left = floorf(px)
-		name_lbl.offset_top = panel_y + 4
+		name_lbl.offset_top = panel_y + 6
 		name_lbl.offset_right = floorf(px + panel_w)
-		name_lbl.offset_bottom = panel_y + 16
+		name_lbl.offset_bottom = panel_y + 22
 		select_layer.add_child(name_lbl)
 
 		# Ability descriptions
 		var desc_text: String = "SQ: " + CHAR_ABILITY1_DESC[ci] + "\nX: " + CHAR_ABILITY2_DESC[ci] + "\nL1: Parry"
-		var desc_lbl := _make_select_label(desc_text, 3, Color(0.75, 0.75, 0.75))
+		var desc_lbl := _make_select_label(desc_text, 4, Color(0.75, 0.75, 0.75))
 		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		desc_lbl.offset_left = floorf(px) + 2
-		desc_lbl.offset_top = panel_y + 60
-		desc_lbl.offset_right = floorf(px + panel_w) - 2
-		desc_lbl.offset_bottom = panel_y + panel_h - 4
+		desc_lbl.offset_left = floorf(px) + 4
+		desc_lbl.offset_top = panel_y + 80
+		desc_lbl.offset_right = floorf(px + panel_w) - 4
+		desc_lbl.offset_bottom = panel_y + panel_h - 6
 		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		select_layer.add_child(desc_lbl)
 
 		char_panels.append({"bg": panel_bg, "name": name_lbl, "desc": desc_lbl, "x": floorf(px), "w": panel_w, "y": panel_y, "h": panel_h})
 
 	# Cursor label — arrow below the currently selected panel
-	select_cursor_label = _make_select_label("^", 5, Color(1.0, 0.9, 0.3))
+	select_cursor_label = _make_select_label("^", 8, Color(1.0, 0.9, 0.3))
 	select_cursor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_cursor_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
 	select_cursor_label.add_theme_constant_override("outline_size", 1)
 	select_layer.add_child(select_cursor_label)
 
 	# Stage select label (shown after both pick)
-	stage_label = _make_select_label("", 5, Color(1.0, 0.9, 0.3))
+	stage_label = _make_select_label("", 8, Color(1.0, 0.9, 0.3))
 	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stage_label.offset_left = 60
-	stage_label.offset_top = 160
-	stage_label.offset_right = 324
-	stage_label.offset_bottom = 175
+	stage_label.offset_left = 80
+	stage_label.offset_top = 206
+	stage_label.offset_right = 400
+	stage_label.offset_bottom = 225
 	stage_label.visible = false
 	select_layer.add_child(stage_label)
 
 	# Hint label at bottom
-	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 3, Color(0.45, 0.45, 0.45))
+	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 4, Color(0.45, 0.45, 0.45))
 	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	select_hint_label.offset_left = 30
-	select_hint_label.offset_top = 200
-	select_hint_label.offset_right = 354
-	select_hint_label.offset_bottom = 212
+	select_hint_label.offset_left = 40
+	select_hint_label.offset_top = 252
+	select_hint_label.offset_right = 440
+	select_hint_label.offset_bottom = 266
 	select_layer.add_child(select_hint_label)
 
 func _make_select_label(text: String, size: int, color: Color) -> Label:
@@ -744,19 +744,19 @@ func _update_countdown(delta: float) -> void:
 		countdown_label.text = ""
 	elif countdown_timer < 2.0:
 		countdown_label.text = "es.."
-		countdown_label.add_theme_font_size_override("font_size", 12)
+		countdown_label.add_theme_font_size_override("font_size", 16)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 		if countdown_timer - delta < 1.0:
 			SFX.play_sfx("countdown_tick")
 	elif countdown_timer < 3.0:
 		countdown_label.text = "escar.."
-		countdown_label.add_theme_font_size_override("font_size", 12)
+		countdown_label.add_theme_font_size_override("font_size", 16)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 		if countdown_timer - delta < 2.0:
 			SFX.play_sfx("countdown_tick")
 	elif countdown_timer < 3.0 + GO_LINGER:
 		countdown_label.text = "escarGO!"
-		countdown_label.add_theme_font_size_override("font_size", 12)
+		countdown_label.add_theme_font_size_override("font_size", 16)
 		countdown_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.3))
 		# Unfreeze players the moment escarGO! appears
 		if player1.is_frozen:

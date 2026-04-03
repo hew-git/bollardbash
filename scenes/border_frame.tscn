@@ -5,55 +5,55 @@ layer = 90
 
 [node name="LeftBorder" type="ColorRect" parent="."]
 offset_right = 12.0
-offset_bottom = 216.0
+offset_bottom = 270.0
 mouse_filter = 2
 color = Color(0.08, 0.06, 0.1, 1)
 
 [node name="LeftAccent" type="ColorRect" parent="."]
 offset_left = 12.0
 offset_right = 13.0
-offset_bottom = 176.0
+offset_bottom = 230.0
 mouse_filter = 2
 color = Color(0.25, 0.2, 0.35, 1)
 
 [node name="RightBorder" type="ColorRect" parent="."]
-offset_left = 372.0
-offset_right = 384.0
-offset_bottom = 216.0
+offset_left = 468.0
+offset_right = 480.0
+offset_bottom = 270.0
 mouse_filter = 2
 color = Color(0.08, 0.06, 0.1, 1)
 
 [node name="RightAccent" type="ColorRect" parent="."]
-offset_left = 371.0
-offset_right = 372.0
-offset_bottom = 176.0
+offset_left = 467.0
+offset_right = 468.0
+offset_bottom = 230.0
 mouse_filter = 2
 color = Color(0.25, 0.2, 0.35, 1)
 
 [node name="TopBorder" type="ColorRect" parent="."]
-offset_right = 384.0
+offset_right = 480.0
 offset_bottom = 8.0
 mouse_filter = 2
 color = Color(0.08, 0.06, 0.1, 1)
 
 [node name="TopAccent" type="ColorRect" parent="."]
 offset_top = 8.0
-offset_right = 384.0
+offset_right = 480.0
 offset_bottom = 9.0
 mouse_filter = 2
 color = Color(0.25, 0.2, 0.35, 1)
 
 [node name="HudSeparator" type="ColorRect" parent="."]
-offset_top = 175.0
-offset_right = 384.0
-offset_bottom = 176.0
+offset_top = 229.0
+offset_right = 480.0
+offset_bottom = 230.0
 mouse_filter = 2
 color = Color(0.25, 0.2, 0.35, 1)
 
 [node name="BottomFill" type="ColorRect" parent="."]
-offset_top = 176.0
-offset_right = 384.0
-offset_bottom = 216.0
+offset_top = 230.0
+offset_right = 480.0
+offset_bottom = 270.0
 mouse_filter = 2
 color = Color(0.08, 0.06, 0.1, 1)
 
@@ -64,8 +64,8 @@ mouse_filter = 2
 color = Color(0.25, 0.2, 0.35, 1)
 
 [node name="CornerTR" type="ColorRect" parent="."]
-offset_left = 372.0
-offset_right = 384.0
+offset_left = 468.0
+offset_right = 480.0
 offset_bottom = 8.0
 mouse_filter = 2
 color = Color(0.25, 0.2, 0.35, 1)

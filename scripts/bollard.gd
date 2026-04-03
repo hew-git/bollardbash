@@ -1821,13 +1821,13 @@ func _ai_pick_action() -> void:
 		ai_action_duration = randf_range(0.1, 0.3)
 
 func _ai_near_edge() -> bool:
-	return global_position.x < 12.0 or global_position.x > 372.0
+	return global_position.x < 12.0 or global_position.x > 468.0
 
 func _ai_edge_safe_dir() -> float:
 	var dir := signf(ai_target.global_position.x - global_position.x)
 	if global_position.x < 12.0 and dir < 0.0:
 		return 1.0
-	if global_position.x > 372.0 and dir > 0.0:
+	if global_position.x > 468.0 and dir > 0.0:
 		return -1.0
 	return dir
 
@@ -1849,7 +1849,7 @@ func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
 	if global_position.x < 12.0 and dir < 0.0:
 		dir = 1.0
-	elif global_position.x > 372.0 and dir > 0.0:
+	elif global_position.x > 468.0 and dir > 0.0:
 		dir = -1.0
 	apply_torque(LEAN_TORQUE * dir * 1.0)
 	extend_amount = move_toward(extend_amount, 0.35, EXTEND_SPEED * 1.5 * delta)
