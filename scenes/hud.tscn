@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="FontFile" path="res://fonts/PressStart2P-Regular.ttf" id="1_font"]
 [ext_resource type="Texture2D" path="res://sprites/hud/hp_full.png" id="2_hp_full"]
 [ext_resource type="Texture2D" path="res://sprites/hud/hp_empty.png" id="3_hp_empty"]
 [ext_resource type="Texture2D" path="res://sprites/hud/stock.png" id="4_stock"]
+[ext_resource type="Texture2D" path="res://sprites/hud/hud_box.png" id="5_hud_box"]
 
 [node name="HUD" type="CanvasLayer"]
 layer = 91
@@ -18,13 +19,15 @@ color = Color(0.06, 0.05, 0.08, 0.92)
 
 [node name="P1Group" type="Control" parent="."]
 
-[node name="P1Box" type="ColorRect" parent="P1Group"]
+[node name="P1Box" type="TextureRect" parent="P1Group"]
 offset_left = 30.0
 offset_top = 626.0
 offset_right = 260.0
 offset_bottom = 714.0
 mouse_filter = 2
-color = Color(0.1, 0.09, 0.14, 0.85)
+texture = ExtResource("5_hud_box")
+expand_mode = 1
+stretch_mode = 2
 
 [node name="P1Label" type="Label" parent="P1Group"]
 offset_left = 40.0
@@ -125,13 +128,15 @@ vertical_alignment = 1
 
 [node name="P2Group" type="Control" parent="."]
 
-[node name="P2Box" type="ColorRect" parent="P2Group"]
+[node name="P2Box" type="TextureRect" parent="P2Group"]
 offset_left = 1020.0
 offset_top = 626.0
 offset_right = 1250.0
 offset_bottom = 714.0
 mouse_filter = 2
-color = Color(0.1, 0.09, 0.14, 0.85)
+texture = ExtResource("5_hud_box")
+expand_mode = 1
+stretch_mode = 2
 
 [node name="P2Label" type="Label" parent="P2Group"]
 offset_left = 1030.0
