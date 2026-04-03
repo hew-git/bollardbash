@@ -752,9 +752,11 @@ func _check_goo_dash_hits() -> void:
 			var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
 
+var _goo_shape_query: PhysicsShapeQueryParameters2D
+var _goo_circle: CircleShape2D
+var _goo_slow_tick: float = 0.0
+
 func _update_goo_trails(delta: float) -> void:
-	# Age trails, apply gravity so they fall to ground, slow enemies in goo
-	var space := get_world_2d().direct_space_state
 	var i := goo_trails.size() - 1
 	while i >= 0:
 		goo_trails[i].timer -= delta
@@ -762,13 +764,12 @@ func _update_goo_trails(delta: float) -> void:
 			goo_trails.remove_at(i)
 			i -= 1
 			continue
-		# Apply gravity to goo
 		if not goo_trails[i].get("grounded", false):
 			var goo_pos: Vector2 = goo_trails[i].pos
 			var below := goo_pos + Vector2(0, 400.0 * delta)
 			var query := PhysicsRayQueryParameters2D.create(goo_pos, goo_pos + Vector2(0, 20.0))
 			query.exclude = [get_rid()]
-			var result := space.intersect_ray(query)
+			var result := get_world_2d().direct_space_state.intersect_ray(query)
 			if result:
 				goo_trails[i].pos = result.position - Vector2(0, 2.0)
 				goo_trails[i].grounded = true
@@ -777,14 +778,21 @@ func _update_goo_trails(delta: float) -> void:
 		i -= 1
 	if goo_trails.is_empty():
 		return
+	# Slow enemies in goo — check every 0.15s instead of every frame
+	_goo_slow_tick += delta
+	if _goo_slow_tick < 0.15:
+		return
+	_goo_slow_tick = 0.0
+	if _goo_shape_query == null:
+		_goo_shape_query = PhysicsShapeQueryParameters2D.new()
+		_goo_circle = CircleShape2D.new()
+		_goo_circle.radius = GOO_TRAIL_RADIUS * 2.0
+		_goo_shape_query.shape = _goo_circle
+	var space := get_world_2d().direct_space_state
+	_goo_shape_query.exclude = [get_rid()]
 	for trail in goo_trails:
-		var shape_query := PhysicsShapeQueryParameters2D.new()
-		var circle := CircleShape2D.new()
-		circle.radius = GOO_TRAIL_RADIUS * 2.0
-		shape_query.shape = circle
-		shape_query.transform = Transform2D(0.0, trail.pos)
-		shape_query.exclude = [get_rid()]
-		var hits := space.intersect_shape(shape_query, 4)
+		_goo_shape_query.transform = Transform2D(0.0, trail.pos)
+		var hits := space.intersect_shape(_goo_shape_query, 4)
 		for hit in hits:
 			var collider = hit.collider
 			if collider is RigidBody2D and collider != self and collider.has_method("take_damage"):
@@ -1634,13 +1642,15 @@ func _draw() -> void:
 			draw_line(perp, target_pos + perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
 			draw_line(-perp, target_pos - perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
 
-	# Goopy goo trail puddles
+	# Goopy goo trail puddles — pixelated rectangles
 	if character_type == CharacterType.GOOPY and not goo_trails.is_empty():
 		for trail in goo_trails:
 			var local_pos: Vector2 = to_local(trail.pos)
 			var trail_alpha: float = clampf(trail.timer / GOO_TRAIL_DURATION, 0.0, 1.0) * 0.7
-			draw_circle(local_pos, GOO_TRAIL_RADIUS, Color(0.35, 0.8, 0.2, trail_alpha))
-			draw_circle(local_pos, GOO_TRAIL_RADIUS * 0.5, Color(0.5, 0.9, 0.3, trail_alpha * 0.8))
+			var r := GOO_TRAIL_RADIUS
+			draw_rect(Rect2(local_pos.x - r, local_pos.y - r * 0.4, r * 2.0, r * 0.8), Color(0.35, 0.8, 0.2, trail_alpha))
+			var r2 := r * 0.5
+			draw_rect(Rect2(local_pos.x - r2, local_pos.y - r2 * 0.4, r2 * 2.0, r2 * 0.8), Color(0.5, 0.9, 0.3, trail_alpha * 0.8))
 
 	# Zappy electric beam between body and shell
 	if shell_missing and character_type == CharacterType.ZAPPY:

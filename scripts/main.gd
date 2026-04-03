@@ -48,9 +48,9 @@ const DEATH_PHRASE_DURATION := 2.5
 const DOUBLE_DEATH_WINDOW := 0.5    # Seconds — deaths this close count as double
 
 # ── Slime Trail ─────────────────────────────────────────────────────────────
-const SLIME_LIFETIME := 4.0
-const SLIME_INTERVAL := 0.08
-const SLIME_MAX_DOTS := 200
+const SLIME_LIFETIME := 3.0
+const SLIME_INTERVAL := 0.12
+const SLIME_MAX_DOTS := 120
 
 # ── Node References (populated in _ready from loaded scenes) ────────────────
 @onready var player1: Bollard = $Player1
@@ -127,10 +127,10 @@ const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
 
 # ── Screen Wrapping ────────────────────────────────────────────────────────
 var screen_wrap_enabled: bool = false
-const WRAP_LEFT := -160.0
-const WRAP_RIGHT := 1440.0
-const WRAP_TOP := -90.0
-const WRAP_BOTTOM := 810.0
+const WRAP_LEFT := -104.0
+const WRAP_RIGHT := 1384.0
+const WRAP_TOP := -48.0
+const WRAP_BOTTOM := 672.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
@@ -154,7 +154,7 @@ var slime_dots: Array = []   # [{pos: Vector2, color: Color, age: float}]
 
 func _ready() -> void:
 	# Higher physics tick rate prevents tunneling through ground/structures
-	Engine.physics_ticks_per_second = 120
+	Engine.physics_ticks_per_second = 60
 	pixel_font = load("res://fonts/PressStart2P-Regular.ttf")
 	_setup_input()
 
@@ -173,7 +173,7 @@ func _ready() -> void:
 	_create_death_phrase_label()
 
 	# Camera — zoomed out for more recovery room
-	$Camera2D.zoom = Vector2(0.80, 0.80)
+	$Camera2D.zoom = Vector2(5.0 / 6.0, 5.0 / 6.0)
 
 	# Screen ripple effect overlay
 	_setup_ripple_shader()
