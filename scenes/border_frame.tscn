@@ -3,33 +3,6 @@
 [node name="BorderFrame" type="CanvasLayer"]
 layer = 90
 
-[node name="LeftBorder" type="ColorRect" parent="."]
-offset_right = 12.0
-offset_bottom = 270.0
-mouse_filter = 2
-color = Color(0.08, 0.06, 0.1, 1)
-
-[node name="LeftAccent" type="ColorRect" parent="."]
-offset_left = 12.0
-offset_right = 13.0
-offset_bottom = 230.0
-mouse_filter = 2
-color = Color(0.25, 0.2, 0.35, 1)
-
-[node name="RightBorder" type="ColorRect" parent="."]
-offset_left = 468.0
-offset_right = 480.0
-offset_bottom = 270.0
-mouse_filter = 2
-color = Color(0.08, 0.06, 0.1, 1)
-
-[node name="RightAccent" type="ColorRect" parent="."]
-offset_left = 467.0
-offset_right = 468.0
-offset_bottom = 230.0
-mouse_filter = 2
-color = Color(0.25, 0.2, 0.35, 1)
-
 [node name="TopBorder" type="ColorRect" parent="."]
 offset_right = 480.0
 offset_bottom = 8.0
@@ -56,16 +29,3 @@ offset_right = 480.0
 offset_bottom = 270.0
 mouse_filter = 2
 color = Color(0.08, 0.06, 0.1, 1)
-
-[node name="CornerTL" type="ColorRect" parent="."]
-offset_right = 12.0
-offset_bottom = 8.0
-mouse_filter = 2
-color = Color(0.25, 0.2, 0.35, 1)
-
-[node name="CornerTR" type="ColorRect" parent="."]
-offset_left = 468.0
-offset_right = 480.0
-offset_bottom = 8.0
-mouse_filter = 2
-color = Color(0.25, 0.2, 0.35, 1)

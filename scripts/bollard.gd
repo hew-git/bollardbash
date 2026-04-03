@@ -1563,13 +1563,24 @@ func _update_sprites() -> void:
 		facing_right = false
 	var face_sign: float = 1.0 if facing_right else -1.0
 
+	# ── COUNTER-ROTATION for pixel-perfect sprites ──────────────────────
+	# The RigidBody2D rotates for physics, but we counter-rotate all child
+	# sprites so pixel art stays grid-aligned (no sub-pixel smearing).
+	# Positions are computed in body-local space then rotated by -rotation
+	# to cancel out the body's rotation, and snapped to whole pixels.
+	var neg_rot := -rotation
+
 	# ── BODY CIRCLE (behind shell — visible when shell is tossed) ────────
 	_set_sprite_colors(spr_body_circle, body_c, shell_c)
+	spr_body_circle.rotation = neg_rot
+	spr_body_circle.position = Vector2.ZERO
 
 	# ── SHELL ────────────────────────────────────────────────────────────
 	spr_shell.visible = not shell_missing
 	_set_sprite_colors(spr_shell, body_c, shell_c)
+	spr_shell.rotation = neg_rot
 	spr_shell.scale = Vector2(SPRITE_SCALE * face_sign, SPRITE_SCALE)
+	spr_shell.position = Vector2.ZERO
 	if is_phase_dashing:
 		spr_shell.self_modulate.a = 0.4
 	else:
@@ -1578,7 +1589,7 @@ func _update_sprites() -> void:
 	# ── THROWN SHELL (world-space projectile) ─────────────────────────────
 	spr_thrown_shell.visible = shell_missing
 	if shell_missing:
-		spr_thrown_shell.global_position = shell_toss_pos
+		spr_thrown_shell.global_position = Vector2(roundf(shell_toss_pos.x), roundf(shell_toss_pos.y))
 		if character_type == CharacterType.ZAPPY and shell_toss_hit:
 			var pulse := (sin(shell_toss_timer * 12.0) + 1.0) * 0.5
 			var pulse_shell: Color = accent_color.lerp(Color(0.4, 0.85, 1.0), pulse * 0.7)
@@ -1599,7 +1610,9 @@ func _update_sprites() -> void:
 			var tile := spr_neck_tiles[i]
 			tile.visible = true
 			var tile_bottom_y: float = -float(i) * NECK_TILE_HEIGHT
-			tile.position = Vector2(neck_offset_x, tile_bottom_y - NECK_TILE_HEIGHT * 0.5)
+			var local_pos := Vector2(neck_offset_x, tile_bottom_y - NECK_TILE_HEIGHT * 0.5)
+			tile.position = local_pos.rotated(neg_rot)
+			tile.rotation = neg_rot
 			tile.scale = Vector2(tile_sx, tile_sy)
 			_set_sprite_colors(tile, body_c, shell_c)
 			if is_phase_dashing:
@@ -1616,13 +1629,16 @@ func _update_sprites() -> void:
 			var clip_sy: float = (remainder / NECK_TILE_HEIGHT) * SPRITE_SCALE
 			top_tile.scale = Vector2(tile_sx, clip_sy)
 			var tile_bottom_y: float = -float(tiles_needed - 1) * NECK_TILE_HEIGHT
-			top_tile.position = Vector2(neck_offset_x, tile_bottom_y - remainder * 0.5)
+			var local_pos := Vector2(neck_offset_x, tile_bottom_y - remainder * 0.5)
+			top_tile.position = local_pos.rotated(neg_rot)
 
 	# ── HEAD (caps the neck at the top) ──────────────────────────────────
 	var tip_y := -post_h
 	var head_h: float = TEX_HEAD.get_height() * SPRITE_SCALE
+	spr_head.rotation = neg_rot
 	spr_head.scale = Vector2(SPRITE_SCALE * face_sign, SPRITE_SCALE)
-	spr_head.position = Vector2(neck_offset_x, tip_y - head_h * 0.5)
+	var head_local := Vector2(neck_offset_x, tip_y - head_h * 0.5)
+	spr_head.position = head_local.rotated(neg_rot)
 	_set_sprite_colors(spr_head, body_c, shell_c)
 	if is_phase_dashing:
 		spr_head.self_modulate.a = 0.4
@@ -1821,13 +1837,13 @@ func _ai_pick_action() -> void:
 		ai_action_duration = randf_range(0.1, 0.3)
 
 func _ai_near_edge() -> bool:
-	return global_position.x < 12.0 or global_position.x > 468.0
+	return global_position.x < 0.0 or global_position.x > 480.0
 
 func _ai_edge_safe_dir() -> float:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if global_position.x < 12.0 and dir < 0.0:
+	if global_position.x < 0.0 and dir < 0.0:
 		return 1.0
-	if global_position.x > 468.0 and dir > 0.0:
+	if global_position.x > 480.0 and dir > 0.0:
 		return -1.0
 	return dir
 
@@ -1847,9 +1863,9 @@ func _ai_lower_spin(delta: float) -> void:
 
 func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
-	if global_position.x < 12.0 and dir < 0.0:
+	if global_position.x < 0.0 and dir < 0.0:
 		dir = 1.0
-	elif global_position.x > 468.0 and dir > 0.0:
+	elif global_position.x > 480.0 and dir > 0.0:
 		dir = -1.0
 	apply_torque(LEAN_TORQUE * dir * 1.0)
 	extend_amount = move_toward(extend_amount, 0.35, EXTEND_SPEED * 1.5 * delta)

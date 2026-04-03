@@ -127,8 +127,8 @@ const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
 
 # ── Screen Wrapping ────────────────────────────────────────────────────────
 var screen_wrap_enabled: bool = false
-const WRAP_LEFT := 12.0
-const WRAP_RIGHT := 468.0
+const WRAP_LEFT := 0.0
+const WRAP_RIGHT := 480.0
 const WRAP_TOP := 8.0
 const WRAP_BOTTOM := 230.0
 
