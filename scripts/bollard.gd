@@ -1130,9 +1130,12 @@ func _update_shell_toss(delta: float) -> void:
 				shell_toss_pos += move * (1.0 - safe_frac)
 			else:
 				# Push out from surface
-				shell_toss_pos += bounce_normal * 2.0
+				shell_toss_pos += bounce_normal * 4.0
 				# Reflect velocity off the surface normal
 				shell_toss_vel = shell_toss_vel.reflect(bounce_normal) * SHELL_BOUNCE
+				# Arcade-y: enforce minimum bounce speed so shells stay lively
+				if shell_toss_vel.length() < 200.0:
+					shell_toss_vel = shell_toss_vel.normalized() * 200.0
 				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
@@ -1151,8 +1154,10 @@ func _update_shell_toss(delta: float) -> void:
 				var is_stage_body := collider_obj is StaticBody2D or collider_obj is TileMapLayer
 				if is_stage_body:
 					shell_toss_pos -= move  # Undo the move
-					shell_toss_pos += rest.normal * 2.0
+					shell_toss_pos += rest.normal * 4.0
 					shell_toss_vel = shell_toss_vel.reflect(rest.normal) * SHELL_BOUNCE
+					if shell_toss_vel.length() < 200.0:
+						shell_toss_vel = shell_toss_vel.normalized() * 200.0
 					SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 					if character_type == CharacterType.GOOPY:
 						shell_toss_vel = Vector2.ZERO
@@ -1642,15 +1647,17 @@ func _draw() -> void:
 			draw_line(perp, target_pos + perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
 			draw_line(-perp, target_pos - perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
 
-	# Goopy goo trail puddles — pixelated rectangles
+	# Goopy goo trail puddles — pixelated rectangles (world-aligned, not body-rotated)
 	if character_type == CharacterType.GOOPY and not goo_trails.is_empty():
+		draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
 		for trail in goo_trails:
-			var local_pos: Vector2 = to_local(trail.pos)
+			var local_pos: Vector2 = trail.pos - global_position
 			var trail_alpha: float = clampf(trail.timer / GOO_TRAIL_DURATION, 0.0, 1.0) * 0.7
 			var r := GOO_TRAIL_RADIUS
 			draw_rect(Rect2(local_pos.x - r, local_pos.y - r * 0.4, r * 2.0, r * 0.8), Color(0.35, 0.8, 0.2, trail_alpha))
 			var r2 := r * 0.5
 			draw_rect(Rect2(local_pos.x - r2, local_pos.y - r2 * 0.4, r2 * 2.0, r2 * 0.8), Color(0.5, 0.9, 0.3, trail_alpha * 0.8))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# Zappy electric beam between body and shell
 	if shell_missing and character_type == CharacterType.ZAPPY:
@@ -1737,80 +1744,127 @@ func _process_ai(delta: float) -> void:
 func _ai_pick_action() -> void:
 	ai_timer = 0.0
 	var abs_dist := absf(ai_target.global_position.x - global_position.x)
+	var y_diff := ai_target.global_position.y - global_position.y
 	var roll := randf()
-	if hit_points <= 1 and roll < 0.25:
-		ai_state = "retreat"
-		ai_action_duration = randf_range(0.5, 1.5)
-	elif abs_dist > 250.0:
-		ai_state = "approach"
-		ai_action_duration = randf_range(0.5, 2.0)
-	elif roll < 0.08:
+
+	# React to incoming shell — parry or dodge
+	if ai_target.shell_missing and not ai_target.shell_toss_hit:
+		var shell_dist := global_position.distance_to(ai_target.shell_toss_pos)
+		var shell_approaching := (ai_target.shell_toss_pos - global_position).normalized().dot(ai_target.shell_toss_vel.normalized()) < -0.3
+		if shell_dist < 200.0 and shell_approaching:
+			if parry_cooldown <= 0.0 and not is_parrying and randf() < 0.6:
+				_start_parry()
+				ai_state = "idle"
+				ai_action_duration = 0.3
+				return
+			else:
+				ai_state = "retreat"
+				ai_action_duration = randf_range(0.2, 0.5)
+				return
+
+	# Low HP: more aggressive + use abilities to finish fights, occasionally retreat
+	if hit_points <= 1:
+		if roll < 0.15:
+			ai_state = "retreat"
+			ai_action_duration = randf_range(0.3, 0.6)
+			return
+		elif roll < 0.5:
+			ai_state = "ability2"
+			ai_action_duration = 0.1
+			return
+
+	# Far away: close the gap quickly
+	if abs_dist > 300.0:
+		if roll < 0.3:
+			ai_state = "shell_toss"
+			ai_action_duration = 0.1
+		else:
+			ai_state = "approach"
+			ai_action_duration = randf_range(0.3, 0.8)
+		return
+
+	# Medium range: mix of attacks and approach
+	if abs_dist > 150.0:
+		if roll < 0.25:
+			ai_state = "shell_toss"
+			ai_action_duration = 0.1
+		elif roll < 0.45:
+			ai_state = "charge_attack"
+			ai_action_duration = randf_range(0.3, 0.7)
+		elif roll < 0.6:
+			ai_state = "ability2"
+			ai_action_duration = 0.1
+		else:
+			ai_state = "approach"
+			ai_action_duration = randf_range(0.2, 0.5)
+		return
+
+	# Close range: aggressive combat
+	if roll < 0.12:
 		ai_state = "lower_spin"
-		ai_action_duration = randf_range(0.4, 0.8)
-	elif roll < 0.26:
-		# Use ability1 based on character type
-		match character_type:
-			CharacterType.BLINK:
-				ai_state = "shell_toss"
-				ai_action_duration = 0.1
-			CharacterType.GOOPY:
-				ai_state = "shell_toss"  # Fires tether (reuses toss slot)
-				ai_action_duration = 0.1
-			CharacterType.ZAPPY:
-				ai_state = "charge_attack"
-				ai_action_duration = randf_range(0.8, 1.5)
-	elif roll < 0.34:
+		ai_action_duration = randf_range(0.3, 0.5)
+	elif roll < 0.32:
+		ai_state = "shell_toss"
+		ai_action_duration = 0.1
+	elif roll < 0.50:
 		ai_state = "ability2"
 		ai_action_duration = 0.1
-	elif roll < 0.55:
+	elif roll < 0.70:
+		ai_state = "charge_attack"
+		ai_action_duration = randf_range(0.2, 0.5)
+	elif roll < 0.85:
 		ai_state = "attack"
-		ai_action_duration = randf_range(0.3, 1.0)
+		ai_action_duration = randf_range(0.2, 0.6)
 	else:
+		# Quick reposition
 		ai_state = "approach"
-		ai_action_duration = randf_range(0.3, 0.8)
+		ai_action_duration = randf_range(0.1, 0.3)
 
 func _ai_near_edge() -> bool:
-	# Returns true if AI is close to the left or right edge of the arena
-	return global_position.x < 80.0 or global_position.x > 1200.0
+	return global_position.x < 0.0 or global_position.x > 1280.0
 
 func _ai_edge_safe_dir() -> float:
-	# Direction toward center to avoid rolling off edges
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if global_position.x < 80.0 and dir < 0.0:
-		return 1.0  # Don't roll further left
-	if global_position.x > 1200.0 and dir > 0.0:
-		return -1.0  # Don't roll further right
+	if global_position.x < 0.0 and dir < 0.0:
+		return 1.0
+	if global_position.x > 1280.0 and dir > 0.0:
+		return -1.0
 	return dir
 
 func _ai_approach(delta: float) -> void:
 	var dir := _ai_edge_safe_dir()
-	apply_torque(LEAN_TORQUE * dir)
-	extend_amount = move_toward(extend_amount, 0.6, EXTEND_SPEED * 0.5 * delta)
+	apply_torque(LEAN_TORQUE * dir * 1.3)
+	extend_amount = move_toward(extend_amount, 0.65, EXTEND_SPEED * 0.8 * delta)
 
 func _ai_attack(delta: float) -> void:
 	var dir := _ai_edge_safe_dir()
-	apply_torque(LEAN_TORQUE * 1.5 * dir)
-	extend_amount = minf(extend_amount + EXTEND_SPEED * 1.5 * delta, 1.0)
+	apply_torque(LEAN_TORQUE * 1.8 * dir)
+	extend_amount = minf(extend_amount + EXTEND_SPEED * 2.0 * delta, 1.0)
 
 func _ai_lower_spin(delta: float) -> void:
-	extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.0 * delta, 0.0)
-	apply_torque(LEAN_TORQUE * 2.0)
+	extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.5 * delta, 0.0)
+	apply_torque(LEAN_TORQUE * 2.5)
 
 func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
-	# Don't retreat off the edge
-	if global_position.x < 80.0 and dir < 0.0:
+	if global_position.x < 0.0 and dir < 0.0:
 		dir = 1.0
-	elif global_position.x > 1200.0 and dir > 0.0:
+	elif global_position.x > 1280.0 and dir > 0.0:
 		dir = -1.0
-	apply_torque(LEAN_TORQUE * dir * 0.8)
-	extend_amount = move_toward(extend_amount, 0.3, EXTEND_SPEED * delta)
+	apply_torque(LEAN_TORQUE * dir * 1.0)
+	extend_amount = move_toward(extend_amount, 0.35, EXTEND_SPEED * 1.5 * delta)
+	# Parry if enemy is close while retreating
+	if ai_target.global_position.distance_to(global_position) < 100.0 and parry_cooldown <= 0.0 and not is_parrying and randf() < 0.3:
+		_start_parry()
 
 func _ai_charge_attack(delta: float) -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
-	aim_dir = Vector2(dir, randf_range(-0.3, 0.0)).normalized()
+	# Aim toward the target, predicting movement slightly
+	var to_target := ai_target.global_position - global_position
+	var predict_offset := ai_target.linear_velocity * 0.15
+	var aim_target := (to_target + predict_offset).normalized()
+	aim_dir = Vector2(aim_target.x, clampf(aim_target.y, -0.5, 0.2)).normalized()
 	last_aim_dir = aim_dir
-	apply_torque(LEAN_TORQUE * dir * 0.3)
+	apply_torque(LEAN_TORQUE * signf(to_target.x) * 0.3)
 	match character_type:
 		CharacterType.ZAPPY:
 			is_bolt_charging = true
@@ -1820,29 +1874,36 @@ func _ai_charge_attack(delta: float) -> void:
 			charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
 
 func _ai_shell_toss() -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
-	aim_dir = Vector2(dir, randf_range(-0.5, 0.1)).normalized()
+	# Aim at the target with prediction
+	var to_target := ai_target.global_position - global_position
+	var predict_offset := ai_target.linear_velocity * 0.2
+	var aim_target := (to_target + predict_offset).normalized()
+	aim_dir = Vector2(aim_target.x, clampf(aim_target.y, -0.6, 0.3)).normalized()
 	last_aim_dir = aim_dir
 	match character_type:
 		CharacterType.BLINK:
 			if shell_missing:
 				if can_teleport_to_shell and not blink_teleport_used:
-					_blink_teleport_to_shell()
+					# Teleport to shell if it's near the enemy
+					var shell_to_enemy := ai_target.global_position.distance_to(shell_toss_pos)
+					if shell_to_enemy < 200.0 or randf() < 0.5:
+						_blink_teleport_to_shell()
 				return
 			if shell_toss_cooldown > 0.0 or blink_toss_used:
 				return
-			toss_charge_amount = randf_range(0.4, 1.0)
+			toss_charge_amount = randf_range(0.5, 1.0)
 			_fire_shell_toss()
 			blink_toss_used = true
 			can_teleport_to_shell = true
 		CharacterType.GOOPY:
 			if shell_missing:
-				if goopy_tether_active and randf() < 0.5:
+				if goopy_tether_active:
+					# Zip to shell if near the enemy or pull to recover
 					_goopy_zip_to_shell()
 				return
 			if shell_toss_cooldown > 0.0:
 				return
-			toss_charge_amount = randf_range(0.3, 0.8)
+			toss_charge_amount = randf_range(0.5, 1.0)
 			_fire_shell_toss()
 			goopy_tether_active = true
 			goopy_tether_timer = 0.0
@@ -1852,8 +1913,11 @@ func _ai_shell_toss() -> void:
 			_fire_zappy_shell_toss()
 
 func _ai_ability2() -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
-	aim_dir = Vector2(dir, randf_range(-0.3, 0.1)).normalized()
+	# Aim toward the enemy for ability2
+	var to_target := ai_target.global_position - global_position
+	aim_dir = to_target.normalized()
+	aim_dir.y = clampf(aim_dir.y, -0.4, 0.2)
+	aim_dir = aim_dir.normalized()
 	last_aim_dir = aim_dir
 	match character_type:
 		CharacterType.BLINK:
@@ -1862,10 +1926,9 @@ func _ai_ability2() -> void:
 				blink_phase_used = true
 		CharacterType.GOOPY:
 			if goo_dash_cooldown <= 0.0 and not is_goo_dashing:
-				goo_charge_amount = randf_range(0.3, 1.0)
+				goo_charge_amount = randf_range(0.5, 1.0)
 				_start_goo_dash()
 		CharacterType.ZAPPY:
-			# AI just charges briefly then dashes
 			if bolt_dash_cooldown <= 0.0 and bolt_dashes_remaining > 0:
-				bolt_charge_amount = randf_range(0.5, 1.0)
+				bolt_charge_amount = randf_range(0.6, 1.0)
 				_start_bolt_dash()
