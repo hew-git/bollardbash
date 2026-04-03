@@ -1092,6 +1092,9 @@ func _update_shell_toss(delta: float) -> void:
 		motion_params.transform = Transform2D(0.0, shell_toss_pos)
 		motion_params.motion = move
 		motion_params.exclude = [get_rid()]
+		motion_params.collision_mask = 0xFFFFFFFF
+		motion_params.collide_with_bodies = true
+		motion_params.margin = 1.0
 		var cast_result := space.cast_motion(motion_params)
 		# cast_result = [safe_fraction, unsafe_fraction]
 		# safe_fraction: how far along 'move' we can go without collision
@@ -1132,8 +1135,24 @@ func _update_shell_toss(delta: float) -> void:
 					shell_toss_vel = Vector2.ZERO
 					shell_toss_hit = true
 		else:
-			# No collision — apply full movement
+			# No collision from cast_motion — apply full movement
 			shell_toss_pos += move
+			# Fallback overlap check: cast_motion can miss TileMapLayer bodies
+			# If the shell ended up inside a solid, bounce it back out
+			motion_params.transform = Transform2D(0.0, shell_toss_pos)
+			motion_params.motion = Vector2.ZERO
+			var rest := space.get_rest_info(motion_params)
+			if rest.size() > 0:
+				var collider_obj = instance_from_id(rest.collider_id) if rest.collider_id > 0 else null
+				var is_stage_body := collider_obj is StaticBody2D or collider_obj is TileMapLayer
+				if is_stage_body:
+					shell_toss_pos -= move  # Undo the move
+					shell_toss_pos += rest.normal * 2.0
+					shell_toss_vel = shell_toss_vel.reflect(rest.normal) * SHELL_BOUNCE
+					SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
+					if character_type == CharacterType.GOOPY:
+						shell_toss_vel = Vector2.ZERO
+						shell_toss_hit = true
 
 	# Zappy max range: stop shell after traveling max distance
 	if character_type == CharacterType.ZAPPY and not shell_toss_hit:

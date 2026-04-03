@@ -158,8 +158,9 @@ func _ready() -> void:
 	pixel_font = load("res://fonts/PressStart2P-Regular.ttf")
 	_setup_input()
 
-	# Load HUD from scene
+	# Load HUD from scene (hidden until gameplay starts)
 	hud_layer = HUD_SCENE.instantiate()
+	hud_layer.visible = false
 	add_child(hud_layer)
 	_bind_hud_refs()
 
@@ -315,18 +316,20 @@ func _wrap_position(player: Bollard) -> void:
 	if not screen_wrap_enabled or player.is_dead:
 		return
 	var pos := player.global_position
+	var play_w := WRAP_RIGHT - WRAP_LEFT
+	var play_h := WRAP_BOTTOM - WRAP_TOP
 	var wrapped := false
-	if pos.x < WRAP_LEFT - player.BASE_RADIUS:
-		pos.x = WRAP_RIGHT + player.BASE_RADIUS
+	if pos.x < WRAP_LEFT:
+		pos.x += play_w
 		wrapped = true
-	elif pos.x > WRAP_RIGHT + player.BASE_RADIUS:
-		pos.x = WRAP_LEFT - player.BASE_RADIUS
+	elif pos.x > WRAP_RIGHT:
+		pos.x -= play_w
 		wrapped = true
-	if pos.y < WRAP_TOP - player.BASE_RADIUS:
-		pos.y = WRAP_BOTTOM + player.BASE_RADIUS
+	if pos.y < WRAP_TOP:
+		pos.y += play_h
 		wrapped = true
-	elif pos.y > WRAP_BOTTOM + player.BASE_RADIUS:
-		pos.y = WRAP_TOP - player.BASE_RADIUS
+	elif pos.y > WRAP_BOTTOM:
+		pos.y -= play_h
 		wrapped = true
 	if wrapped:
 		PhysicsServer2D.body_set_state(player.get_rid(), PhysicsServer2D.BODY_STATE_TRANSFORM, Transform2D(player.rotation, pos))
@@ -337,14 +340,16 @@ func _wrap_position(player: Bollard) -> void:
 func _wrap_shell(player: Bollard) -> void:
 	if not screen_wrap_enabled or not player.shell_missing:
 		return
-	if player.shell_toss_pos.x < WRAP_LEFT - player.BASE_RADIUS:
-		player.shell_toss_pos.x = WRAP_RIGHT + player.BASE_RADIUS
-	elif player.shell_toss_pos.x > WRAP_RIGHT + player.BASE_RADIUS:
-		player.shell_toss_pos.x = WRAP_LEFT - player.BASE_RADIUS
-	if player.shell_toss_pos.y < WRAP_TOP - player.BASE_RADIUS:
-		player.shell_toss_pos.y = WRAP_BOTTOM + player.BASE_RADIUS
-	elif player.shell_toss_pos.y > WRAP_BOTTOM + player.BASE_RADIUS:
-		player.shell_toss_pos.y = WRAP_TOP - player.BASE_RADIUS
+	var play_w := WRAP_RIGHT - WRAP_LEFT
+	var play_h := WRAP_BOTTOM - WRAP_TOP
+	if player.shell_toss_pos.x < WRAP_LEFT:
+		player.shell_toss_pos.x += play_w
+	elif player.shell_toss_pos.x > WRAP_RIGHT:
+		player.shell_toss_pos.x -= play_w
+	if player.shell_toss_pos.y < WRAP_TOP:
+		player.shell_toss_pos.y += play_h
+	elif player.shell_toss_pos.y > WRAP_BOTTOM:
+		player.shell_toss_pos.y -= play_h
 
 
 func _create_countdown_label() -> void:
@@ -500,6 +505,7 @@ func _show_select_screen() -> void:
 	select_input_cooldown = 0.0
 	select_layer.visible = true
 	border_frame.visible = false
+	hud_layer.visible = false
 	stage_label.visible = false
 	_update_select_display()
 
@@ -701,6 +707,7 @@ func _confirm_selections() -> void:
 	select_active = false
 	select_layer.visible = false
 	border_frame.visible = true
+	hud_layer.visible = true
 	player1.visible = true
 	player2.visible = true
 	_start_countdown()

@@ -18,86 +18,94 @@ color = Color(0.06, 0.05, 0.08, 0.92)
 
 [node name="P1Group" type="Control" parent="."]
 
+[node name="P1Box" type="ColorRect" parent="P1Group"]
+offset_left = 32.0
+offset_top = 648.0
+offset_right = 340.0
+offset_bottom = 712.0
+mouse_filter = 2
+color = Color(0.1, 0.09, 0.14, 0.85)
+
 [node name="P1Label" type="Label" parent="P1Group"]
-offset_left = 120.0
-offset_top = 650.0
-offset_right = 170.0
-offset_bottom = 670.0
+offset_left = 44.0
+offset_top = 656.0
+offset_right = 80.0
+offset_bottom = 676.0
 theme_override_fonts/font = ExtResource("1_font")
 theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.7, 0.75, 0.9, 1)
 text = "P1"
-horizontal_alignment = 1
+horizontal_alignment = 0
 vertical_alignment = 1
 
 [node name="P1Hp1" type="TextureRect" parent="P1Group"]
-offset_left = 180.0
+offset_left = 92.0
 offset_top = 652.0
-offset_right = 198.0
-offset_bottom = 670.0
+offset_right = 116.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp2" type="TextureRect" parent="P1Group"]
-offset_left = 202.0
+offset_left = 120.0
 offset_top = 652.0
-offset_right = 220.0
-offset_bottom = 670.0
+offset_right = 144.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp3" type="TextureRect" parent="P1Group"]
-offset_left = 224.0
+offset_left = 148.0
 offset_top = 652.0
-offset_right = 242.0
-offset_bottom = 670.0
+offset_right = 172.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp4" type="TextureRect" parent="P1Group"]
-offset_left = 246.0
+offset_left = 176.0
 offset_top = 652.0
-offset_right = 264.0
-offset_bottom = 670.0
+offset_right = 200.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Hp5" type="TextureRect" parent="P1Group"]
-offset_left = 268.0
+offset_left = 204.0
 offset_top = 652.0
-offset_right = 286.0
-offset_bottom = 670.0
+offset_right = 228.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Stock1" type="TextureRect" parent="P1Group"]
-offset_left = 186.0
-offset_top = 680.0
-offset_right = 202.0
-offset_bottom = 696.0
+offset_left = 92.0
+offset_top = 684.0
+offset_right = 116.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Stock2" type="TextureRect" parent="P1Group"]
-offset_left = 210.0
-offset_top = 680.0
-offset_right = 226.0
-offset_bottom = 696.0
+offset_left = 120.0
+offset_top = 684.0
+offset_right = 144.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P1Stock3" type="TextureRect" parent="P1Group"]
-offset_left = 234.0
-offset_top = 680.0
-offset_right = 250.0
-offset_bottom = 696.0
+offset_left = 148.0
+offset_top = 684.0
+offset_right = 172.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
@@ -117,86 +125,94 @@ vertical_alignment = 1
 
 [node name="P2Group" type="Control" parent="."]
 
+[node name="P2Box" type="ColorRect" parent="P2Group"]
+offset_left = 940.0
+offset_top = 648.0
+offset_right = 1248.0
+offset_bottom = 712.0
+mouse_filter = 2
+color = Color(0.1, 0.09, 0.14, 0.85)
+
 [node name="P2Label" type="Label" parent="P2Group"]
-offset_left = 930.0
-offset_top = 650.0
-offset_right = 980.0
-offset_bottom = 670.0
+offset_left = 952.0
+offset_top = 656.0
+offset_right = 988.0
+offset_bottom = 676.0
 theme_override_fonts/font = ExtResource("1_font")
 theme_override_font_sizes/font_size = 10
 theme_override_colors/font_color = Color(0.7, 0.75, 0.9, 1)
 text = "P2"
-horizontal_alignment = 1
+horizontal_alignment = 0
 vertical_alignment = 1
 
 [node name="P2Hp1" type="TextureRect" parent="P2Group"]
-offset_left = 990.0
+offset_left = 1000.0
 offset_top = 652.0
-offset_right = 1008.0
-offset_bottom = 670.0
+offset_right = 1024.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp2" type="TextureRect" parent="P2Group"]
-offset_left = 1012.0
+offset_left = 1028.0
 offset_top = 652.0
-offset_right = 1030.0
-offset_bottom = 670.0
+offset_right = 1052.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp3" type="TextureRect" parent="P2Group"]
-offset_left = 1034.0
+offset_left = 1056.0
 offset_top = 652.0
-offset_right = 1052.0
-offset_bottom = 670.0
+offset_right = 1080.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp4" type="TextureRect" parent="P2Group"]
-offset_left = 1056.0
+offset_left = 1084.0
 offset_top = 652.0
-offset_right = 1074.0
-offset_bottom = 670.0
+offset_right = 1108.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Hp5" type="TextureRect" parent="P2Group"]
-offset_left = 1078.0
+offset_left = 1112.0
 offset_top = 652.0
-offset_right = 1096.0
-offset_bottom = 670.0
+offset_right = 1136.0
+offset_bottom = 676.0
 texture = ExtResource("2_hp_full")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Stock1" type="TextureRect" parent="P2Group"]
-offset_left = 996.0
-offset_top = 680.0
-offset_right = 1012.0
-offset_bottom = 696.0
+offset_left = 1000.0
+offset_top = 684.0
+offset_right = 1024.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Stock2" type="TextureRect" parent="P2Group"]
-offset_left = 1020.0
-offset_top = 680.0
-offset_right = 1036.0
-offset_bottom = 696.0
+offset_left = 1028.0
+offset_top = 684.0
+offset_right = 1052.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
 
 [node name="P2Stock3" type="TextureRect" parent="P2Group"]
-offset_left = 1044.0
-offset_top = 680.0
-offset_right = 1060.0
-offset_bottom = 696.0
+offset_left = 1056.0
+offset_top = 684.0
+offset_right = 1080.0
+offset_bottom = 708.0
 texture = ExtResource("4_stock")
 expand_mode = 1
 stretch_mode = 2
