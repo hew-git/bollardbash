@@ -45,7 +45,7 @@ const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit (Blink base)
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
-const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
+const SHELL_BOUNCE := 0.82           # Bounce factor off surfaces
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
 const SHELL_PICKUP_RADIUS := 35.0   # Walk over shell to pick it up
@@ -162,6 +162,7 @@ var blink_phase_used: bool = false       # Phase dash once per jump — resets o
 var is_phase_dashing: bool = false
 var phase_dash_timer: float = 0.0
 var phase_dash_cooldown: float = 0.0
+var _saved_collision_mask: int = 0
 
 # ── Goopy State ─────────────────────────────────────────────────────────────
 var goopy_tether_active: bool = false        # Tether between goopy and thrown shell
@@ -545,27 +546,13 @@ func _start_phase_dash() -> void:
 	apply_central_impulse(dash_dir * PHASE_DASH_IMPULSE)
 
 func _phase_set_exceptions(enable: bool) -> void:
-	# Phase through ALL stage collision bodies and other players
-	# Uses "stage_collision" group so it works with scene-based stages
-	for node in get_tree().get_nodes_in_group("stage_collision"):
-		if node == self:
-			continue
-		if enable:
-			add_collision_exception_with(node)
-		else:
-			remove_collision_exception_with(node)
-	# Also phase through other players
-	var main_node := get_tree().current_scene
-	if not main_node:
-		return
-	for child in main_node.get_children():
-		if child == self:
-			continue
-		if child is RigidBody2D and child != self and child.has_method("take_damage"):
-			if enable:
-				add_collision_exception_with(child)
-			else:
-				remove_collision_exception_with(child)
+	# Phase through EVERYTHING by disabling collision mask entirely
+	# This works universally with StaticBody2D, TileMapLayer, and other players
+	if enable:
+		_saved_collision_mask = collision_mask
+		collision_mask = 0
+	else:
+		collision_mask = _saved_collision_mask
 
 func _update_phase_dash(delta: float) -> void:
 	if phase_dash_cooldown > 0.0:
@@ -573,7 +560,9 @@ func _update_phase_dash(delta: float) -> void:
 	if not is_phase_dashing:
 		return
 	phase_dash_timer += delta
-	if phase_dash_timer >= PHASE_DASH_TIME or _is_dash_blocked():
+	# Check for hits on enemy players during the dash
+	_check_charge_hits()
+	if phase_dash_timer >= PHASE_DASH_TIME:
 		is_phase_dashing = false
 		phase_dash_cooldown = PHASE_DASH_COOLDOWN
 		_phase_set_exceptions(false)
@@ -1008,14 +997,15 @@ func _check_charge_hits() -> void:
 
 func _is_dash_blocked() -> bool:
 	# Check if dashing into a wall or platform — end dash if so
+	# Phase dash is NEVER blocked — it phases through everything (timer-only)
+	if is_phase_dashing:
+		return false
 	# Give a brief grace period (first few frames) so dashes can start from ground
 	if is_dashing and dash_timer < 0.08:
 		return false
 	if is_bolt_dashing and bolt_dash_timer < 0.08:
 		return false
 	if is_goo_dashing and goo_dash_timer < 0.08:
-		return false
-	if is_phase_dashing and phase_dash_timer < 0.08:
 		return false
 	for body in get_colliding_bodies():
 		if body is StaticBody2D or body is TileMapLayer:
@@ -1027,6 +1017,10 @@ func _end_any_dash() -> void:
 		is_dashing = false
 		if dashes_remaining <= 0:
 			charge_cooldown = CHARGE_COOLDOWN
+	if is_phase_dashing:
+		is_phase_dashing = false
+		phase_dash_cooldown = PHASE_DASH_COOLDOWN
+		_phase_set_exceptions(false)
 	if is_bolt_dashing:
 		is_bolt_dashing = false
 		if bolt_dashes_remaining <= 0:
@@ -1049,12 +1043,14 @@ func _fire_shell_toss() -> void:
 	shell_toss_hit = false
 	shell_deflected = false
 	shell_toss_timer = 0.0
-	shell_toss_pos = global_position
-	shell_toss_origin = global_position
 	# Direction from aim; fallback to last aimed direction
 	var toss_dir := aim_dir
 	if toss_dir.length() < 0.1:
 		toss_dir = last_aim_dir
+	# Offset start position along aim direction so shell clears the player's body
+	# This prevents the shell from starting inside a surface when aiming into ground
+	shell_toss_pos = global_position + toss_dir * (BASE_RADIUS * 0.6)
+	shell_toss_origin = shell_toss_pos
 	# Speed scales with charge amount
 	var speed := lerpf(SHELL_TOSS_MIN_SPEED, SHELL_TOSS_SPEED, toss_charge_amount)
 	shell_toss_vel = toss_dir * speed
@@ -1371,6 +1367,8 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	# Reset character ability state
 	is_parrying = false
 	parry_cooldown = 0.0
+	if is_phase_dashing:
+		_phase_set_exceptions(false)
 	is_phase_dashing = false
 	phase_dash_cooldown = 0.0
 	can_teleport_to_shell = false
