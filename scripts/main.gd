@@ -441,7 +441,7 @@ func _create_select_screen() -> void:
 		select_layer.add_child(panel_bg)
 
 		# Character name at top of panel
-		var name_lbl := _make_select_label(CHAR_NAMES[ci], 10, CHAR_COLORS[ci])
+		var name_lbl := _make_select_label(CHAR_NAMES[ci], 8, CHAR_COLORS[ci])
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_lbl.offset_left = floorf(px)
 		name_lbl.offset_top = panel_y + 6
@@ -480,7 +480,7 @@ func _create_select_screen() -> void:
 	select_layer.add_child(stage_label)
 
 	# Hint label at bottom
-	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 4, Color(0.45, 0.45, 0.45))
+	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 8, Color(0.45, 0.45, 0.45))
 	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_hint_label.offset_left = 40
 	select_hint_label.offset_top = 252
