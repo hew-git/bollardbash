@@ -4,32 +4,32 @@
 [ext_resource type="Texture2D" path="res://sprites/arena/center_rock.png" id="2_rock"]
 
 [sub_resource type="RectangleShape2D" id="plat_shape"]
-size = Vector2(180, 16)
+size = Vector2(90, 8)
 
 [sub_resource type="CircleShape2D" id="circle_shape"]
-radius = 30.0
+radius = 15.0
 
 [sub_resource type="RectangleShape2D" id="corner_shape"]
-size = Vector2(270, 14)
+size = Vector2(135, 7)
 
 [node name="Meadow" type="Node2D"]
 
 [node name="Ground" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(640, 520)
+position = Vector2(192, 155)
 
 [node name="GroundCollision" type="CollisionPolygon2D" parent="Ground"]
-polygon = PackedVector2Array(-495.0, -30.0, -445.5, -28.1, -396.0, -26.4, -346.5, -24.9, -297.0, -23.6, -247.5, -22.5, -198.0, -21.6, -148.5, -20.9, -99.0, -20.4, -49.5, -20.1, 0.0, -20.0, 49.5, -20.1, 99.0, -20.4, 148.5, -20.9, 198.0, -21.6, 247.5, -22.5, 297.0, -23.6, 346.5, -24.9, 396.0, -26.4, 445.5, -28.1, 495.0, -30.0, 495.0, 300.0, -495.0, 300.0)
+polygon = PackedVector2Array(-148, -10, -132, -9.4, -118, -8.8, -104, -8.3, -89, -7.9, -74, -7.5, -59, -7.2, -44, -7.0, -30, -6.8, -15, -6.7, 0, -6.7, 15, -6.7, 30, -6.8, 44, -7.0, 59, -7.2, 74, -7.5, 89, -7.9, 104, -8.3, 118, -8.8, 132, -9.4, 148, -10.0, 148, 100, -148, 100)
 
 [node name="DirtBody" type="Polygon2D" parent="Ground"]
 color = Color(0.376, 0.263, 0.208, 1)
-polygon = PackedVector2Array(-495.0, -30.0, -445.5, -28.1, -396.0, -26.4, -346.5, -24.9, -297.0, -23.6, -247.5, -22.5, -198.0, -21.6, -148.5, -20.9, -99.0, -20.4, -49.5, -20.1, 0.0, -20.0, 49.5, -20.1, 99.0, -20.4, 148.5, -20.9, 198.0, -21.6, 247.5, -22.5, 297.0, -23.6, 346.5, -24.9, 396.0, -26.4, 445.5, -28.1, 495.0, -30.0, 495.0, 300.0, -495.0, 300.0)
+polygon = PackedVector2Array(-148, -10, -132, -9.4, -118, -8.8, -104, -8.3, -89, -7.9, -74, -7.5, -59, -7.2, -44, -7.0, -30, -6.8, -15, -6.7, 0, -6.7, 15, -6.7, 30, -6.8, 44, -7.0, 59, -7.2, 74, -7.5, 89, -7.9, 104, -8.3, 118, -8.8, 132, -9.4, 148, -10.0, 148, 100, -148, 100)
 
 [node name="GrassStrip" type="Polygon2D" parent="Ground"]
 color = Color(0.416, 0.659, 0.31, 1)
-polygon = PackedVector2Array(-495.0, -30.0, -445.5, -28.1, -396.0, -26.4, -346.5, -24.9, -297.0, -23.6, -247.5, -22.5, -198.0, -21.6, -148.5, -20.9, -99.0, -20.4, -49.5, -20.1, 0.0, -20.0, 49.5, -20.1, 99.0, -20.4, 148.5, -20.9, 198.0, -21.6, 247.5, -22.5, 297.0, -23.6, 346.5, -24.9, 396.0, -26.4, 445.5, -28.1, 495.0, -30.0, 495.0, -24.0, 445.5, -22.1, 396.0, -20.4, 346.5, -18.9, 297.0, -17.6, 247.5, -16.5, 198.0, -15.6, 148.5, -14.9, 99.0, -14.4, 49.5, -14.1, 0.0, -14.0, -49.5, -14.1, -99.0, -14.4, -148.5, -14.9, -198.0, -15.6, -247.5, -16.5, -297.0, -17.6, -346.5, -18.9, -396.0, -20.4, -445.5, -22.1, -495.0, -24.0)
+polygon = PackedVector2Array(-148, -10, -132, -9.4, -118, -8.8, -104, -8.3, -89, -7.9, -74, -7.5, -59, -7.2, -44, -7.0, -30, -6.8, -15, -6.7, 0, -6.7, 15, -6.7, 30, -6.8, 44, -7.0, 59, -7.2, 74, -7.5, 89, -7.9, 104, -8.3, 118, -8.8, 132, -9.4, 148, -10.0, 148, -8.0, 132, -7.4, 118, -6.8, 104, -6.3, 89, -5.9, 74, -5.5, 59, -5.2, 44, -5.0, 30, -4.8, 15, -4.7, 0, -4.7, -15, -4.7, -30, -4.8, -44, -5.0, -59, -5.2, -74, -5.5, -89, -5.9, -104, -6.3, -118, -6.8, -132, -7.4, -148, -8.0)
 
 [node name="PlatformLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(350, 330)
+position = Vector2(105, 98)
 rotation = -0.105
 
 [node name="CollisionShape" type="CollisionShape2D" parent="PlatformLeft"]
@@ -38,10 +38,10 @@ one_way_collision = true
 
 [node name="Sprite" type="Sprite2D" parent="PlatformLeft"]
 texture = ExtResource("1_plat")
-scale = Vector2(1, 0.8)
+scale = Vector2(0.5, 0.4)
 
 [node name="PlatformRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(930, 330)
+position = Vector2(279, 98)
 rotation = 0.105
 
 [node name="CollisionShape" type="CollisionShape2D" parent="PlatformRight"]
@@ -50,20 +50,20 @@ one_way_collision = true
 
 [node name="Sprite" type="Sprite2D" parent="PlatformRight"]
 texture = ExtResource("1_plat")
-scale = Vector2(1, 0.8)
+scale = Vector2(0.5, 0.4)
 
 [node name="CenterCircle" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(640, 250)
+position = Vector2(192, 75)
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CenterCircle"]
 shape = SubResource("circle_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CenterCircle"]
 texture = ExtResource("2_rock")
-scale = Vector2(0.9375, 0.9375)
+scale = Vector2(0.47, 0.47)
 
 [node name="CornerTopLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(5, 70)
+position = Vector2(2, 21)
 rotation = 2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerTopLeft"]
@@ -71,10 +71,10 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerTopLeft"]
 texture = ExtResource("1_plat")
-scale = Vector2(1.5, 0.7)
+scale = Vector2(0.75, 0.35)
 
 [node name="CornerTopRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(1275, 70)
+position = Vector2(382, 21)
 rotation = -2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerTopRight"]
@@ -82,10 +82,10 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerTopRight"]
 texture = ExtResource("1_plat")
-scale = Vector2(1.5, 0.7)
+scale = Vector2(0.75, 0.35)
 
 [node name="CornerBottomLeft" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(5, 480)
+position = Vector2(2, 144)
 rotation = -2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerBottomLeft"]
@@ -93,10 +93,10 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerBottomLeft"]
 texture = ExtResource("1_plat")
-scale = Vector2(1.5, 0.7)
+scale = Vector2(0.75, 0.35)
 
 [node name="CornerBottomRight" type="StaticBody2D" parent="." groups=["stage_collision"]]
-position = Vector2(1275, 480)
+position = Vector2(382, 144)
 rotation = 2.356
 
 [node name="CollisionShape" type="CollisionShape2D" parent="CornerBottomRight"]
@@ -104,4 +104,4 @@ shape = SubResource("corner_shape")
 
 [node name="Sprite" type="Sprite2D" parent="CornerBottomRight"]
 texture = ExtResource("1_plat")
-scale = Vector2(1.5, 0.7)
+scale = Vector2(0.75, 0.35)

@@ -8,20 +8,20 @@ script = ExtResource("1_main")
 
 [node name="Background" type="ColorRect" parent="."]
 z_index = -10
-offset_left = -600.0
-offset_top = -600.0
-offset_right = 1880.0
-offset_bottom = 1300.0
+offset_left = -200.0
+offset_top = -200.0
+offset_right = 584.0
+offset_bottom = 416.0
 color = Color(0.529, 0.808, 0.922, 1)
 
 [node name="Camera2D" type="Camera2D" parent="."]
-position = Vector2(640, 360)
+position = Vector2(192, 108)
 
 [node name="Player1" parent="." instance=ExtResource("2_bollard")]
-position = Vector2(480, 478)
+position = Vector2(130, 130)
 
 [node name="Player2" parent="." instance=ExtResource("2_bollard")]
-position = Vector2(800, 478)
+position = Vector2(254, 130)
 player_id = 2
 is_ai = true
 bollard_color = Color(0.565, 0.753, 0.792, 1)

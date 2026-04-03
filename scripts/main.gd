@@ -10,13 +10,13 @@ const HUD_SCENE := preload("res://scenes/hud.tscn")
 const BORDER_SCENE := preload("res://scenes/border_frame.tscn")
 
 # ── Stage Layout ────────────────────────────────────────────────────────────
-const BLAST_ZONE := Rect2(-1100, -900, 3480, 2500)
-const SPAWN_P1 := Vector2(450, 478)
-const SPAWN_P2 := Vector2(830, 478)
+const BLAST_ZONE := Rect2(-200, -200, 784, 616)
+const SPAWN_P1 := Vector2(130, 130)
+const SPAWN_P2 := Vector2(254, 130)
 const RESPAWN_DELAY := 2.0
 const EFFECT_DURATION := 1.0
 const SHAKE_DURATION := 0.35
-const SHAKE_INTENSITY := 4.0
+const SHAKE_INTENSITY := 2.0
 
 # ── Countdown ───────────────────────────────────────────────────────────────
 const GO_LINGER := 0.8
@@ -87,7 +87,7 @@ const SLOMO_DURATION := 0.6         # Real-time seconds of slowdown
 const SLOMO_SCALE := 0.4            # Time scale during slomo (40% speed)
 const SHARD_DURATION := 0.4         # How long impact shards last
 const SHARD_COUNT := 8              # Number of shards per impact
-const SHARD_SPEED := 300.0          # Shard outward speed
+const SHARD_SPEED := 150.0          # Shard outward speed
 const RIPPLE_DURATION := 0.5        # Screen ripple duration
 var slomo_timer: float = 0.0
 var impact_shards: Array = []       # [{node: Line2D, vel: Vector2, timer: float}]
@@ -127,10 +127,10 @@ const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
 
 # ── Screen Wrapping ────────────────────────────────────────────────────────
 var screen_wrap_enabled: bool = false
-const WRAP_LEFT := -104.0
-const WRAP_RIGHT := 1384.0
-const WRAP_TOP := -48.0
-const WRAP_BOTTOM := 672.0
+const WRAP_LEFT := 12.0
+const WRAP_RIGHT := 372.0
+const WRAP_TOP := 8.0
+const WRAP_BOTTOM := 176.0
 
 # ── Stage State ─────────────────────────────────────────────────────────────
 var current_stage: int = 0              # Index into STAGE_NAMES
@@ -172,8 +172,8 @@ func _ready() -> void:
 	_create_countdown_label()
 	_create_death_phrase_label()
 
-	# Camera — zoomed out for more recovery room
-	$Camera2D.zoom = Vector2(5.0 / 6.0, 5.0 / 6.0)
+	# Camera — 1:1 pixel-perfect (no zoom)
+	$Camera2D.zoom = Vector2(1.0, 1.0)
 
 	# Screen ripple effect overlay
 	_setup_ripple_shader()
@@ -356,16 +356,16 @@ func _create_countdown_label() -> void:
 	countdown_label = Label.new()
 	if pixel_font:
 		countdown_label.add_theme_font_override("font", pixel_font)
-	countdown_label.add_theme_font_size_override("font_size", 40)
+	countdown_label.add_theme_font_size_override("font_size", 12)
 	countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 	countdown_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	countdown_label.add_theme_constant_override("outline_size", 5)
+	countdown_label.add_theme_constant_override("outline_size", 2)
 	countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	countdown_label.offset_left = 0.0
-	countdown_label.offset_top = 200.0
-	countdown_label.offset_right = 1280.0
-	countdown_label.offset_bottom = 340.0
+	countdown_label.offset_top = 60.0
+	countdown_label.offset_right = 384.0
+	countdown_label.offset_bottom = 100.0
 	countdown_label.visible = false
 	hud_layer.add_child(countdown_label)
 
@@ -374,16 +374,16 @@ func _create_death_phrase_label() -> void:
 	death_phrase_label = Label.new()
 	if pixel_font:
 		death_phrase_label.add_theme_font_override("font", pixel_font)
-	death_phrase_label.add_theme_font_size_override("font_size", 18)
+	death_phrase_label.add_theme_font_size_override("font_size", 6)
 	death_phrase_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.3))
 	death_phrase_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-	death_phrase_label.add_theme_constant_override("outline_size", 4)
+	death_phrase_label.add_theme_constant_override("outline_size", 1)
 	death_phrase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	death_phrase_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	death_phrase_label.offset_left = 240.0
-	death_phrase_label.offset_top = 130.0
-	death_phrase_label.offset_right = 1040.0
-	death_phrase_label.offset_bottom = 190.0
+	death_phrase_label.offset_left = 40.0
+	death_phrase_label.offset_top = 40.0
+	death_phrase_label.offset_right = 344.0
+	death_phrase_label.offset_bottom = 60.0
 	death_phrase_label.visible = false
 	hud_layer.add_child(death_phrase_label)
 
@@ -411,21 +411,21 @@ func _create_select_screen() -> void:
 	select_layer.add_child(bg)
 
 	# Title
-	select_title_label = _make_select_label("P1: CHOOSE YOUR SNAIL", 18, Color(1.0, 0.9, 0.3))
+	select_title_label = _make_select_label("P1: CHOOSE YOUR SNAIL", 6, Color(1.0, 0.9, 0.3))
 	select_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_title_label.offset_left = 0
-	select_title_label.offset_top = 20
-	select_title_label.offset_right = 1280
-	select_title_label.offset_bottom = 60
+	select_title_label.offset_top = 4
+	select_title_label.offset_right = 384
+	select_title_label.offset_bottom = 18
 	select_layer.add_child(select_title_label)
 
 	# Character panels — 4 panels side by side (BLINK, GOOPY, ZAPPY, RANDOM)
-	var panel_w := 270.0
-	var panel_h := 360.0
-	var panel_gap := 20.0
+	var panel_w := 80.0
+	var panel_h := 120.0
+	var panel_gap := 8.0
 	var total_w := panel_w * 4.0 + panel_gap * 3.0
-	var start_x := floorf((1280.0 - total_w) / 2.0)
-	var panel_y := 80.0
+	var start_x := floorf((384.0 - total_w) / 2.0)
+	var panel_y := 22.0
 
 	for ci in 4:
 		var px := start_x + float(ci) * (panel_w + panel_gap)
@@ -439,51 +439,51 @@ func _create_select_screen() -> void:
 		select_layer.add_child(panel_bg)
 
 		# Character name at top of panel
-		var name_lbl := _make_select_label(CHAR_NAMES[ci], 14, CHAR_COLORS[ci])
+		var name_lbl := _make_select_label(CHAR_NAMES[ci], 5, CHAR_COLORS[ci])
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_lbl.offset_left = floorf(px)
-		name_lbl.offset_top = panel_y + 15
+		name_lbl.offset_top = panel_y + 4
 		name_lbl.offset_right = floorf(px + panel_w)
-		name_lbl.offset_bottom = panel_y + 50
+		name_lbl.offset_bottom = panel_y + 16
 		select_layer.add_child(name_lbl)
 
 		# Ability descriptions
 		var desc_text: String = "SQ: " + CHAR_ABILITY1_DESC[ci] + "\nX: " + CHAR_ABILITY2_DESC[ci] + "\nL1: Parry"
-		var desc_lbl := _make_select_label(desc_text, 7, Color(0.75, 0.75, 0.75))
+		var desc_lbl := _make_select_label(desc_text, 3, Color(0.75, 0.75, 0.75))
 		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		desc_lbl.offset_left = floorf(px) + 8
-		desc_lbl.offset_top = panel_y + 200
-		desc_lbl.offset_right = floorf(px + panel_w) - 8
-		desc_lbl.offset_bottom = panel_y + panel_h - 10
+		desc_lbl.offset_left = floorf(px) + 2
+		desc_lbl.offset_top = panel_y + 60
+		desc_lbl.offset_right = floorf(px + panel_w) - 2
+		desc_lbl.offset_bottom = panel_y + panel_h - 4
 		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		select_layer.add_child(desc_lbl)
 
 		char_panels.append({"bg": panel_bg, "name": name_lbl, "desc": desc_lbl, "x": floorf(px), "w": panel_w, "y": panel_y, "h": panel_h})
 
 	# Cursor label — arrow below the currently selected panel
-	select_cursor_label = _make_select_label("^", 14, Color(1.0, 0.9, 0.3))
+	select_cursor_label = _make_select_label("^", 5, Color(1.0, 0.9, 0.3))
 	select_cursor_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_cursor_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	select_cursor_label.add_theme_constant_override("outline_size", 3)
+	select_cursor_label.add_theme_constant_override("outline_size", 1)
 	select_layer.add_child(select_cursor_label)
 
 	# Stage select label (shown after both pick)
-	stage_label = _make_select_label("", 14, Color(1.0, 0.9, 0.3))
+	stage_label = _make_select_label("", 5, Color(1.0, 0.9, 0.3))
 	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stage_label.offset_left = 200
-	stage_label.offset_top = 530
-	stage_label.offset_right = 1080
-	stage_label.offset_bottom = 570
+	stage_label.offset_left = 60
+	stage_label.offset_top = 160
+	stage_label.offset_right = 324
+	stage_label.offset_bottom = 175
 	stage_label.visible = false
 	select_layer.add_child(stage_label)
 
 	# Hint label at bottom
-	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 8, Color(0.45, 0.45, 0.45))
+	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 3, Color(0.45, 0.45, 0.45))
 	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	select_hint_label.offset_left = 100
-	select_hint_label.offset_top = 660
-	select_hint_label.offset_right = 1180
-	select_hint_label.offset_bottom = 695
+	select_hint_label.offset_left = 30
+	select_hint_label.offset_top = 200
+	select_hint_label.offset_right = 354
+	select_hint_label.offset_bottom = 212
 	select_layer.add_child(select_hint_label)
 
 func _make_select_label(text: String, size: int, color: Color) -> Label:
@@ -525,8 +525,8 @@ func _update_select_display() -> void:
 		var p = char_panels[cur]
 		select_cursor_label.offset_left = p.x
 		select_cursor_label.offset_right = p.x + p.w
-		select_cursor_label.offset_top = p.y + p.h + 5
-		select_cursor_label.offset_bottom = p.y + p.h + 30
+		select_cursor_label.offset_top = p.y + p.h + 2
+		select_cursor_label.offset_bottom = p.y + p.h + 14
 		select_cursor_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5))
 		select_cursor_label.visible = true
 
@@ -550,8 +550,8 @@ func _update_select_display() -> void:
 		var p = char_panels[cur]
 		select_cursor_label.offset_left = p.x
 		select_cursor_label.offset_right = p.x + p.w
-		select_cursor_label.offset_top = p.y + p.h + 5
-		select_cursor_label.offset_bottom = p.y + p.h + 30
+		select_cursor_label.offset_top = p.y + p.h + 2
+		select_cursor_label.offset_bottom = p.y + p.h + 14
 		select_cursor_label.add_theme_color_override("font_color", Color(0.5, 0.7, 1.0))
 		select_cursor_label.visible = true
 
@@ -742,19 +742,19 @@ func _update_countdown(delta: float) -> void:
 		countdown_label.text = ""
 	elif countdown_timer < 2.0:
 		countdown_label.text = "es.."
-		countdown_label.add_theme_font_size_override("font_size", 40)
+		countdown_label.add_theme_font_size_override("font_size", 12)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 		if countdown_timer - delta < 1.0:
 			SFX.play_sfx("countdown_tick")
 	elif countdown_timer < 3.0:
 		countdown_label.text = "escar.."
-		countdown_label.add_theme_font_size_override("font_size", 40)
+		countdown_label.add_theme_font_size_override("font_size", 12)
 		countdown_label.add_theme_color_override("font_color", Color(1, 1, 1))
 		if countdown_timer - delta < 2.0:
 			SFX.play_sfx("countdown_tick")
 	elif countdown_timer < 3.0 + GO_LINGER:
 		countdown_label.text = "escarGO!"
-		countdown_label.add_theme_font_size_override("font_size", 40)
+		countdown_label.add_theme_font_size_override("font_size", 12)
 		countdown_label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.3))
 		# Unfreeze players the moment escarGO! appears
 		if player1.is_frozen:
@@ -831,7 +831,7 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 
 	# Deflect shards: neon green and 50% wider; normal: white
 	var shard_color: Color = Color(0.2, 1.0, 0.3, 1.0) if is_deflect else Color(1.0, 1.0, 1.0, 1.0)
-	var shard_width: float = 3.75 if is_deflect else 2.5
+	var shard_width: float = 2.0 if is_deflect else 1.0
 
 	# Spawn shards shooting outward from impact point
 	for s_i in SHARD_COUNT:
@@ -842,9 +842,9 @@ func _on_big_hit(impact_pos: Vector2, is_deflect: bool = false) -> void:
 		shard.default_color = shard_color
 		shard.z_index = 10
 		# Shard is a short line segment starting at impact
-		var start_pos := impact_pos + dir * 4.0
+		var start_pos := impact_pos + dir * 2.0
 		shard.add_point(start_pos)
-		shard.add_point(start_pos + dir * 12.0)
+		shard.add_point(start_pos + dir * 6.0)
 		shard.top_level = true
 		add_child(shard)
 		impact_shards.append({
@@ -879,12 +879,12 @@ func _on_shards_only(impact_pos: Vector2) -> void:
 		var angle := (float(s_i) / float(SHARD_COUNT)) * TAU + randf_range(-0.2, 0.2)
 		var dir := Vector2(cos(angle), sin(angle))
 		var shard := Line2D.new()
-		shard.width = 2.5
+		shard.width = 1.0
 		shard.default_color = shard_color
 		shard.z_index = 10
-		var start_pos := impact_pos + dir * 4.0
+		var start_pos := impact_pos + dir * 2.0
 		shard.add_point(start_pos)
-		shard.add_point(start_pos + dir * 12.0)
+		shard.add_point(start_pos + dir * 6.0)
 		shard.top_level = true
 		add_child(shard)
 		impact_shards.append({
@@ -974,11 +974,11 @@ func _spawn_death_slime(player: Bollard) -> void:
 	var view_bottom := cam_pos.y + half_view.y
 	# Clamp death position to the visible screen edge
 	var pos := player.global_position
-	pos.x = clampf(pos.x, view_left + 20.0, view_right - 20.0)
-	pos.y = clampf(pos.y, view_top + 20.0, view_bottom - 20.0)
+	pos.x = clampf(pos.x, view_left + 10.0, view_right - 10.0)
+	pos.y = clampf(pos.y, view_top + 10.0, view_bottom - 10.0)
 	var splash_count := 30
 	for s_i in splash_count:
-		var offset := Vector2(randf_range(-80.0, 80.0), randf_range(-60.0, 60.0))
+		var offset := Vector2(randf_range(-40.0, 40.0), randf_range(-30.0, 30.0))
 		var dot_pos := pos + offset
 		var c := player.slime_color
 		c.a = 0.8
@@ -1211,8 +1211,8 @@ func _draw() -> void:
 	for dot in slime_dots:
 		var alpha: float = clampf(1.0 - dot.age / SLIME_LIFETIME, 0.0, 1.0) * 0.55
 		var c: Color = Color(dot.color.r, dot.color.g, dot.color.b, alpha)
-		var w := 14.0
-		var h := 5.0
+		var w := 7.0
+		var h := 3.0
 		draw_rect(Rect2(dot.pos.x - w * 0.5, dot.pos.y - h * 0.5, w, h), c)
 
 

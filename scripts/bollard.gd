@@ -11,10 +11,10 @@ enum CharacterType { BLINK, GOOPY, ZAPPY }
 @export var accent_color: Color = Color("A06830")    ## Shell color (warm brown)
 
 # ── Dimensions ──────────────────────────────────────────────────────────────
-const BASE_RADIUS := 24.0
-const POST_HALF_WIDTH := 16.0
-const MIN_HEIGHT := 2.0
-const MAX_HEIGHT := 90.0
+const BASE_RADIUS := 12.0
+const POST_HALF_WIDTH := 8.0
+const MIN_HEIGHT := 1.0
+const MAX_HEIGHT := 45.0
 
 # ── Health ─────────────────────────────────────────────────────────────────
 const MAX_HIT_POINTS := 5
@@ -22,33 +22,33 @@ const DAMAGE_SHELLED := 1         # HP lost when hit WITH shell on
 const DAMAGE_UNSHELLED := 2       # HP lost when hit WITHOUT shell (exposed)
 
 # ── Physics Tuning ──────────────────────────────────────────────────────────
-const LEAN_TORQUE := 80000.0
+const LEAN_TORQUE := 40000.0
 const EXTEND_SPEED := 8.0
 const ANGULAR_DAMP_AMOUNT := 2.5
-const LAUNCH_BOOST := 200.0
-const KNOCKBACK_BASE := 300.0
-const HIT_SPEED_THRESHOLD := 80.0
-const DAMAGE_MULTIPLIER := 0.04
+const LAUNCH_BOOST := 100.0
+const KNOCKBACK_BASE := 150.0
+const HIT_SPEED_THRESHOLD := 40.0
+const DAMAGE_MULTIPLIER := 0.08
 # ── Charge Attack ───────────────────────────────────────────────────────────
 const CHARGE_TIME := 0.3            # Seconds to reach full charge (fast for recovery)
-const CHARGE_IMPULSE := 1800.0      # Impulse at full charge (strong recovery)
+const CHARGE_IMPULSE := 900.0       # Impulse at full charge (strong recovery)
 const CHARGE_DAMAGE := 20.0         # Damage dealt on charged hit
-const CHARGE_HIT_RADIUS := 40.0     # Radius to detect hits during dash
+const CHARGE_HIT_RADIUS := 20.0     # Radius to detect hits during dash
 const CHARGE_DASH_TIME := 0.35      # Duration of the dash (invulnerable burst)
 const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
 const CHARGE_MAX_DASHES := 2        # Number of dashes before cooldown
 
 # ── Shell Toss (all characters) ────────────────────────────────────────────
-const SHELL_TOSS_SPEED := 1680.0    # Max speed of thrown shell (at full charge) — 40% faster
-const SHELL_TOSS_MIN_SPEED := 630.0 # Min speed (quick tap) — 40% faster
+const SHELL_TOSS_SPEED := 840.0     # Max speed of thrown shell (at full charge)
+const SHELL_TOSS_MIN_SPEED := 315.0 # Min speed (quick tap)
 const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit (Blink base)
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
-const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
+const SHELL_GRAVITY := 200.0        # Gravity on thrown shell
 const SHELL_BOUNCE := 0.82           # Bounce factor off surfaces
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
-const SHELL_PICKUP_RADIUS := 35.0   # Walk over shell to pick it up
+const SHELL_PICKUP_RADIUS := 18.0   # Walk over shell to pick it up
 
 # ── Parry (all characters) ─────────────────────────────────────────────────
 const PARRY_DURATION := 0.25        # Invulnerability window
@@ -56,41 +56,41 @@ const PARRY_COOLDOWN := 0.8         # Cooldown after parry ends
 const PARRY_RETRACT_SPEED := 12.0   # How fast body retracts into shell
 
 # ── Blink: Phase Dash ──────────────────────────────────────────────────────
-const PHASE_DASH_IMPULSE := 1190.0   # 15% shorter
+const PHASE_DASH_IMPULSE := 595.0    # Half scale
 const PHASE_DASH_TIME := 0.27        # 15% shorter
 const PHASE_DASH_COOLDOWN := 0.8
 
 # ── Goopy: Slime Shell Toss + Tether Swing + Goo Dash ──────────────────────
 const GOOPY_TOSS_KNOCKBACK_MULT := 0.3  # 30% of Blink's shell knockback
-const GOOPY_ZIP_IMPULSE := 3300.0    # Impulse when zipping to shell (strong pull)
-const GOOPY_SWING_PULL := 1200.0     # Looser swing force (lower = looser)
+const GOOPY_ZIP_IMPULSE := 1650.0    # Impulse when zipping to shell (strong pull)
+const GOOPY_SWING_PULL := 600.0      # Looser swing force (lower = looser)
 const GOOPY_TETHER_DURATION := 6.0   # Max tether swing time (long for strategic use)
-const GOO_DASH_IMPULSE := 1785.0     # Max dash impulse (15% shorter)
-const GOO_DASH_MIN_IMPULSE := 637.0  # Min dash impulse (15% shorter)
+const GOO_DASH_IMPULSE := 893.0      # Max dash impulse
+const GOO_DASH_MIN_IMPULSE := 319.0  # Min dash impulse
 const GOO_DASH_CHARGE_TIME := 0.5    # Charge time for full dash
 const GOO_DASH_TIME := 0.4           # Dash duration
 const GOO_DASH_COOLDOWN := 0.8       # Cooldown
 const GOO_DASH_DAMAGE := 15.0        # Knockback damage on hit
-const GOO_DASH_KNOCKBACK := 400.0    # Knockback impulse on hit
-const GOO_TRAIL_RADIUS := 18.0       # Goo puddle size
+const GOO_DASH_KNOCKBACK := 200.0    # Knockback impulse on hit
+const GOO_TRAIL_RADIUS := 9.0        # Goo puddle size
 const GOO_TRAIL_DURATION := 3.0      # How long goo puddles last
 
 # ── Zappy: Electric Shell Toss + 3x Bolt Dash ─────────────────────────────
-const ZAPPY_TOSS_SPEED := 1200.0     # Fixed speed (unchargeable, 33% less range)
-const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage (nerfed 40%)
-const ZAPPY_TOSS_KNOCKBACK := 108.0  # Light knockback (nerfed 40%, then 10% weaker)
+const ZAPPY_TOSS_SPEED := 600.0      # Fixed speed (unchargeable, short range)
+const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage
+const ZAPPY_TOSS_KNOCKBACK := 54.0   # Light knockback
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
-const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
+const ZAPPY_TOSS_MAX_RANGE := 76.0   # Max distance before shell stops
 const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
-const BOLT_DASH_SPEED := 2250.0      # Fixed dash speed (pixels/sec) — 25% faster
-const BOLT_DASH_DISTANCE := 425.0    # Fixed dash distance (pixels) — 15% shorter
+const BOLT_DASH_SPEED := 1125.0      # Fixed dash speed (pixels/sec)
+const BOLT_DASH_DISTANCE := 213.0    # Fixed dash distance (pixels)
 const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
 # ── Visual Constants ────────────────────────────────────────────────────────
-const SPRITE_SCALE := 2.0       # Art drawn at half res, rendered at 2x for pixel-perfect look
-const NECK_TILE_HEIGHT := 8.0   # Display height of each neck tile (4px art * 2x scale)
+const SPRITE_SCALE := 1.0       # 1:1 pixel-perfect rendering at 384x216 viewport
+const NECK_TILE_HEIGHT := 4.0   # Display height of each neck tile (4px art * 1x scale)
 const NECK_MAX_TILES := 12      # Max tiles needed (MAX_HEIGHT / NECK_TILE_HEIGHT, rounded up)
 
 # ── Sprite Textures ─────────────────────────────────────────────────────────
@@ -293,7 +293,7 @@ func _physics_process(delta: float) -> void:
 	if _prev_global_pos.y > 0.0 and not is_emerging and not is_phase_dashing:
 		var dy := global_position.y - _prev_global_pos.y
 		var expected_dy := maxf(linear_velocity.y * delta, 0.0)
-		if dy > expected_dy + 80.0 and dy > 60.0:
+		if dy > expected_dy + 40.0 and dy > 30.0:
 			global_position.y = _prev_global_pos.y
 			linear_velocity.y = 0.0
 
@@ -671,7 +671,7 @@ func _update_goopy_tether(delta: float) -> void:
 	if shell_toss_hit:
 		var to_shell: Vector2 = (shell_toss_pos - global_position)
 		var dist := to_shell.length()
-		if dist > 30.0:
+		if dist > 15.0:
 			var dir := to_shell.normalized()
 			apply_central_force(dir * GOOPY_SWING_PULL)
 	# Auto-release after duration
@@ -766,12 +766,12 @@ func _update_goo_trails(delta: float) -> void:
 			continue
 		if not goo_trails[i].get("grounded", false):
 			var goo_pos: Vector2 = goo_trails[i].pos
-			var below := goo_pos + Vector2(0, 400.0 * delta)
-			var query := PhysicsRayQueryParameters2D.create(goo_pos, goo_pos + Vector2(0, 20.0))
+			var below := goo_pos + Vector2(0, 200.0 * delta)
+			var query := PhysicsRayQueryParameters2D.create(goo_pos, goo_pos + Vector2(0, 10.0))
 			query.exclude = [get_rid()]
 			var result := get_world_2d().direct_space_state.intersect_ray(query)
 			if result:
-				goo_trails[i].pos = result.position - Vector2(0, 2.0)
+				goo_trails[i].pos = result.position - Vector2(0, 1.0)
 				goo_trails[i].grounded = true
 			else:
 				goo_trails[i].pos = below
@@ -1130,12 +1130,12 @@ func _update_shell_toss(delta: float) -> void:
 				shell_toss_pos += move * (1.0 - safe_frac)
 			else:
 				# Push out from surface
-				shell_toss_pos += bounce_normal * 4.0
+				shell_toss_pos += bounce_normal * 2.0
 				# Reflect velocity off the surface normal
 				shell_toss_vel = shell_toss_vel.reflect(bounce_normal) * SHELL_BOUNCE
 				# Arcade-y: enforce minimum bounce speed so shells stay lively
-				if shell_toss_vel.length() < 200.0:
-					shell_toss_vel = shell_toss_vel.normalized() * 200.0
+				if shell_toss_vel.length() < 100.0:
+					shell_toss_vel = shell_toss_vel.normalized() * 100.0
 				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
@@ -1154,7 +1154,7 @@ func _update_shell_toss(delta: float) -> void:
 				var is_stage_body := collider_obj is StaticBody2D or collider_obj is TileMapLayer
 				if is_stage_body:
 					shell_toss_pos -= move  # Undo the move
-					shell_toss_pos += rest.normal * 4.0
+					shell_toss_pos += rest.normal * 2.0
 					shell_toss_vel = shell_toss_vel.reflect(rest.normal) * SHELL_BOUNCE
 					if shell_toss_vel.length() < 200.0:
 						shell_toss_vel = shell_toss_vel.normalized() * 200.0
@@ -1445,13 +1445,13 @@ func _update_invincibility(delta: float) -> void:
 # ║ All other pixel colors pass through unchanged (outlines, eyes, etc.)     ║
 # ║                                                                           ║
 # ║ Per-character sprites in sprites/snail/<blink|goopy|zappy>/:             ║
-# ║   shell.png   24x24  — spiral shell (rendered at 2x = 48px)             ║
-# ║   neck.png    12x4   — neck tile segment (rendered at 2x = 24x8)        ║
-# ║   head.png    14x12  — head with eye stalks (rendered at 2x = 28x24)    ║
+# ║   shell.png   24x24  — spiral shell (rendered at 1x = 24px)             ║
+# ║   neck.png    12x4   — neck tile segment (rendered at 1x = 12x4)        ║
+# ║   head.png    14x12  — head with eye stalks (rendered at 1x = 14x12)    ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_sprites() -> void:
-	# Shell (rendered at 2x scale to match BASE_RADIUS * 2 = 44px)
+	# Shell (rendered at 1x scale to match BASE_RADIUS * 2 = 22px)
 	spr_shell = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -1)
 	spr_shell.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
@@ -1526,18 +1526,18 @@ func _update_sprites() -> void:
 	# ── CHARGE / ABILITY VISUALS ─────────────────────────────────────────
 	var body_shake_x := 0.0
 	if is_charging and charge_amount > 0.1:
-		body_shake_x = randf_range(-charge_amount * 3.0, charge_amount * 3.0)
+		body_shake_x = randf_range(-charge_amount * 1.5, charge_amount * 1.5)
 		body_c = body_c.lerp(Color(1.0, 0.3, 0.2), charge_amount * 0.5)
 		shell_c = shell_c.lerp(Color(1.0, 0.5, 0.2), charge_amount * 0.4)
 	if is_toss_charging and toss_charge_amount > 0.1:
-		body_shake_x = randf_range(-toss_charge_amount * 2.0, toss_charge_amount * 2.0)
+		body_shake_x = randf_range(-toss_charge_amount * 1.0, toss_charge_amount * 1.0)
 		shell_c = shell_c.lerp(Color(1.0, 0.8, 0.2), toss_charge_amount * 0.5)
 	if is_goo_charging and goo_charge_amount > 0.1:
-		body_shake_x = randf_range(-goo_charge_amount * 2.5, goo_charge_amount * 2.5)
+		body_shake_x = randf_range(-goo_charge_amount * 1.25, goo_charge_amount * 1.25)
 		body_c = body_c.lerp(Color(0.2, 0.9, 0.3), goo_charge_amount * 0.5)
 		shell_c = shell_c.lerp(Color(0.3, 1.0, 0.4), goo_charge_amount * 0.4)
 	if is_bolt_charging and bolt_charge_amount > 0.1:
-		body_shake_x = randf_range(-bolt_charge_amount * 3.5, bolt_charge_amount * 3.5)
+		body_shake_x = randf_range(-bolt_charge_amount * 1.75, bolt_charge_amount * 1.75)
 		body_c = body_c.lerp(Color(0.3, 0.8, 1.0), bolt_charge_amount * 0.6)
 		shell_c = shell_c.lerp(Color(0.5, 0.9, 1.0), bolt_charge_amount * 0.5)
 	if is_dashing:
@@ -1642,10 +1642,10 @@ func _draw() -> void:
 		var target_pos := to_local(shell_toss_pos)
 		if target_pos.length() > 5.0:
 			var tether_color := Color(0.3, 0.85, 0.2, 0.85)
-			draw_line(Vector2.ZERO, target_pos, tether_color, 4.0)
-			var perp := Vector2(-target_pos.y, target_pos.x).normalized() * 2.0
-			draw_line(perp, target_pos + perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
-			draw_line(-perp, target_pos - perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
+			draw_line(Vector2.ZERO, target_pos, tether_color, 2.0)
+			var perp := Vector2(-target_pos.y, target_pos.x).normalized() * 1.0
+			draw_line(perp, target_pos + perp, Color(0.5, 0.95, 0.3, 0.5), 1.0)
+			draw_line(-perp, target_pos - perp, Color(0.5, 0.95, 0.3, 0.5), 1.0)
 
 	# Goopy goo trail puddles — pixelated rectangles (world-aligned, not body-rotated)
 	if character_type == CharacterType.GOOPY and not goo_trails.is_empty():
@@ -1669,18 +1669,18 @@ func _draw() -> void:
 			var pt := shell_local * t
 			if seg_i < beam_segs - 1:
 				var perp := Vector2(-shell_local.y, shell_local.x).normalized()
-				pt += perp * randf_range(-8.0, 8.0)
-			draw_line(prev_pt, pt, Color(0.3, 0.7, 1.0, 0.7), 2.0)
+				pt += perp * randf_range(-4.0, 4.0)
+			draw_line(prev_pt, pt, Color(0.3, 0.7, 1.0, 0.7), 1.0)
 			draw_line(prev_pt, pt, Color(1.0, 1.0, 0.5, 0.3), 1.0)
 			prev_pt = pt
 
 	# Zappy bolt dash — electric sparks trailing behind
 	if is_bolt_dashing and character_type == CharacterType.ZAPPY:
 		for spark_i in 4:
-			var offset := Vector2(randf_range(-15.0, 15.0), randf_range(-15.0, 15.0))
-			var spark_end := offset + Vector2(randf_range(-8.0, 8.0), randf_range(-8.0, 8.0))
-			draw_line(offset, spark_end, Color(0.4, 0.9, 1.0, 0.8), 2.0)
-			draw_line(offset, spark_end, Color(1.0, 1.0, 1.0, 0.5), 0.8)
+			var offset := Vector2(randf_range(-7.0, 7.0), randf_range(-7.0, 7.0))
+			var spark_end := offset + Vector2(randf_range(-4.0, 4.0), randf_range(-4.0, 4.0))
+			draw_line(offset, spark_end, Color(0.4, 0.9, 1.0, 0.8), 1.0)
+			draw_line(offset, spark_end, Color(1.0, 1.0, 1.0, 0.5), 1.0)
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
@@ -1751,7 +1751,7 @@ func _ai_pick_action() -> void:
 	if ai_target.shell_missing and not ai_target.shell_toss_hit:
 		var shell_dist := global_position.distance_to(ai_target.shell_toss_pos)
 		var shell_approaching := (ai_target.shell_toss_pos - global_position).normalized().dot(ai_target.shell_toss_vel.normalized()) < -0.3
-		if shell_dist < 200.0 and shell_approaching:
+		if shell_dist < 100.0 and shell_approaching:
 			if parry_cooldown <= 0.0 and not is_parrying and randf() < 0.6:
 				_start_parry()
 				ai_state = "idle"
@@ -1774,7 +1774,7 @@ func _ai_pick_action() -> void:
 			return
 
 	# Far away: close the gap quickly
-	if abs_dist > 300.0:
+	if abs_dist > 150.0:
 		if roll < 0.3:
 			ai_state = "shell_toss"
 			ai_action_duration = 0.1
@@ -1784,7 +1784,7 @@ func _ai_pick_action() -> void:
 		return
 
 	# Medium range: mix of attacks and approach
-	if abs_dist > 150.0:
+	if abs_dist > 75.0:
 		if roll < 0.25:
 			ai_state = "shell_toss"
 			ai_action_duration = 0.1
@@ -1821,13 +1821,13 @@ func _ai_pick_action() -> void:
 		ai_action_duration = randf_range(0.1, 0.3)
 
 func _ai_near_edge() -> bool:
-	return global_position.x < 0.0 or global_position.x > 1280.0
+	return global_position.x < 12.0 or global_position.x > 372.0
 
 func _ai_edge_safe_dir() -> float:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if global_position.x < 0.0 and dir < 0.0:
+	if global_position.x < 12.0 and dir < 0.0:
 		return 1.0
-	if global_position.x > 1280.0 and dir > 0.0:
+	if global_position.x > 372.0 and dir > 0.0:
 		return -1.0
 	return dir
 
@@ -1847,14 +1847,14 @@ func _ai_lower_spin(delta: float) -> void:
 
 func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
-	if global_position.x < 0.0 and dir < 0.0:
+	if global_position.x < 12.0 and dir < 0.0:
 		dir = 1.0
-	elif global_position.x > 1280.0 and dir > 0.0:
+	elif global_position.x > 372.0 and dir > 0.0:
 		dir = -1.0
 	apply_torque(LEAN_TORQUE * dir * 1.0)
 	extend_amount = move_toward(extend_amount, 0.35, EXTEND_SPEED * 1.5 * delta)
 	# Parry if enemy is close while retreating
-	if ai_target.global_position.distance_to(global_position) < 100.0 and parry_cooldown <= 0.0 and not is_parrying and randf() < 0.3:
+	if ai_target.global_position.distance_to(global_position) < 50.0 and parry_cooldown <= 0.0 and not is_parrying and randf() < 0.3:
 		_start_parry()
 
 func _ai_charge_attack(delta: float) -> void:
@@ -1886,7 +1886,7 @@ func _ai_shell_toss() -> void:
 				if can_teleport_to_shell and not blink_teleport_used:
 					# Teleport to shell if it's near the enemy
 					var shell_to_enemy := ai_target.global_position.distance_to(shell_toss_pos)
-					if shell_to_enemy < 200.0 or randf() < 0.5:
+					if shell_to_enemy < 100.0 or randf() < 0.5:
 						_blink_teleport_to_shell()
 				return
 			if shell_toss_cooldown > 0.0 or blink_toss_used:
