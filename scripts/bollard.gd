@@ -1820,13 +1820,13 @@ func _ai_pick_action() -> void:
 		ai_action_duration = randf_range(0.1, 0.3)
 
 func _ai_near_edge() -> bool:
-	return global_position.x < 0.0 or global_position.x > 1280.0
+	return global_position.x < 16.0 or global_position.x > 1264.0
 
 func _ai_edge_safe_dir() -> float:
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if global_position.x < 0.0 and dir < 0.0:
+	if global_position.x < 16.0 and dir < 0.0:
 		return 1.0
-	if global_position.x > 1280.0 and dir > 0.0:
+	if global_position.x > 1264.0 and dir > 0.0:
 		return -1.0
 	return dir
 

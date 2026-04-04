@@ -127,8 +127,8 @@ const STAGE_NAMES := ["Meadow", "Oops, All Slab", "Tower", "Random"]
 
 # ── Screen Wrapping ────────────────────────────────────────────────────────
 var screen_wrap_enabled: bool = false
-const WRAP_LEFT := 0.0
-const WRAP_RIGHT := 1280.0
+const WRAP_LEFT := 16.0
+const WRAP_RIGHT := 1264.0
 const WRAP_TOP := 16.0
 const WRAP_BOTTOM := 640.0
 
@@ -416,18 +416,18 @@ func _create_select_screen() -> void:
 	select_title_label = _make_select_label("P1: CHOOSE YOUR SNAIL", 16, Color(1.0, 0.9, 0.3))
 	select_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	select_title_label.offset_left = 0
-	select_title_label.offset_top = 16
+	select_title_label.offset_top = 24
 	select_title_label.offset_right = 1280
-	select_title_label.offset_bottom = 52
+	select_title_label.offset_bottom = 56
 	select_layer.add_child(select_title_label)
 
 	# Character panels — 4 panels side by side (BLINK, GOOPY, ZAPPY, RANDOM)
-	var panel_w := 200.0
-	var panel_h := 300.0
-	var panel_gap := 24.0
+	var panel_w := 260.0
+	var panel_h := 420.0
+	var panel_gap := 28.0
 	var total_w := panel_w * 4.0 + panel_gap * 3.0
 	var start_x := floorf((1280.0 - total_w) / 2.0)
-	var panel_y := 64.0
+	var panel_y := 68.0
 
 	for ci in 4:
 		var px := start_x + float(ci) * (panel_w + panel_gap)
@@ -444,9 +444,9 @@ func _create_select_screen() -> void:
 		var name_lbl := _make_select_label(CHAR_NAMES[ci], 16, CHAR_COLORS[ci])
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_lbl.offset_left = floorf(px)
-		name_lbl.offset_top = panel_y + 12
+		name_lbl.offset_top = panel_y + 16
 		name_lbl.offset_right = floorf(px + panel_w)
-		name_lbl.offset_bottom = panel_y + 44
+		name_lbl.offset_bottom = panel_y + 48
 		select_layer.add_child(name_lbl)
 
 		# Ability descriptions
@@ -454,9 +454,9 @@ func _create_select_screen() -> void:
 		var desc_lbl := _make_select_label(desc_text, 16, Color(0.75, 0.75, 0.75))
 		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		desc_lbl.offset_left = floorf(px) + 8
-		desc_lbl.offset_top = panel_y + 160
+		desc_lbl.offset_top = panel_y + 220
 		desc_lbl.offset_right = floorf(px + panel_w) - 8
-		desc_lbl.offset_bottom = panel_y + panel_h - 12
+		desc_lbl.offset_bottom = panel_y + panel_h - 16
 		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD
 		select_layer.add_child(desc_lbl)
 
@@ -472,20 +472,20 @@ func _create_select_screen() -> void:
 	# Stage select label (shown after both pick)
 	stage_label = _make_select_label("", 16, Color(1.0, 0.9, 0.3))
 	stage_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stage_label.offset_left = 160
-	stage_label.offset_top = 412
-	stage_label.offset_right = 1120
-	stage_label.offset_bottom = 450
+	stage_label.offset_left = 200
+	stage_label.offset_top = 540
+	stage_label.offset_right = 1080
+	stage_label.offset_bottom = 576
 	stage_label.visible = false
 	select_layer.add_child(stage_label)
 
 	# Hint label at bottom
 	select_hint_label = _make_select_label("A/D choose  |  Q confirm  |  E back", 16, Color(0.45, 0.45, 0.45))
 	select_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	select_hint_label.offset_left = 80
-	select_hint_label.offset_top = 504
-	select_hint_label.offset_right = 1200
-	select_hint_label.offset_bottom = 540
+	select_hint_label.offset_left = 100
+	select_hint_label.offset_top = 668
+	select_hint_label.offset_right = 1180
+	select_hint_label.offset_bottom = 700
 	select_layer.add_child(select_hint_label)
 
 func _make_select_label(text: String, size: int, color: Color) -> Label:
@@ -527,8 +527,8 @@ func _update_select_display() -> void:
 		var p = char_panels[cur]
 		select_cursor_label.offset_left = p.x
 		select_cursor_label.offset_right = p.x + p.w
-		select_cursor_label.offset_top = p.y + p.h + 4
-		select_cursor_label.offset_bottom = p.y + p.h + 28
+		select_cursor_label.offset_top = p.y + p.h + 8
+		select_cursor_label.offset_bottom = p.y + p.h + 36
 		select_cursor_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.5))
 		select_cursor_label.visible = true
 
@@ -552,8 +552,8 @@ func _update_select_display() -> void:
 		var p = char_panels[cur]
 		select_cursor_label.offset_left = p.x
 		select_cursor_label.offset_right = p.x + p.w
-		select_cursor_label.offset_top = p.y + p.h + 4
-		select_cursor_label.offset_bottom = p.y + p.h + 28
+		select_cursor_label.offset_top = p.y + p.h + 8
+		select_cursor_label.offset_bottom = p.y + p.h + 36
 		select_cursor_label.add_theme_color_override("font_color", Color(0.5, 0.7, 1.0))
 		select_cursor_label.visible = true
 
