@@ -1,181 +1,28 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://scenes/bollard.tscn" id="2_bollard"]
-
-[sub_resource type="RectangleShape2D" id="RectShape_ground"]
-size = Vector2(1100, 40)
-
-[sub_resource type="RectangleShape2D" id="RectShape_plat"]
-size = Vector2(180, 16)
-
-[sub_resource type="CircleShape2D" id="CircleShape_center"]
-radius = 30.0
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
 
 [node name="Background" type="ColorRect" parent="."]
 z_index = -10
-offset_left = -600.0
-offset_top = -600.0
-offset_right = 1880.0
-offset_bottom = 1300.0
+offset_left = -400.0
+offset_top = -400.0
+offset_right = 1680.0
+offset_bottom = 1120.0
 color = Color(0.529, 0.808, 0.922, 1)
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(640, 360)
 
-[node name="Ground" type="StaticBody2D" parent="."]
-position = Vector2(640, 520)
-
-[node name="GroundShape" type="CollisionShape2D" parent="Ground"]
-shape = SubResource("RectShape_ground")
-
-[node name="GroundTop" type="ColorRect" parent="Ground"]
-offset_left = -550.0
-offset_top = -20.0
-offset_right = 550.0
-offset_bottom = -14.0
-color = Color(0.416, 0.659, 0.31, 1)
-
-[node name="GroundBody" type="ColorRect" parent="Ground"]
-offset_left = -550.0
-offset_top = -14.0
-offset_right = 550.0
-offset_bottom = 20.0
-color = Color(0.376, 0.263, 0.208, 1)
-
-[node name="PlatformLeft" type="StaticBody2D" parent="."]
-position = Vector2(220, 330)
-rotation = -0.105
-
-[node name="PlatLeftShape" type="CollisionShape2D" parent="PlatformLeft"]
-shape = SubResource("RectShape_plat")
-one_way_collision = true
-
-[node name="PlatLeftVisual" type="Polygon2D" parent="PlatformLeft"]
-color = Color(0.376, 0.263, 0.208, 1)
-polygon = PackedVector2Array(-90, -8, 90, -8, 90, 8, -90, 8)
-
-[node name="PlatformRight" type="StaticBody2D" parent="."]
-position = Vector2(1060, 330)
-rotation = 0.105
-
-[node name="PlatRightShape" type="CollisionShape2D" parent="PlatformRight"]
-shape = SubResource("RectShape_plat")
-one_way_collision = true
-
-[node name="PlatRightVisual" type="Polygon2D" parent="PlatformRight"]
-color = Color(0.376, 0.263, 0.208, 1)
-polygon = PackedVector2Array(-90, -8, 90, -8, 90, 8, -90, 8)
-
-[node name="CenterCircle" type="StaticBody2D" parent="."]
-position = Vector2(640, 250)
-
-[node name="CenterShape" type="CollisionShape2D" parent="CenterCircle"]
-shape = SubResource("CircleShape_center")
-
-[node name="CenterVisual" type="Polygon2D" parent="CenterCircle"]
-color = Color(0.45, 0.38, 0.33, 1)
-polygon = PackedVector2Array(30, 0, 25.98, 15, 15, 25.98, 0, 30, -15, 25.98, -25.98, 15, -30, 0, -25.98, -15, -15, -25.98, 0, -30, 15, -25.98, 25.98, -15)
-
 [node name="Player1" parent="." instance=ExtResource("2_bollard")]
-position = Vector2(480, 478)
+position = Vector2(420, 440)
 
 [node name="Player2" parent="." instance=ExtResource("2_bollard")]
-position = Vector2(800, 478)
+position = Vector2(860, 440)
 player_id = 2
 is_ai = true
 bollard_color = Color(0.565, 0.753, 0.792, 1)
 accent_color = Color(0.314, 0.502, 0.314, 1)
-
-[node name="HUD" type="CanvasLayer" parent="."]
-
-[node name="P1Group" type="Control" parent="HUD"]
-
-[node name="P1DmgLabel" type="Label" parent="HUD/P1Group"]
-offset_left = 126.0
-offset_top = 656.0
-offset_right = 172.0
-offset_bottom = 680.0
-theme_override_font_sizes/font_size = 14
-text = "dmg."
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="P1Effect" type="Label" parent="HUD/P1Group"]
-visible = false
-offset_left = 240.0
-offset_top = 590.0
-offset_right = 540.0
-offset_bottom = 624.0
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(1, 0.3, 0.1, 1)
-text = "OOF!"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="P1Stocks" type="Label" parent="HUD/P1Group"]
-offset_left = 240.0
-offset_top = 676.0
-offset_right = 540.0
-offset_bottom = 700.0
-theme_override_font_sizes/font_size = 16
-text = "O O O"
-horizontal_alignment = 1
-
-[node name="P2Group" type="Control" parent="HUD"]
-
-[node name="P2DmgLabel" type="Label" parent="HUD/P2Group"]
-offset_left = 1108.0
-offset_top = 656.0
-offset_right = 1158.0
-offset_bottom = 680.0
-theme_override_font_sizes/font_size = 14
-text = "dmg."
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="P2Effect" type="Label" parent="HUD/P2Group"]
-visible = false
-offset_left = 740.0
-offset_top = 590.0
-offset_right = 1040.0
-offset_bottom = 624.0
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(1, 0.3, 0.1, 1)
-text = "OOF!"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="P2Stocks" type="Label" parent="HUD/P2Group"]
-offset_left = 740.0
-offset_top = 676.0
-offset_right = 1040.0
-offset_bottom = 700.0
-theme_override_font_sizes/font_size = 16
-text = "O O O"
-horizontal_alignment = 1
-
-[node name="GameOver" type="Label" parent="HUD"]
-visible = false
-offset_left = 340.0
-offset_top = 180.0
-offset_right = 940.0
-offset_bottom = 350.0
-theme_override_font_sizes/font_size = 48
-text = "GAME OVER"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="Controls" type="Label" parent="HUD"]
-offset_left = 340.0
-offset_top = 10.0
-offset_right = 940.0
-offset_bottom = 80.0
-theme_override_font_sizes/font_size = 13
-text = "P1: WASD aim, Q ability1, F ability2, E parry, R/C raise/lower  |  Controller: L-Stick, Square, Cross, L1
-P2: AI  (or Arrows, Shift/., /)    ESC = Quit    T = Restart"
-horizontal_alignment = 1
-vertical_alignment = 0

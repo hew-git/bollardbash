@@ -1,0 +1,62 @@
+[gd_scene format=3]
+
+[node name="BorderFrame" type="CanvasLayer"]
+layer = 90
+
+[node name="TopBorder" type="ColorRect" parent="."]
+offset_right = 1280.0
+offset_bottom = 16.0
+mouse_filter = 2
+color = Color(0.08, 0.06, 0.1, 1)
+
+[node name="TopAccent" type="ColorRect" parent="."]
+offset_top = 16.0
+offset_right = 1280.0
+offset_bottom = 18.0
+mouse_filter = 2
+color = Color(0.25, 0.2, 0.35, 1)
+
+[node name="LeftBorder" type="ColorRect" parent="."]
+offset_top = 16.0
+offset_right = 16.0
+offset_bottom = 640.0
+mouse_filter = 2
+color = Color(0.08, 0.06, 0.1, 1)
+
+[node name="LeftAccent" type="ColorRect" parent="."]
+offset_left = 16.0
+offset_top = 18.0
+offset_right = 18.0
+offset_bottom = 638.0
+mouse_filter = 2
+color = Color(0.25, 0.2, 0.35, 1)
+
+[node name="RightBorder" type="ColorRect" parent="."]
+offset_left = 1264.0
+offset_top = 16.0
+offset_right = 1280.0
+offset_bottom = 640.0
+mouse_filter = 2
+color = Color(0.08, 0.06, 0.1, 1)
+
+[node name="RightAccent" type="ColorRect" parent="."]
+offset_left = 1262.0
+offset_top = 18.0
+offset_right = 1264.0
+offset_bottom = 638.0
+mouse_filter = 2
+color = Color(0.25, 0.2, 0.35, 1)
+
+[node name="HudSeparator" type="ColorRect" parent="."]
+offset_top = 638.0
+offset_right = 1280.0
+offset_bottom = 640.0
+mouse_filter = 2
+color = Color(0.25, 0.2, 0.35, 1)
+
+[node name="BottomFill" type="ColorRect" parent="."]
+offset_top = 640.0
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0.08, 0.06, 0.1, 1)

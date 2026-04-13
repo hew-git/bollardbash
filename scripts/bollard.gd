@@ -39,13 +39,13 @@ const CHARGE_COOLDOWN := 1.0        # Cooldown after dash ends
 const CHARGE_MAX_DASHES := 2        # Number of dashes before cooldown
 
 # ── Shell Toss (all characters) ────────────────────────────────────────────
-const SHELL_TOSS_SPEED := 1200.0    # Max speed of thrown shell (at full charge)
-const SHELL_TOSS_MIN_SPEED := 450.0 # Min speed (quick tap)
+const SHELL_TOSS_SPEED := 1680.0    # Max speed of thrown shell (at full charge)
+const SHELL_TOSS_MIN_SPEED := 630.0 # Min speed (quick tap)
 const SHELL_TOSS_DAMAGE := 36.0     # Damage on hit (Blink base)
 const SHELL_RETURN_TIME := 2.5      # Seconds before shell returns
 const SHELL_TOSS_COOLDOWN := 0.5    # Brief cooldown after shell returns
 const SHELL_GRAVITY := 400.0        # Gravity on thrown shell
-const SHELL_BOUNCE := 0.6           # Bounce factor off surfaces
+const SHELL_BOUNCE := 0.82           # Bounce factor off surfaces
 const SHELL_TOSS_CHARGE_TIME := 0.6 # Seconds to reach full toss charge
 const SHELL_DEFLECT_BOOST := 1.5    # Speed multiplier when shell is deflected by a dash
 const SHELL_PICKUP_RADIUS := 35.0   # Walk over shell to pick it up
@@ -56,7 +56,7 @@ const PARRY_COOLDOWN := 0.8         # Cooldown after parry ends
 const PARRY_RETRACT_SPEED := 12.0   # How fast body retracts into shell
 
 # ── Blink: Phase Dash ──────────────────────────────────────────────────────
-const PHASE_DASH_IMPULSE := 1190.0   # 15% shorter
+const PHASE_DASH_IMPULSE := 1190.0   # Dash impulse
 const PHASE_DASH_TIME := 0.27        # 15% shorter
 const PHASE_DASH_COOLDOWN := 0.8
 
@@ -65,8 +65,8 @@ const GOOPY_TOSS_KNOCKBACK_MULT := 0.3  # 30% of Blink's shell knockback
 const GOOPY_ZIP_IMPULSE := 3300.0    # Impulse when zipping to shell (strong pull)
 const GOOPY_SWING_PULL := 1200.0     # Looser swing force (lower = looser)
 const GOOPY_TETHER_DURATION := 6.0   # Max tether swing time (long for strategic use)
-const GOO_DASH_IMPULSE := 1785.0     # Max dash impulse (15% shorter)
-const GOO_DASH_MIN_IMPULSE := 637.0  # Min dash impulse (15% shorter)
+const GOO_DASH_IMPULSE := 1785.0     # Max dash impulse
+const GOO_DASH_MIN_IMPULSE := 637.0  # Min dash impulse
 const GOO_DASH_CHARGE_TIME := 0.5    # Charge time for full dash
 const GOO_DASH_TIME := 0.4           # Dash duration
 const GOO_DASH_COOLDOWN := 0.8       # Cooldown
@@ -76,20 +76,20 @@ const GOO_TRAIL_RADIUS := 18.0       # Goo puddle size
 const GOO_TRAIL_DURATION := 3.0      # How long goo puddles last
 
 # ── Zappy: Electric Shell Toss + 3x Bolt Dash ─────────────────────────────
-const ZAPPY_TOSS_SPEED := 1200.0     # Fixed speed (unchargeable, 33% less range)
-const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage (nerfed 40%)
-const ZAPPY_TOSS_KNOCKBACK := 108.0  # Light knockback (nerfed 40%, then 10% weaker)
+const ZAPPY_TOSS_SPEED := 1200.0     # Fixed speed (unchargeable, short range)
+const ZAPPY_TOSS_DAMAGE := 7.2       # Light damage
+const ZAPPY_TOSS_KNOCKBACK := 108.0  # Light knockback
 const ZAPPY_TOSS_COOLDOWN := 0.4     # Short cooldown
 const ZAPPY_TOSS_RETURN_TIME := 1.5  # Returns faster
-const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops (10% shorter)
+const ZAPPY_TOSS_MAX_RANGE := 151.0  # Max distance before shell stops
 const BOLT_DASH_CHARGE_TIME := 0.08  # Near-instant charge for snappy feel
-const BOLT_DASH_SPEED := 2250.0      # Fixed dash speed (pixels/sec) — 25% faster
-const BOLT_DASH_DISTANCE := 425.0    # Fixed dash distance (pixels) — 15% shorter
+const BOLT_DASH_SPEED := 2250.0      # Fixed dash speed (pixels/sec)
+const BOLT_DASH_DISTANCE := 425.0    # Fixed dash distance (pixels)
 const BOLT_DASH_COOLDOWN := 1.0      # Slightly shorter cooldown
 const BOLT_DASH_MAX := 3             # 3 electric dashes
 
 # ── Visual Constants ────────────────────────────────────────────────────────
-const SPRITE_SCALE := 2.0       # Art drawn at half res, rendered at 2x for pixel-perfect look
+const SPRITE_SCALE := 2.0       # All art rendered at 2x for pixel-perfect look
 const NECK_TILE_HEIGHT := 8.0   # Display height of each neck tile (4px art * 2x scale)
 const NECK_MAX_TILES := 12      # Max tiles needed (MAX_HEIGHT / NECK_TILE_HEIGHT, rounded up)
 
@@ -162,6 +162,7 @@ var blink_phase_used: bool = false       # Phase dash once per jump — resets o
 var is_phase_dashing: bool = false
 var phase_dash_timer: float = 0.0
 var phase_dash_cooldown: float = 0.0
+var _saved_collision_mask: int = 0
 
 # ── Goopy State ─────────────────────────────────────────────────────────────
 var goopy_tether_active: bool = false        # Tether between goopy and thrown shell
@@ -318,7 +319,7 @@ func _physics_process(delta: float) -> void:
 	# Reset Blink abilities when touching ground
 	if character_type == CharacterType.BLINK and (blink_toss_used or blink_teleport_used or blink_phase_used):
 		for body in get_colliding_bodies():
-			if body is StaticBody2D:
+			if body is StaticBody2D or body is TileMapLayer:
 				blink_toss_used = false
 				blink_teleport_used = false
 				blink_phase_used = false
@@ -545,33 +546,13 @@ func _start_phase_dash() -> void:
 	apply_central_impulse(dash_dir * PHASE_DASH_IMPULSE)
 
 func _phase_set_exceptions(enable: bool) -> void:
-	# Phase through ALL StaticBody2D (including ground) and other players
-	# Ground is included so Blink can phase dash while standing on a surface
-	# The dash is short enough (0.27s) that they won't fall through
-	var main_node := get_tree().current_scene
-	if not main_node:
-		return
-	for child in main_node.get_children():
-		if child == self:
-			continue
-		if child is StaticBody2D:
-			if enable:
-				add_collision_exception_with(child)
-			else:
-				remove_collision_exception_with(child)
-		elif child is RigidBody2D and child != self and child.has_method("take_damage"):
-			if enable:
-				add_collision_exception_with(child)
-			else:
-				remove_collision_exception_with(child)
-	# Also check for walls added at runtime
-	for name_str in ["WallLeft", "WallRight"]:
-		var wall: Node = main_node.get_node_or_null(name_str)
-		if wall and wall is StaticBody2D:
-			if enable:
-				add_collision_exception_with(wall)
-			else:
-				remove_collision_exception_with(wall)
+	# Phase through EVERYTHING by disabling collision mask entirely
+	# This works universally with StaticBody2D, TileMapLayer, and other players
+	if enable:
+		_saved_collision_mask = collision_mask
+		collision_mask = 0
+	else:
+		collision_mask = _saved_collision_mask
 
 func _update_phase_dash(delta: float) -> void:
 	if phase_dash_cooldown > 0.0:
@@ -579,7 +560,9 @@ func _update_phase_dash(delta: float) -> void:
 	if not is_phase_dashing:
 		return
 	phase_dash_timer += delta
-	if phase_dash_timer >= PHASE_DASH_TIME or _is_dash_blocked():
+	# Check for hits on enemy players during the dash
+	_check_charge_hits()
+	if phase_dash_timer >= PHASE_DASH_TIME:
 		is_phase_dashing = false
 		phase_dash_cooldown = PHASE_DASH_COOLDOWN
 		_phase_set_exceptions(false)
@@ -769,9 +752,11 @@ func _check_goo_dash_hits() -> void:
 			var hit_pos: Vector2 = (global_position + body.global_position) * 0.5
 			big_hit.emit(hit_pos, false)
 
+var _goo_shape_query: PhysicsShapeQueryParameters2D
+var _goo_circle: CircleShape2D
+var _goo_slow_tick: float = 0.0
+
 func _update_goo_trails(delta: float) -> void:
-	# Age trails, apply gravity so they fall to ground, slow enemies in goo
-	var space := get_world_2d().direct_space_state
 	var i := goo_trails.size() - 1
 	while i >= 0:
 		goo_trails[i].timer -= delta
@@ -779,13 +764,12 @@ func _update_goo_trails(delta: float) -> void:
 			goo_trails.remove_at(i)
 			i -= 1
 			continue
-		# Apply gravity to goo
 		if not goo_trails[i].get("grounded", false):
 			var goo_pos: Vector2 = goo_trails[i].pos
 			var below := goo_pos + Vector2(0, 400.0 * delta)
 			var query := PhysicsRayQueryParameters2D.create(goo_pos, goo_pos + Vector2(0, 20.0))
 			query.exclude = [get_rid()]
-			var result := space.intersect_ray(query)
+			var result := get_world_2d().direct_space_state.intersect_ray(query)
 			if result:
 				goo_trails[i].pos = result.position - Vector2(0, 2.0)
 				goo_trails[i].grounded = true
@@ -794,14 +778,21 @@ func _update_goo_trails(delta: float) -> void:
 		i -= 1
 	if goo_trails.is_empty():
 		return
+	# Slow enemies in goo — check every 0.15s instead of every frame
+	_goo_slow_tick += delta
+	if _goo_slow_tick < 0.15:
+		return
+	_goo_slow_tick = 0.0
+	if _goo_shape_query == null:
+		_goo_shape_query = PhysicsShapeQueryParameters2D.new()
+		_goo_circle = CircleShape2D.new()
+		_goo_circle.radius = GOO_TRAIL_RADIUS * 2.0
+		_goo_shape_query.shape = _goo_circle
+	var space := get_world_2d().direct_space_state
+	_goo_shape_query.exclude = [get_rid()]
 	for trail in goo_trails:
-		var shape_query := PhysicsShapeQueryParameters2D.new()
-		var circle := CircleShape2D.new()
-		circle.radius = GOO_TRAIL_RADIUS * 2.0
-		shape_query.shape = circle
-		shape_query.transform = Transform2D(0.0, trail.pos)
-		shape_query.exclude = [get_rid()]
-		var hits := space.intersect_shape(shape_query, 4)
+		_goo_shape_query.transform = Transform2D(0.0, trail.pos)
+		var hits := space.intersect_shape(_goo_shape_query, 4)
 		for hit in hits:
 			var collider = hit.collider
 			if collider is RigidBody2D and collider != self and collider.has_method("take_damage"):
@@ -1014,6 +1005,9 @@ func _check_charge_hits() -> void:
 
 func _is_dash_blocked() -> bool:
 	# Check if dashing into a wall or platform — end dash if so
+	# Phase dash is NEVER blocked — it phases through everything (timer-only)
+	if is_phase_dashing:
+		return false
 	# Give a brief grace period (first few frames) so dashes can start from ground
 	if is_dashing and dash_timer < 0.08:
 		return false
@@ -1021,10 +1015,8 @@ func _is_dash_blocked() -> bool:
 		return false
 	if is_goo_dashing and goo_dash_timer < 0.08:
 		return false
-	if is_phase_dashing and phase_dash_timer < 0.08:
-		return false
 	for body in get_colliding_bodies():
-		if body is StaticBody2D:
+		if body is StaticBody2D or body is TileMapLayer:
 			return true
 	return false
 
@@ -1033,6 +1025,10 @@ func _end_any_dash() -> void:
 		is_dashing = false
 		if dashes_remaining <= 0:
 			charge_cooldown = CHARGE_COOLDOWN
+	if is_phase_dashing:
+		is_phase_dashing = false
+		phase_dash_cooldown = PHASE_DASH_COOLDOWN
+		_phase_set_exceptions(false)
 	if is_bolt_dashing:
 		is_bolt_dashing = false
 		if bolt_dashes_remaining <= 0:
@@ -1055,12 +1051,14 @@ func _fire_shell_toss() -> void:
 	shell_toss_hit = false
 	shell_deflected = false
 	shell_toss_timer = 0.0
-	shell_toss_pos = global_position
-	shell_toss_origin = global_position
 	# Direction from aim; fallback to last aimed direction
 	var toss_dir := aim_dir
 	if toss_dir.length() < 0.1:
 		toss_dir = last_aim_dir
+	# Offset start position along aim direction so shell clears the player's body
+	# This prevents the shell from starting inside a surface when aiming into ground
+	shell_toss_pos = global_position + toss_dir * (BASE_RADIUS * 0.6)
+	shell_toss_origin = shell_toss_pos
 	# Speed scales with charge amount
 	var speed := lerpf(SHELL_TOSS_MIN_SPEED, SHELL_TOSS_SPEED, toss_charge_amount)
 	shell_toss_vel = toss_dir * speed
@@ -1098,6 +1096,9 @@ func _update_shell_toss(delta: float) -> void:
 		motion_params.transform = Transform2D(0.0, shell_toss_pos)
 		motion_params.motion = move
 		motion_params.exclude = [get_rid()]
+		motion_params.collision_mask = 0xFFFFFFFF
+		motion_params.collide_with_bodies = true
+		motion_params.margin = 1.0
 		var cast_result := space.cast_motion(motion_params)
 		# cast_result = [safe_fraction, unsafe_fraction]
 		# safe_fraction: how far along 'move' we can go without collision
@@ -1129,17 +1130,38 @@ func _update_shell_toss(delta: float) -> void:
 				shell_toss_pos += move * (1.0 - safe_frac)
 			else:
 				# Push out from surface
-				shell_toss_pos += bounce_normal * 2.0
+				shell_toss_pos += bounce_normal * 4.0
 				# Reflect velocity off the surface normal
 				shell_toss_vel = shell_toss_vel.reflect(bounce_normal) * SHELL_BOUNCE
+				# Arcade-y: enforce minimum bounce speed so shells stay lively
+				if shell_toss_vel.length() < 200.0:
+					shell_toss_vel = shell_toss_vel.normalized() * 200.0
 				SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
 				# Goopy shell sticks to surfaces
 				if character_type == CharacterType.GOOPY:
 					shell_toss_vel = Vector2.ZERO
 					shell_toss_hit = true
 		else:
-			# No collision — apply full movement
+			# No collision from cast_motion — apply full movement
 			shell_toss_pos += move
+			# Fallback overlap check: cast_motion can miss TileMapLayer bodies
+			# If the shell ended up inside a solid, bounce it back out
+			motion_params.transform = Transform2D(0.0, shell_toss_pos)
+			motion_params.motion = Vector2.ZERO
+			var rest := space.get_rest_info(motion_params)
+			if rest.size() > 0:
+				var collider_obj = instance_from_id(rest.collider_id) if rest.collider_id > 0 else null
+				var is_stage_body := collider_obj is StaticBody2D or collider_obj is TileMapLayer
+				if is_stage_body:
+					shell_toss_pos -= move  # Undo the move
+					shell_toss_pos += rest.normal * 4.0
+					shell_toss_vel = shell_toss_vel.reflect(rest.normal) * SHELL_BOUNCE
+					if shell_toss_vel.length() < 200.0:
+						shell_toss_vel = shell_toss_vel.normalized() * 200.0
+					SFX.play_sfx_varied("shell_bounce", 0.8, 1.2, 0.6)
+					if character_type == CharacterType.GOOPY:
+						shell_toss_vel = Vector2.ZERO
+						shell_toss_hit = true
 
 	# Zappy max range: stop shell after traveling max distance
 	if character_type == CharacterType.ZAPPY and not shell_toss_hit:
@@ -1358,6 +1380,8 @@ func start_emerge(spawn_pos: Vector2) -> void:
 	# Reset character ability state
 	is_parrying = false
 	parry_cooldown = 0.0
+	if is_phase_dashing:
+		_phase_set_exceptions(false)
 	is_phase_dashing = false
 	phase_dash_cooldown = 0.0
 	can_teleport_to_shell = false
@@ -1427,7 +1451,7 @@ func _update_invincibility(delta: float) -> void:
 # ╚══════════════════════════════════════════════════════════════════════════╝
 
 func _setup_sprites() -> void:
-	# Shell (rendered at 2x scale to match BASE_RADIUS * 2 = 44px)
+	# Shell (rendered at 2x scale to match BASE_RADIUS * 2 = 48px)
 	spr_shell = _make_recolorable_sprite(TEX_SHELL, Vector2.ZERO, -1)
 	spr_shell.scale = Vector2(SPRITE_SCALE, SPRITE_SCALE)
 
@@ -1564,7 +1588,6 @@ func _update_sprites() -> void:
 		spr_thrown_shell.rotation += 8.0 * get_physics_process_delta_time()
 
 	# ── NECK (tiling segments — offset toward facing direction) ──────────
-	# Neck extends from shell center upward, offset slightly in facing direction
 	var neck_offset_x: float = face_sign * BASE_RADIUS * 0.35 + body_shake_x
 	var tile_sx: float = SPRITE_SCALE * face_sign
 	var tile_sy: float = SPRITE_SCALE
@@ -1623,13 +1646,17 @@ func _draw() -> void:
 			draw_line(perp, target_pos + perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
 			draw_line(-perp, target_pos - perp, Color(0.5, 0.95, 0.3, 0.5), 2.0)
 
-	# Goopy goo trail puddles
+	# Goopy goo trail puddles — pixelated rectangles (world-aligned, not body-rotated)
 	if character_type == CharacterType.GOOPY and not goo_trails.is_empty():
+		draw_set_transform(Vector2.ZERO, -rotation, Vector2.ONE)
 		for trail in goo_trails:
-			var local_pos: Vector2 = to_local(trail.pos)
+			var local_pos: Vector2 = trail.pos - global_position
 			var trail_alpha: float = clampf(trail.timer / GOO_TRAIL_DURATION, 0.0, 1.0) * 0.7
-			draw_circle(local_pos, GOO_TRAIL_RADIUS, Color(0.35, 0.8, 0.2, trail_alpha))
-			draw_circle(local_pos, GOO_TRAIL_RADIUS * 0.5, Color(0.5, 0.9, 0.3, trail_alpha * 0.8))
+			var r := GOO_TRAIL_RADIUS
+			draw_rect(Rect2(local_pos.x - r, local_pos.y - r * 0.4, r * 2.0, r * 0.8), Color(0.35, 0.8, 0.2, trail_alpha))
+			var r2 := r * 0.5
+			draw_rect(Rect2(local_pos.x - r2, local_pos.y - r2 * 0.4, r2 * 2.0, r2 * 0.8), Color(0.5, 0.9, 0.3, trail_alpha * 0.8))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# Zappy electric beam between body and shell
 	if shell_missing and character_type == CharacterType.ZAPPY:
@@ -1716,80 +1743,127 @@ func _process_ai(delta: float) -> void:
 func _ai_pick_action() -> void:
 	ai_timer = 0.0
 	var abs_dist := absf(ai_target.global_position.x - global_position.x)
+	var y_diff := ai_target.global_position.y - global_position.y
 	var roll := randf()
-	if hit_points <= 1 and roll < 0.25:
-		ai_state = "retreat"
-		ai_action_duration = randf_range(0.5, 1.5)
-	elif abs_dist > 250.0:
-		ai_state = "approach"
-		ai_action_duration = randf_range(0.5, 2.0)
-	elif roll < 0.08:
+
+	# React to incoming shell — parry or dodge
+	if ai_target.shell_missing and not ai_target.shell_toss_hit:
+		var shell_dist := global_position.distance_to(ai_target.shell_toss_pos)
+		var shell_approaching := (ai_target.shell_toss_pos - global_position).normalized().dot(ai_target.shell_toss_vel.normalized()) < -0.3
+		if shell_dist < 200.0 and shell_approaching:
+			if parry_cooldown <= 0.0 and not is_parrying and randf() < 0.6:
+				_start_parry()
+				ai_state = "idle"
+				ai_action_duration = 0.3
+				return
+			else:
+				ai_state = "retreat"
+				ai_action_duration = randf_range(0.2, 0.5)
+				return
+
+	# Low HP: more aggressive + use abilities to finish fights, occasionally retreat
+	if hit_points <= 1:
+		if roll < 0.15:
+			ai_state = "retreat"
+			ai_action_duration = randf_range(0.3, 0.6)
+			return
+		elif roll < 0.5:
+			ai_state = "ability2"
+			ai_action_duration = 0.1
+			return
+
+	# Far away: close the gap quickly
+	if abs_dist > 300.0:
+		if roll < 0.3:
+			ai_state = "shell_toss"
+			ai_action_duration = 0.1
+		else:
+			ai_state = "approach"
+			ai_action_duration = randf_range(0.3, 0.8)
+		return
+
+	# Medium range: mix of attacks and approach
+	if abs_dist > 150.0:
+		if roll < 0.25:
+			ai_state = "shell_toss"
+			ai_action_duration = 0.1
+		elif roll < 0.45:
+			ai_state = "charge_attack"
+			ai_action_duration = randf_range(0.3, 0.7)
+		elif roll < 0.6:
+			ai_state = "ability2"
+			ai_action_duration = 0.1
+		else:
+			ai_state = "approach"
+			ai_action_duration = randf_range(0.2, 0.5)
+		return
+
+	# Close range: aggressive combat
+	if roll < 0.12:
 		ai_state = "lower_spin"
-		ai_action_duration = randf_range(0.4, 0.8)
-	elif roll < 0.26:
-		# Use ability1 based on character type
-		match character_type:
-			CharacterType.BLINK:
-				ai_state = "shell_toss"
-				ai_action_duration = 0.1
-			CharacterType.GOOPY:
-				ai_state = "shell_toss"  # Fires tether (reuses toss slot)
-				ai_action_duration = 0.1
-			CharacterType.ZAPPY:
-				ai_state = "charge_attack"
-				ai_action_duration = randf_range(0.8, 1.5)
-	elif roll < 0.34:
+		ai_action_duration = randf_range(0.3, 0.5)
+	elif roll < 0.32:
+		ai_state = "shell_toss"
+		ai_action_duration = 0.1
+	elif roll < 0.50:
 		ai_state = "ability2"
 		ai_action_duration = 0.1
-	elif roll < 0.55:
+	elif roll < 0.70:
+		ai_state = "charge_attack"
+		ai_action_duration = randf_range(0.2, 0.5)
+	elif roll < 0.85:
 		ai_state = "attack"
-		ai_action_duration = randf_range(0.3, 1.0)
+		ai_action_duration = randf_range(0.2, 0.6)
 	else:
+		# Quick reposition
 		ai_state = "approach"
-		ai_action_duration = randf_range(0.3, 0.8)
+		ai_action_duration = randf_range(0.1, 0.3)
 
 func _ai_near_edge() -> bool:
-	# Returns true if AI is close to the left or right edge of the arena
-	return global_position.x < 80.0 or global_position.x > 1200.0
+	return global_position.x < 16.0 or global_position.x > 1264.0
 
 func _ai_edge_safe_dir() -> float:
-	# Direction toward center to avoid rolling off edges
 	var dir := signf(ai_target.global_position.x - global_position.x)
-	if global_position.x < 80.0 and dir < 0.0:
-		return 1.0  # Don't roll further left
-	if global_position.x > 1200.0 and dir > 0.0:
-		return -1.0  # Don't roll further right
+	if global_position.x < 16.0 and dir < 0.0:
+		return 1.0
+	if global_position.x > 1264.0 and dir > 0.0:
+		return -1.0
 	return dir
 
 func _ai_approach(delta: float) -> void:
 	var dir := _ai_edge_safe_dir()
-	apply_torque(LEAN_TORQUE * dir)
-	extend_amount = move_toward(extend_amount, 0.6, EXTEND_SPEED * 0.5 * delta)
+	apply_torque(LEAN_TORQUE * dir * 1.3)
+	extend_amount = move_toward(extend_amount, 0.65, EXTEND_SPEED * 0.8 * delta)
 
 func _ai_attack(delta: float) -> void:
 	var dir := _ai_edge_safe_dir()
-	apply_torque(LEAN_TORQUE * 1.5 * dir)
-	extend_amount = minf(extend_amount + EXTEND_SPEED * 1.5 * delta, 1.0)
+	apply_torque(LEAN_TORQUE * 1.8 * dir)
+	extend_amount = minf(extend_amount + EXTEND_SPEED * 2.0 * delta, 1.0)
 
 func _ai_lower_spin(delta: float) -> void:
-	extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.0 * delta, 0.0)
-	apply_torque(LEAN_TORQUE * 2.0)
+	extend_amount = maxf(extend_amount - EXTEND_SPEED * 2.5 * delta, 0.0)
+	apply_torque(LEAN_TORQUE * 2.5)
 
 func _ai_retreat(delta: float) -> void:
 	var dir := -signf(ai_target.global_position.x - global_position.x)
-	# Don't retreat off the edge
-	if global_position.x < 80.0 and dir < 0.0:
+	if global_position.x < 0.0 and dir < 0.0:
 		dir = 1.0
-	elif global_position.x > 1200.0 and dir > 0.0:
+	elif global_position.x > 1280.0 and dir > 0.0:
 		dir = -1.0
-	apply_torque(LEAN_TORQUE * dir * 0.8)
-	extend_amount = move_toward(extend_amount, 0.3, EXTEND_SPEED * delta)
+	apply_torque(LEAN_TORQUE * dir * 1.0)
+	extend_amount = move_toward(extend_amount, 0.35, EXTEND_SPEED * 1.5 * delta)
+	# Parry if enemy is close while retreating
+	if ai_target.global_position.distance_to(global_position) < 100.0 and parry_cooldown <= 0.0 and not is_parrying and randf() < 0.3:
+		_start_parry()
 
 func _ai_charge_attack(delta: float) -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
-	aim_dir = Vector2(dir, randf_range(-0.3, 0.0)).normalized()
+	# Aim toward the target, predicting movement slightly
+	var to_target := ai_target.global_position - global_position
+	var predict_offset := ai_target.linear_velocity * 0.15
+	var aim_target := (to_target + predict_offset).normalized()
+	aim_dir = Vector2(aim_target.x, clampf(aim_target.y, -0.5, 0.2)).normalized()
 	last_aim_dir = aim_dir
-	apply_torque(LEAN_TORQUE * dir * 0.3)
+	apply_torque(LEAN_TORQUE * signf(to_target.x) * 0.3)
 	match character_type:
 		CharacterType.ZAPPY:
 			is_bolt_charging = true
@@ -1799,29 +1873,36 @@ func _ai_charge_attack(delta: float) -> void:
 			charge_amount = minf(charge_amount + delta / CHARGE_TIME, 1.0)
 
 func _ai_shell_toss() -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
-	aim_dir = Vector2(dir, randf_range(-0.5, 0.1)).normalized()
+	# Aim at the target with prediction
+	var to_target := ai_target.global_position - global_position
+	var predict_offset := ai_target.linear_velocity * 0.2
+	var aim_target := (to_target + predict_offset).normalized()
+	aim_dir = Vector2(aim_target.x, clampf(aim_target.y, -0.6, 0.3)).normalized()
 	last_aim_dir = aim_dir
 	match character_type:
 		CharacterType.BLINK:
 			if shell_missing:
 				if can_teleport_to_shell and not blink_teleport_used:
-					_blink_teleport_to_shell()
+					# Teleport to shell if it's near the enemy
+					var shell_to_enemy := ai_target.global_position.distance_to(shell_toss_pos)
+					if shell_to_enemy < 200.0 or randf() < 0.5:
+						_blink_teleport_to_shell()
 				return
 			if shell_toss_cooldown > 0.0 or blink_toss_used:
 				return
-			toss_charge_amount = randf_range(0.4, 1.0)
+			toss_charge_amount = randf_range(0.5, 1.0)
 			_fire_shell_toss()
 			blink_toss_used = true
 			can_teleport_to_shell = true
 		CharacterType.GOOPY:
 			if shell_missing:
-				if goopy_tether_active and randf() < 0.5:
+				if goopy_tether_active:
+					# Zip to shell if near the enemy or pull to recover
 					_goopy_zip_to_shell()
 				return
 			if shell_toss_cooldown > 0.0:
 				return
-			toss_charge_amount = randf_range(0.3, 0.8)
+			toss_charge_amount = randf_range(0.5, 1.0)
 			_fire_shell_toss()
 			goopy_tether_active = true
 			goopy_tether_timer = 0.0
@@ -1831,8 +1912,11 @@ func _ai_shell_toss() -> void:
 			_fire_zappy_shell_toss()
 
 func _ai_ability2() -> void:
-	var dir := signf(ai_target.global_position.x - global_position.x)
-	aim_dir = Vector2(dir, randf_range(-0.3, 0.1)).normalized()
+	# Aim toward the enemy for ability2
+	var to_target := ai_target.global_position - global_position
+	aim_dir = to_target.normalized()
+	aim_dir.y = clampf(aim_dir.y, -0.4, 0.2)
+	aim_dir = aim_dir.normalized()
 	last_aim_dir = aim_dir
 	match character_type:
 		CharacterType.BLINK:
@@ -1841,10 +1925,9 @@ func _ai_ability2() -> void:
 				blink_phase_used = true
 		CharacterType.GOOPY:
 			if goo_dash_cooldown <= 0.0 and not is_goo_dashing:
-				goo_charge_amount = randf_range(0.3, 1.0)
+				goo_charge_amount = randf_range(0.5, 1.0)
 				_start_goo_dash()
 		CharacterType.ZAPPY:
-			# AI just charges briefly then dashes
 			if bolt_dash_cooldown <= 0.0 and bolt_dashes_remaining > 0:
-				bolt_charge_amount = randf_range(0.5, 1.0)
+				bolt_charge_amount = randf_range(0.6, 1.0)
 				_start_bolt_dash()
